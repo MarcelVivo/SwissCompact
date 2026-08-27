@@ -1,6 +1,6 @@
 import "./styles.css";
 import startImageUrl from "../public/3DPictures/Stationen/Station1Berg/StationBerg.jpg?url";
-import secondSceneImageUrl from "../public/3DPictures/Stationen/Station2Schuhgeschäft/Schuhgeschäft.jpg?url";
+import secondSceneImageUrl from "../public/3DPictures/Stationen/Station2Schuhgeschaeft/Schuhgeschaeft.jpg?url";
 import { stations } from "./stations";
 import { createDirectionalScrollVideoController } from "./scene/directionalScrollVideo";
 import {
