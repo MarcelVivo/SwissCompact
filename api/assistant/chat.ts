@@ -6,7 +6,7 @@ import {
   sanitizeAssistantSalesContext,
 } from "../_lib/assistant/engine.js";
 import { buildAssistantSalesInstructions } from "../_lib/assistant/prompt.js";
-import { ASSISTANT_RESPONSE_JSON_SCHEMA, parseAssistantModelOutput } from "../_lib/assistant/responseSchema.js";
+import { buildAssistantResponseSchema, parseAssistantModelOutput } from "../_lib/assistant/responseSchema.js";
 import type { AssistantChatMessage } from "../_lib/assistant/types.js";
 
 // Web-standard Request/Response works on Vercel's default Node.js runtime
@@ -84,6 +84,8 @@ export async function POST(request: Request): Promise<Response> {
   const sectionId = cleanText(body.sectionId, 80) || "hero";
   const history = cleanHistory(body.history);
   const currentContext = sanitizeAssistantSalesContext(body.context);
+  const validFurnishingIds = currentContext.showroomManifest?.furnishings?.map((item) => item.id) ?? [];
+  const responseSchema = buildAssistantResponseSchema(validFurnishingIds);
 
   let response: Response;
   try {
@@ -104,7 +106,7 @@ export async function POST(request: Request): Promise<Response> {
             type: "json_schema",
             name: "assistant_sales_response",
             strict: true,
-            schema: ASSISTANT_RESPONSE_JSON_SCHEMA,
+            schema: responseSchema,
           },
         },
         store: false,
@@ -138,7 +140,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  const parsed = parseAssistantModelOutput(parsedJson);
+  const parsed = parseAssistantModelOutput(parsedJson, validFurnishingIds);
   if (!parsed) {
     return json({ ...buildFallbackAssistantResponse(currentContext), degraded: true });
   }
@@ -168,7 +170,8 @@ export async function POST(request: Request): Promise<Response> {
     ? parsed.uiActions
     : parsed.uiActions.filter((action) => action.type !== "SHOW_SOLUTION" && action.type !== "SHOW_RECOMMENDATION");
 
-  const animationState = parsed.recommendation ? "presenting" : parsed.animationState;
+  const hasShowroomConcept = uiActions.some((action) => action.type === "SHOWROOM_APPLY_CONCEPT");
+  const animationState = parsed.recommendation || hasShowroomConcept ? "presenting" : parsed.animationState;
 
   return json({
     answer: parsed.message,

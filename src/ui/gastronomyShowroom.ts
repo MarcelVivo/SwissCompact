@@ -25,6 +25,61 @@ import QRCode from "qrcode";
 
 export interface GastronomyShowroom {
   destroy(): void;
+  goToRoom(preset: RoomPreset): void;
+  getRoomManifest(preset?: RoomPreset): ShowroomAiManifest;
+  applyRoomConcept(preset: RoomPreset, patch: RoomConceptPatch): RoomConceptResult;
+}
+
+export interface ShowroomAiManifestPreset {
+  id: RoomPreset;
+  label: string;
+  theme: ShowroomTheme;
+  themeLabel: string;
+}
+
+export interface ShowroomAiManifestFurnishing {
+  id: string;
+  label: string;
+  category: FurnishingObject["category"];
+}
+
+export interface ShowroomAiManifest {
+  presets: ShowroomAiManifestPreset[];
+  selectedPreset: RoomPreset;
+  furnishings: ShowroomAiManifestFurnishing[];
+  displayWalls: { wall: DisplayWall; unitCount: number }[];
+}
+
+export interface RoomConceptFurnishingPatch {
+  id: string;
+  visible?: boolean;
+  positionX?: number;
+  positionZ?: number;
+  rotationY?: number;
+  scaleMultiplier?: number;
+  color?: string | null;
+}
+
+export interface RoomConceptDisplayContentPatch {
+  wall: DisplayWall;
+  displayIndex: number;
+  composition: DisplayContentComposition;
+}
+
+export interface RoomConceptPatch {
+  roomSize?: RoomSize;
+  light?: LightPreset;
+  brightness?: number;
+  surfaces?: Partial<Record<RoomSurface, string | null>>;
+  floorFinish?: FloorFinish;
+  furnishings?: RoomConceptFurnishingPatch[];
+  displayContent?: RoomConceptDisplayContentPatch[];
+}
+
+export interface RoomConceptResult {
+  applied: boolean;
+  degradedFurnishingIds: string[];
+  clampedFurnishingIds: string[];
 }
 
 type ShowroomTheme =
@@ -40,7 +95,7 @@ type ShowroomTheme =
   | "education"
   | "industry"
   | "realestate";
-type RoomPreset =
+export type RoomPreset =
   | "takeaway"
   | "restaurant"
   | "cafe"
@@ -1118,6 +1173,18 @@ const ROOM_SIZE_FACTORS: Record<RoomSize, number> = {
   small: 1.75,
   compact: 2.75,
   standard: 4.1,
+};
+// The largest envelope the engine ever grows a room to (resolveMinimumRoomSize
+// caps at "standard"). Reused both by that function's own fit-check and by
+// the AI-concept guardrail's position clamp, so both read from one place.
+const getMaximumRoomEnvelope = (): { x: number; zMin: number; zMax: number; y: number } => {
+  const factor = ROOM_SIZE_FACTORS.standard;
+  return {
+    x: 6 * factor + 0.15,
+    zMin: -6,
+    zMax: -6 + 12 * factor + 0.15,
+    y: WALL_HEIGHT_CM / 100,
+  };
 };
 const ROOM_ZONE_COUNTS: Record<RoomSize, number> = {
   xs: 1,
@@ -6050,7 +6117,21 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   const canvas = root?.querySelector<HTMLCanvasElement>("[data-showroom-canvas]");
   const loading = root?.querySelector<HTMLElement>("[data-showroom-loading]");
   if (!root || !stage || !canvas || !loading) {
-    return { destroy() {} };
+    return {
+      destroy() {},
+      goToRoom() {},
+      getRoomManifest: () => ({
+        presets: [],
+        selectedPreset: "restaurant",
+        furnishings: [],
+        displayWalls: [],
+      }),
+      applyRoomConcept: () => ({
+        applied: false,
+        degradedFurnishingIds: [],
+        clampedFurnishingIds: [],
+      }),
+    };
   }
 
   let destroyed = false;
@@ -30734,7 +30815,166 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   updateOutputs();
   updateViewOutputs();
 
+  // --- AI-driven navigation & concept application -------------------------
+  // Exposed for src/ui/salesAssistant.ts. goToRoom() replicates the exact
+  // sequence the real [data-showroom-setting="preset"] click handler runs
+  // (see the "preset" branch above); applyConfig() already re-derives theme
+  // and all button active/hidden state, so no separate theme-sync step is
+  // needed here.
+  const goToRoom = (preset: RoomPreset): void => {
+    signalSceneTransition();
+    closeDisplayFlyout();
+    closeObjectFlyout();
+    selectPreset(preset);
+    applyConfig(true);
+  };
+
+  const getRoomManifest = (preset?: RoomPreset): ShowroomAiManifest => {
+    const targetPreset = preset ?? config.preset;
+    const presets: ShowroomAiManifestPreset[] = (Object.keys(PRESET_LABELS) as RoomPreset[]).map(
+      (id) => ({
+        id,
+        label: PRESET_LABELS[id],
+        theme: getThemeForPreset(id),
+        themeLabel: THEME_LABELS[getThemeForPreset(id)],
+      }),
+    );
+    const furnishings: ShowroomAiManifestFurnishing[] = (objects?.furnishings ?? [])
+      .filter((item) => item.presets.includes(targetPreset))
+      .map((item) => ({ id: item.id, label: item.label, category: item.category }));
+    const room = roomConfigurations[targetPreset];
+    const displayWalls = (Object.keys(room.installations) as DisplayWall[])
+      .filter((wall) => room.enabledObjects[wall])
+      .map((wall) => ({ wall, unitCount: room.installations[wall].displays.length }));
+    return { presets, selectedPreset: targetPreset, furnishings, displayWalls };
+  };
+
+  // Guardrails (bounds clamp + collision safety net) protect visual quality
+  // when the AI repositions furniture with full freedom. Only furnishings
+  // present in patch.furnishings are touched/checked as the moving party;
+  // they're checked against every other currently-visible furnishing too,
+  // so an AI-moved piece can't clip through something it didn't touch.
+  // Not a physics engine: furnishing-vs-furnishing Box3 overlap only, no
+  // wall-mesh collision, no gravity — the X/Z envelope clamp already
+  // prevents the dominant "furniture outside the building" failure mode.
+  const applyRoomConcept = (
+    preset: RoomPreset,
+    patch: RoomConceptPatch,
+  ): RoomConceptResult => {
+    const result: RoomConceptResult = {
+      applied: false,
+      degradedFurnishingIds: [],
+      clampedFurnishingIds: [],
+    };
+    if (config.preset !== preset || !objects || !three) return result;
+    const THREE = three;
+    const room = getRoomConfiguration();
+
+    if (patch.roomSize) config.roomSize = patch.roomSize;
+    if (patch.light) config.light = patch.light;
+    if (typeof patch.brightness === "number") {
+      config.brightness = clamp(patch.brightness, 30, 100);
+    }
+    persistRoomSettings();
+
+    if (patch.surfaces) {
+      (Object.keys(patch.surfaces) as RoomSurface[]).forEach((surface) => {
+        const value = patch.surfaces?.[surface];
+        if (value !== undefined) room.surfaces[surface] = value;
+      });
+    }
+    if (patch.floorFinish) room.floorFinish = patch.floorFinish;
+
+    const envelope = getMaximumRoomEnvelope();
+    const touchedFurnishings: FurnishingObject[] = [];
+
+    (patch.furnishings ?? []).forEach((furnishingPatch) => {
+      const furnishing = objects?.furnishings.find((item) => item.id === furnishingPatch.id);
+      if (!furnishing || !furnishing.presets.includes(preset)) return;
+      const baseline = ensureFurnishingState(furnishing);
+      const nextState: FurnishingState = cloneFurnishingState(baseline);
+      let clamped = false;
+
+      if (typeof furnishingPatch.visible === "boolean") {
+        nextState.visible = furnishingPatch.visible;
+      }
+      if (typeof furnishingPatch.positionX === "number") {
+        const clampedX = clamp(furnishingPatch.positionX, -envelope.x, envelope.x);
+        if (clampedX !== furnishingPatch.positionX) clamped = true;
+        nextState.position = [clampedX, nextState.position[1], nextState.position[2]];
+      }
+      if (typeof furnishingPatch.positionZ === "number") {
+        const clampedZ = clamp(furnishingPatch.positionZ, envelope.zMin, envelope.zMax);
+        if (clampedZ !== furnishingPatch.positionZ) clamped = true;
+        nextState.position = [nextState.position[0], nextState.position[1], clampedZ];
+      }
+      if (typeof furnishingPatch.rotationY === "number") {
+        let rotation = furnishingPatch.rotationY % (Math.PI * 2);
+        if (rotation > Math.PI) rotation -= Math.PI * 2;
+        if (rotation < -Math.PI) rotation += Math.PI * 2;
+        nextState.rotationY = rotation;
+      }
+      if (typeof furnishingPatch.scaleMultiplier === "number") {
+        const defaultScale = furnishing.defaults[preset]?.scale ?? baseline.scale;
+        const multiplier = clamp(furnishingPatch.scaleMultiplier, 0.5, 1.8);
+        if (multiplier !== furnishingPatch.scaleMultiplier) clamped = true;
+        nextState.scale = [
+          defaultScale[0] * multiplier,
+          defaultScale[1] * multiplier,
+          defaultScale[2] * multiplier,
+        ];
+      }
+      if (furnishingPatch.color !== undefined) {
+        nextState.color = furnishingPatch.color;
+      }
+
+      // Apply to the live object now so real Box3 bounds can be measured.
+      furnishing.object.position.set(...nextState.position);
+      furnishing.object.rotation.y = nextState.rotationY;
+      furnishing.object.scale.set(...nextState.scale);
+      furnishing.object.visible = nextState.visible;
+      applyObjectColor(furnishing.object, nextState.color);
+
+      room.furnishings[furnishing.id] = nextState;
+      touchedFurnishings.push(furnishing);
+      if (clamped) result.clampedFurnishingIds.push(furnishing.id);
+    });
+
+    if (touchedFurnishings.length > 0) {
+      const visibleActive = (objects?.furnishings ?? []).filter(
+        (item) => item.presets.includes(preset) && ensureFurnishingState(item).visible,
+      );
+      touchedFurnishings.forEach((furnishing) => {
+        if (!furnishing.object.visible) return;
+        const box = new THREE.Box3().setFromObject(furnishing.object);
+        const collides = visibleActive.some((other) => {
+          if (other.id === furnishing.id || !other.object.visible) return false;
+          return box.intersectsBox(new THREE.Box3().setFromObject(other.object));
+        });
+        if (collides) {
+          resetFurnishing(furnishing);
+          result.degradedFurnishingIds.push(furnishing.id);
+          result.clampedFurnishingIds = result.clampedFurnishingIds.filter(
+            (id) => id !== furnishing.id,
+          );
+        }
+      });
+    }
+
+    (patch.displayContent ?? []).forEach(({ wall, displayIndex, composition }) => {
+      const unit = room.installations[wall]?.displays[displayIndex];
+      if (unit) unit.customContent = composition;
+    });
+
+    applyConfig(true);
+    result.applied = true;
+    return result;
+  };
+
   return {
+    goToRoom,
+    getRoomManifest,
+    applyRoomConcept,
     destroy() {
       destroyed = true;
       window.clearTimeout(sceneTransitionTimer);

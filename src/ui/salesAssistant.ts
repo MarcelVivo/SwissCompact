@@ -1,8 +1,15 @@
 import type {
   AssistantAnimationState,
   AssistantRecommendation,
+  AssistantRoomConcept,
   AssistantSalesContext,
+  AssistantUiAction,
 } from "../../api/_lib/assistant/types";
+import type {
+  GastronomyShowroom,
+  RoomConceptPatch,
+  RoomPreset,
+} from "./gastronomyShowroom";
 
 export interface SalesAssistant {
   destroy: () => void;
@@ -32,7 +39,7 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export function mountSalesAssistant(): SalesAssistant {
+export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistant {
   const rootCheck = document.querySelector<HTMLElement>("[data-sales-assistant]");
   const triggerCheck = document.querySelector<HTMLButtonElement>("[data-sales-assistant-trigger]");
   const panelCheck = document.querySelector<HTMLElement>("[data-sales-assistant-panel]");
@@ -336,6 +343,126 @@ export function mountSalesAssistant(): SalesAssistant {
     }
   }
 
+  type ConceptDisplayPatch = NonNullable<RoomConceptPatch["displayContent"]>[number];
+  type ConceptDisplayWall = ConceptDisplayPatch["wall"];
+  type ConceptDisplayComposition = ConceptDisplayPatch["composition"];
+  type ConceptDisplayElement = ConceptDisplayComposition["elements"][number];
+
+  function mapConceptToPatch(concept: AssistantRoomConcept): RoomConceptPatch {
+    const patch: RoomConceptPatch = {};
+    if (concept.roomSize) patch.roomSize = concept.roomSize;
+    if (concept.light) patch.light = concept.light;
+    if (concept.surfaces) patch.surfaces = concept.surfaces;
+    if (concept.floorFinish) patch.floorFinish = concept.floorFinish;
+
+    if (concept.furnishings.length > 0) {
+      patch.furnishings = concept.furnishings.map((item) => ({
+        id: item.id,
+        visible: item.visible,
+        positionX: item.positionX,
+        positionZ: item.positionZ,
+        rotationY: item.rotationY,
+        scaleMultiplier: item.scaleMultiplier,
+        color: item.color,
+      }));
+    }
+
+    if (concept.display) {
+      const { wall, displayIndex, title, priceText, offerText } = concept.display;
+      const base = Date.now().toString(36);
+      const elements: ConceptDisplayElement[] = [];
+      if (title) {
+        elements.push({
+          id: `${base}-title`,
+          type: "title",
+          text: title,
+          qrValue: "",
+          x: 0.07,
+          y: 0.42,
+          fontFamily: "Arial",
+          fontSize: 78,
+          color: "#ffffff",
+          align: "left",
+          effect: "none",
+        });
+      }
+      if (offerText) {
+        elements.push({
+          id: `${base}-offer`,
+          type: "text",
+          text: offerText,
+          qrValue: "",
+          x: 0.07,
+          y: 0.7,
+          fontFamily: "Arial",
+          fontSize: 32,
+          color: "#ffffff",
+          align: "left",
+          effect: "none",
+        });
+      }
+      if (priceText) {
+        elements.push({
+          id: `${base}-price`,
+          type: "price",
+          text: priceText,
+          qrValue: "",
+          x: 0.68,
+          y: 0.82,
+          fontFamily: "Arial",
+          fontSize: 44,
+          color: "#ffffff",
+          align: "right",
+          effect: "none",
+        });
+      }
+      if (elements.length > 0) {
+        patch.displayContent = [
+          {
+            wall: wall as ConceptDisplayWall,
+            displayIndex,
+            composition: { elements, sourceTemplate: "custom" },
+          },
+        ];
+      }
+    }
+
+    return patch;
+  }
+
+  function handleUiActions(actions: AssistantUiAction[]) {
+    actions.forEach((action) => {
+      switch (action.type) {
+        case "SCROLL_TO_SECTION": {
+          if (action.sectionId) {
+            document.querySelector(action.sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+          break;
+        }
+        case "OPEN_CONTACT": {
+          renderContactForm();
+          break;
+        }
+        case "SHOWROOM_GO_TO_ROOM": {
+          if (!action.roomPreset) break;
+          document.querySelector("[data-showroom]")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          showroom.goToRoom(action.roomPreset as RoomPreset);
+          break;
+        }
+        case "SHOWROOM_APPLY_CONCEPT": {
+          if (!action.roomPreset || !action.concept) break;
+          setState("presenting");
+          document.querySelector("[data-showroom]")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          showroom.goToRoom(action.roomPreset as RoomPreset);
+          showroom.applyRoomConcept(action.roomPreset as RoomPreset, mapConceptToPatch(action.concept));
+          break;
+        }
+        default:
+          break;
+      }
+    });
+  }
+
   async function ask(rawMessage: string, inputMode: "text" | "voice" | "quick_reply" = "text") {
     const trimmed = rawMessage.trim();
     if (!trimmed || busy) return;
@@ -371,6 +498,24 @@ export function mountSalesAssistant(): SalesAssistant {
     abortController = new AbortController();
 
     try {
+      const manifest = showroom.getRoomManifest();
+      const outgoingContext = {
+        ...context,
+        showroomManifest: {
+          presets: manifest.presets.map((preset) => ({
+            id: preset.id,
+            label: preset.label,
+            themeLabel: preset.themeLabel,
+          })),
+          selectedPreset: manifest.selectedPreset,
+          furnishings: manifest.furnishings.map((item) => ({
+            id: item.id,
+            label: item.label,
+            category: item.category,
+          })),
+        },
+      };
+
       const response = await fetch("/api/assistant/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -378,7 +523,7 @@ export function mountSalesAssistant(): SalesAssistant {
           message: trimmed,
           sectionId,
           inputMode,
-          context,
+          context: outgoingContext,
           history: messages.slice(-10).map((message) => ({ role: message.role, content: message.content })),
         }),
         signal: abortController.signal,
@@ -390,6 +535,8 @@ export function mountSalesAssistant(): SalesAssistant {
       messages = [...messages, { id: uid(), role: "assistant", content: payload.answer || payload.message || "" }];
       renderChat();
       persistSession();
+      const uiActions: AssistantUiAction[] = Array.isArray(payload.uiActions) ? payload.uiActions : [];
+      handleUiActions(uiActions);
       await speak(payload.answer || payload.message || "");
       setState(payload.animationState || "idle");
     } catch (error) {

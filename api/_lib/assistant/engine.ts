@@ -9,12 +9,14 @@ import {
   type AssistantSalesContext,
   type AssistantSalesResponse,
   type AssistantSalesStage,
+  type AssistantShowroomManifest,
 } from "./types.js";
 import {
   ASSISTANT_SERVICE_IDS,
   ASSISTANT_SERVICE_LIBRARY,
   getAssistantService,
 } from "./services.js";
+import { isShowroomRoomPresetId } from "./showroomManifest.js";
 
 const MAX_FIELD_LENGTH = 240;
 const MAX_SUMMARY_LENGTH = 900;
@@ -65,6 +67,45 @@ export function createInitialAssistantSalesContext(): AssistantSalesContext {
   };
 }
 
+// Sent fresh by the frontend every turn (not unioned/persisted across turns
+// like the rest of the context) so the model never reasons about a stale
+// furnishing-id list if the visitor switches rooms manually mid-conversation.
+export function sanitizeShowroomManifest(value: unknown): AssistantShowroomManifest | undefined {
+  if (!isRecord(value) || !Array.isArray(value.presets)) return undefined;
+  const presets = value.presets
+    .filter(isRecord)
+    .map((entry) => {
+      const id = cleanText(entry.id, 40);
+      const label = cleanText(entry.label, 120);
+      const themeLabel = cleanText(entry.themeLabel, 120);
+      if (!id || !isShowroomRoomPresetId(id) || !label || !themeLabel) return undefined;
+      return { id, label, themeLabel };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
+    .slice(0, 36);
+  if (presets.length === 0) return undefined;
+
+  const selectedPresetRaw = cleanText(value.selectedPreset, 40);
+  const selectedPreset =
+    selectedPresetRaw && isShowroomRoomPresetId(selectedPresetRaw) ? selectedPresetRaw : undefined;
+
+  const furnishings = Array.isArray(value.furnishings)
+    ? value.furnishings
+        .filter(isRecord)
+        .map((entry) => {
+          const id = cleanText(entry.id, 80);
+          const label = cleanText(entry.label, 120);
+          const category = cleanText(entry.category, 40);
+          if (!id || !label || !category) return undefined;
+          return { id, label, category };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
+        .slice(0, 60)
+    : undefined;
+
+  return { presets, selectedPreset, furnishings };
+}
+
 export function sanitizeAssistantSalesContext(
   value: unknown,
   fallback: AssistantSalesContext = createInitialAssistantSalesContext(),
@@ -109,6 +150,7 @@ export function sanitizeAssistantSalesContext(
     phone: cleanText(value.phone, 80) ?? fallback.phone,
     website: cleanText(value.website, 200) ?? fallback.website,
     consentToContact: cleanBoolean(value.consentToContact) ?? fallback.consentToContact,
+    showroomManifest: sanitizeShowroomManifest(value.showroomManifest) ?? fallback.showroomManifest,
   };
 }
 

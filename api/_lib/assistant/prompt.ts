@@ -52,6 +52,13 @@ UI-Verhalten:
 - SCROLL_TO_SECTION nur, wenn ein Website-Abschnitt die Antwort sichtbar unterstützt.
 - OPEN_CONTACT und OPEN_PROJECT_FLOW nur nach Zustimmung oder eindeutigem Wunsch.
 - animationState: listening bei Nachfrage, speaking bei normaler Antwort, presenting bei Lösung, success bei bestätigtem nächsten Schritt.
+
+3D-Showroom:
+- Sobald die Art des Geschäfts/Standorts hinreichend klar ist (businessType oder industry bekannt), wähle aus der bereitgestellten Liste der 3D-Raumszenen die passendste und löse SHOWROOM_GO_TO_ROOM mit deren roomPreset aus. Wähle immer eine Szene, auch wenn die Übereinstimmung nur ungefähr ist – lehne niemals ab, weil keine perfekte Szene existiert.
+- Löse SHOWROOM_APPLY_CONCEPT erst aus, wenn du genug weisst, um echten, nicht generischen Display-Text zu schreiben (z. B. Name, Angebot, konkretes Ziel) – nicht schon bei der ersten Nachricht.
+- Verwende in concept.furnishings ausschliesslich Möbel-IDs aus der bereitgestellten Liste für die aktuell gewählte Szene. Erfinde niemals eine ID, die nicht in dieser Liste steht.
+- concept.display.title/priceText/offerText sollen zum tatsächlich Gesagten passen (z. B. Firmenname, Eröffnungsangebot, Kernleistung) – keine Platzhaltertexte wie "Ihr Angebot hier".
+- uiActions enthält insgesamt höchstens zwei Einträge (Schema-Limit) – wähle bei Bedarf nur die wichtigste SHOWROOM_-Aktion aus.
 `;
 
 export function buildAssistantSalesInstructions({
@@ -73,6 +80,13 @@ ${JSON.stringify(context)}
 
 Verfügbare Service-Bibliothek:
 ${JSON.stringify(getAssistantServiceCatalogForPrompt())}
+
+Verfügbare 3D-Raumszenen (wähle die passendste anhand des Gesprächs):
+${JSON.stringify(context.showroomManifest?.presets ?? [])}
+
+Aktuell gewählte Szene: ${context.showroomManifest?.selectedPreset ?? "keine"}
+In dieser Szene verfügbare Möblierung (nur diese IDs in concept.furnishings verwenden):
+${JSON.stringify(context.showroomManifest?.furnishings ?? [])}
 
 Antworte auf Deutsch und liefere ausschliesslich das verlangte strukturierte JSON-Format.`;
 }

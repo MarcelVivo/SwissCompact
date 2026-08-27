@@ -83,6 +83,7 @@ export type AssistantSalesContext = AssistantContactData & {
   nextBestAction: AssistantNextBestAction;
   conversationSummary: string;
   consentToContact?: boolean;
+  showroomManifest?: AssistantShowroomManifest;
 };
 
 export type AssistantRecommendationItem = {
@@ -99,6 +100,39 @@ export type AssistantRecommendation = {
   notRecommended: string[];
 };
 
+export type AssistantRoomConceptFurnishing = {
+  id: string;
+  visible?: boolean;
+  positionX?: number;
+  positionZ?: number;
+  rotationY?: number;
+  scaleMultiplier?: number;
+  color?: string | null;
+};
+
+export type AssistantRoomConceptDisplay = {
+  wall: string;
+  displayIndex: number;
+  title?: string;
+  priceText?: string;
+  offerText?: string;
+};
+
+export type AssistantRoomConcept = {
+  roomSize?: "xs" | "small" | "compact" | "standard";
+  light?: "day" | "warm";
+  surfaces?: {
+    wallLeft?: string | null;
+    wallBack?: string | null;
+    wallRight?: string | null;
+    floor?: string | null;
+    ceiling?: string | null;
+  };
+  floorFinish?: "plain" | "carpet" | "stone" | "wood";
+  furnishings: AssistantRoomConceptFurnishing[];
+  display?: AssistantRoomConceptDisplay;
+};
+
 export type AssistantUiAction = {
   type:
     | "SCROLL_TO_SECTION"
@@ -106,10 +140,32 @@ export type AssistantUiAction = {
     | "SHOW_RECOMMENDATION"
     | "SHOW_SOLUTION"
     | "OPEN_CONTACT"
-    | "OPEN_PROJECT_FLOW";
+    | "OPEN_PROJECT_FLOW"
+    | "SHOWROOM_GO_TO_ROOM"
+    | "SHOWROOM_APPLY_CONCEPT";
   sectionId?: string;
   serviceId?: string;
   label?: string;
+  roomPreset?: string;
+  concept?: AssistantRoomConcept;
+};
+
+export type AssistantShowroomManifestPreset = {
+  id: string;
+  label: string;
+  themeLabel: string;
+};
+
+export type AssistantShowroomManifestFurnishing = {
+  id: string;
+  label: string;
+  category: string;
+};
+
+export type AssistantShowroomManifest = {
+  presets: AssistantShowroomManifestPreset[];
+  selectedPreset?: string;
+  furnishings?: AssistantShowroomManifestFurnishing[];
 };
 
 export type AssistantSalesResponse = {
