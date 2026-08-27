@@ -43,11 +43,18 @@ export interface ShowroomAiManifestFurnishing {
   category: FurnishingObject["category"];
 }
 
+export interface ShowroomAiManifestStructureSlot {
+  wall: FreestandingWall;
+  index: number;
+  enabled: boolean;
+}
+
 export interface ShowroomAiManifest {
   presets: ShowroomAiManifestPreset[];
   selectedPreset: RoomPreset;
   furnishings: ShowroomAiManifestFurnishing[];
   displayWalls: { wall: DisplayWall; unitCount: number }[];
+  structureSlots: ShowroomAiManifestStructureSlot[];
 }
 
 export interface RoomConceptFurnishingPatch {
@@ -66,6 +73,22 @@ export interface RoomConceptDisplayContentPatch {
   composition: DisplayContentComposition;
 }
 
+// Säulen/Stelen (totems/steles) are a fixed pool of 4 pre-positioned slots
+// per wall type (index 0-3), not a free-form list — "adding" one means
+// enabling an existing disabled slot, matching the manual UI's own
+// structureCreateHandler behaviour. Variant is intentionally not
+// AI-settable: changing it can flip which wall ("totem" vs "stele") a slot
+// belongs to and needs dimension-reset handling this pass doesn't cover.
+export interface RoomConceptStructurePatch {
+  wall: FreestandingWall;
+  index: number;
+  enabled?: boolean;
+  positionX?: number;
+  positionZ?: number;
+  rotationY?: number;
+  color?: string | null;
+}
+
 export interface RoomConceptPatch {
   roomSize?: RoomSize;
   light?: LightPreset;
@@ -73,6 +96,7 @@ export interface RoomConceptPatch {
   surfaces?: Partial<Record<RoomSurface, string | null>>;
   floorFinish?: FloorFinish;
   furnishings?: RoomConceptFurnishingPatch[];
+  structures?: RoomConceptStructurePatch[];
   displayContent?: RoomConceptDisplayContentPatch[];
 }
 
@@ -80,6 +104,8 @@ export interface RoomConceptResult {
   applied: boolean;
   degradedFurnishingIds: string[];
   clampedFurnishingIds: string[];
+  degradedStructureKeys: string[];
+  clampedStructureKeys: string[];
 }
 
 type ShowroomTheme =
@@ -6125,11 +6151,14 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
         selectedPreset: "restaurant",
         furnishings: [],
         displayWalls: [],
+        structureSlots: [],
       }),
       applyRoomConcept: () => ({
         applied: false,
         degradedFurnishingIds: [],
         clampedFurnishingIds: [],
+        degradedStructureKeys: [],
+        clampedStructureKeys: [],
       }),
     };
   }
@@ -30846,7 +30875,10 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     const displayWalls = (Object.keys(room.installations) as DisplayWall[])
       .filter((wall) => room.enabledObjects[wall])
       .map((wall) => ({ wall, unitCount: room.installations[wall].displays.length }));
-    return { presets, selectedPreset: targetPreset, furnishings, displayWalls };
+    const structureSlots: ShowroomAiManifestStructureSlot[] = (["totem", "stele"] as const).flatMap(
+      (wall) => room.structures[wall].map((slot, index) => ({ wall, index, enabled: slot.enabled })),
+    );
+    return { presets, selectedPreset: targetPreset, furnishings, displayWalls, structureSlots };
   };
 
   // Guardrails (bounds clamp + collision safety net) protect visual quality
@@ -30865,6 +30897,8 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       applied: false,
       degradedFurnishingIds: [],
       clampedFurnishingIds: [],
+      degradedStructureKeys: [],
+      clampedStructureKeys: [],
     };
     if (config.preset !== preset || !objects || !three) return result;
     const THREE = three;
@@ -30957,6 +30991,88 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
           result.clampedFurnishingIds = result.clampedFurnishingIds.filter(
             (id) => id !== furnishing.id,
           );
+        }
+      });
+    }
+
+    // Säulen/Stelen: same clamp + collision approach as furnishings, but
+    // index-addressed into the fixed 4-slot pool instead of id-addressed —
+    // see RoomConceptStructurePatch. Variant is deliberately not settable
+    // here (see the type's own comment).
+    type TouchedStructure = { wall: FreestandingWall; index: number; object: Group; baseline: StructureInstanceConfiguration };
+    const touchedStructures: TouchedStructure[] = [];
+
+    (patch.structures ?? []).forEach((structurePatch) => {
+      if (structurePatch.wall !== "totem" && structurePatch.wall !== "stele") return;
+      if (
+        !Number.isInteger(structurePatch.index) ||
+        structurePatch.index < 0 ||
+        structurePatch.index > 3
+      ) {
+        return;
+      }
+      const slot = room.structures[structurePatch.wall][structurePatch.index];
+      const instance = getStructureObject(structurePatch.wall, structurePatch.index);
+      if (!slot || !instance) return;
+      const baseline: StructureInstanceConfiguration = { ...slot };
+
+      if (typeof structurePatch.enabled === "boolean") slot.enabled = structurePatch.enabled;
+      if (typeof structurePatch.positionX === "number") {
+        const clampedX = clamp(structurePatch.positionX, -envelope.x, envelope.x);
+        if (clampedX !== structurePatch.positionX) {
+          result.clampedStructureKeys.push(`${structurePatch.wall}:${structurePatch.index}`);
+        }
+        slot.position = [clampedX, slot.position[1]];
+      }
+      if (typeof structurePatch.positionZ === "number") {
+        const clampedZ = clamp(structurePatch.positionZ, envelope.zMin, envelope.zMax);
+        if (clampedZ !== structurePatch.positionZ) {
+          result.clampedStructureKeys.push(`${structurePatch.wall}:${structurePatch.index}`);
+        }
+        slot.position = [slot.position[0], clampedZ];
+      }
+      if (typeof structurePatch.rotationY === "number") {
+        let rotation = structurePatch.rotationY % (Math.PI * 2);
+        if (rotation > Math.PI) rotation -= Math.PI * 2;
+        if (rotation < -Math.PI) rotation += Math.PI * 2;
+        slot.rotationY = rotation;
+      }
+      if (structurePatch.color !== undefined) slot.color = structurePatch.color;
+
+      instance.position.set(slot.position[0], 0, slot.position[1]);
+      instance.rotation.y = slot.rotationY;
+      instance.visible = slot.enabled;
+
+      touchedStructures.push({ wall: structurePatch.wall, index: structurePatch.index, object: instance, baseline });
+    });
+
+    if (touchedStructures.length > 0) {
+      const visibleStructureObjects = (["totem", "stele"] as const).flatMap((wall) =>
+        room.structures[wall]
+          .map((slot, index) => (slot.enabled ? getStructureObject(wall, index) : null))
+          .filter((object): object is Group => Boolean(object)),
+      );
+      const visibleFurnishingObjects = (objects?.furnishings ?? [])
+        .filter((item) => item.presets.includes(preset) && ensureFurnishingState(item).visible)
+        .map((item) => item.object);
+      const otherVisibleObjects = [...visibleStructureObjects, ...visibleFurnishingObjects];
+
+      touchedStructures.forEach(({ wall, index, object, baseline }) => {
+        if (!object.visible) return;
+        const box = new THREE.Box3().setFromObject(object);
+        const collides = otherVisibleObjects.some((other) => {
+          if (other === object) return false;
+          return box.intersectsBox(new THREE.Box3().setFromObject(other));
+        });
+        if (collides) {
+          const slot = room.structures[wall][index];
+          Object.assign(slot, baseline);
+          object.position.set(slot.position[0], 0, slot.position[1]);
+          object.rotation.y = slot.rotationY;
+          object.visible = slot.enabled;
+          const key = `${wall}:${index}`;
+          result.degradedStructureKeys.push(key);
+          result.clampedStructureKeys = result.clampedStructureKeys.filter((id) => id !== key);
         }
       });
     }

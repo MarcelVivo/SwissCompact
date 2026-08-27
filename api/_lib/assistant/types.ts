@@ -118,6 +118,20 @@ export type AssistantRoomConceptDisplay = {
   offerText?: string;
 };
 
+// Säulen/Stelen are a fixed pool of 4 pre-positioned slots per wall type
+// ("totem" | "stele"), addressed by index (0-3), not a free-form list.
+// Variant is deliberately not settable (see gastronomyShowroom.ts's
+// RoomConceptStructurePatch for why).
+export type AssistantRoomConceptStructure = {
+  wall: "totem" | "stele";
+  index: number;
+  enabled?: boolean;
+  positionX?: number;
+  positionZ?: number;
+  rotationY?: number;
+  color?: string | null;
+};
+
 export type AssistantRoomConcept = {
   roomSize?: "xs" | "small" | "compact" | "standard";
   light?: "day" | "warm";
@@ -130,6 +144,7 @@ export type AssistantRoomConcept = {
   };
   floorFinish?: "plain" | "carpet" | "stone" | "wood";
   furnishings: AssistantRoomConceptFurnishing[];
+  structures: AssistantRoomConceptStructure[];
   display?: AssistantRoomConceptDisplay;
 };
 
@@ -162,10 +177,17 @@ export type AssistantShowroomManifestFurnishing = {
   category: string;
 };
 
+export type AssistantShowroomManifestStructureSlot = {
+  wall: "totem" | "stele";
+  index: number;
+  enabled: boolean;
+};
+
 export type AssistantShowroomManifest = {
   presets: AssistantShowroomManifestPreset[];
   selectedPreset?: string;
   furnishings?: AssistantShowroomManifestFurnishing[];
+  structureSlots?: AssistantShowroomManifestStructureSlot[];
 };
 
 export type AssistantSalesResponse = {

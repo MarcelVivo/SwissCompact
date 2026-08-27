@@ -367,6 +367,18 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       }));
     }
 
+    if (concept.structures.length > 0) {
+      patch.structures = concept.structures.map((item) => ({
+        wall: item.wall,
+        index: item.index,
+        enabled: item.enabled,
+        positionX: item.positionX,
+        positionZ: item.positionZ,
+        rotationY: item.rotationY,
+        color: item.color,
+      }));
+    }
+
     if (concept.display) {
       const { wall, displayIndex, title, priceText, offerText } = concept.display;
       const base = Date.now().toString(36);
@@ -512,6 +524,11 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
             id: item.id,
             label: item.label,
             category: item.category,
+          })),
+          structureSlots: manifest.structureSlots.map((slot) => ({
+            wall: slot.wall,
+            index: slot.index,
+            enabled: slot.enabled,
           })),
         },
       };

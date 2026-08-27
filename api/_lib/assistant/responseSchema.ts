@@ -5,6 +5,7 @@ import {
   type AssistantNextBestAction,
   type AssistantRoomConcept,
   type AssistantRoomConceptFurnishing,
+  type AssistantRoomConceptStructure,
   type AssistantSalesStage,
   type AssistantUiAction,
 } from "./types.js";
@@ -62,7 +63,7 @@ export function buildAssistantResponseSchema(validFurnishingIds: string[]) {
   const conceptSchema = {
     type: ["object", "null"],
     additionalProperties: false,
-    required: ["roomSize", "light", "surfaces", "floorFinish", "furnishings", "display"],
+    required: ["roomSize", "light", "surfaces", "floorFinish", "furnishings", "structures", "display"],
     properties: {
       roomSize: { type: ["string", "null"], enum: ["xs", "small", "compact", "standard", null] },
       light: { type: ["string", "null"], enum: ["day", "warm", null] },
@@ -93,6 +94,24 @@ export function buildAssistantResponseSchema(validFurnishingIds: string[]) {
             positionZ: { ...nullableNumber, minimum: -6, maximum: 44 },
             rotationY: { ...nullableNumber, minimum: -3.2, maximum: 3.2 },
             scaleMultiplier: { ...nullableNumber, minimum: 0.5, maximum: 1.8 },
+            color: nullableString,
+          },
+        },
+      },
+      structures: {
+        type: "array",
+        maxItems: 8,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["wall", "index", "enabled", "positionX", "positionZ", "rotationY", "color"],
+          properties: {
+            wall: { type: "string", enum: ["totem", "stele"] },
+            index: { type: "number", minimum: 0, maximum: 3 },
+            enabled: { type: ["boolean", "null"] },
+            positionX: { ...nullableNumber, minimum: -25, maximum: 25 },
+            positionZ: { ...nullableNumber, minimum: -6, maximum: 44 },
+            rotationY: { ...nullableNumber, minimum: -3.2, maximum: 3.2 },
             color: nullableString,
           },
         },
@@ -278,6 +297,33 @@ function sanitizeConcept(value: unknown, validFurnishingIds: string[]): Assistan
         .slice(0, 12)
     : [];
 
+  const structures: AssistantRoomConceptStructure[] = Array.isArray(value.structures)
+    ? value.structures
+        .filter(isRecord)
+        .map((item) => {
+          const wallRaw = text(item.wall, 10);
+          if (wallRaw !== "totem" && wallRaw !== "stele") return undefined;
+          const index = number(item.index, 0, 3);
+          if (index === undefined) return undefined;
+          const entry: AssistantRoomConceptStructure = { wall: wallRaw, index: Math.round(index) };
+          if (typeof item.enabled === "boolean") entry.enabled = item.enabled;
+          const positionX = number(item.positionX, -25, 25);
+          if (positionX !== undefined) entry.positionX = positionX;
+          const positionZ = number(item.positionZ, -6, 44);
+          if (positionZ !== undefined) entry.positionZ = positionZ;
+          const rotationY = number(item.rotationY, -3.2, 3.2);
+          if (rotationY !== undefined) entry.rotationY = rotationY;
+          if (item.color === null) entry.color = null;
+          else {
+            const color = text(item.color, 20);
+            if (color) entry.color = color;
+          }
+          return entry;
+        })
+        .filter((entry): entry is AssistantRoomConceptStructure => entry !== undefined)
+        .slice(0, 8)
+    : [];
+
   let display: AssistantRoomConcept["display"];
   if (isRecord(value.display)) {
     const wall = text(value.display.wall, 20);
@@ -293,7 +339,15 @@ function sanitizeConcept(value: unknown, validFurnishingIds: string[]): Assistan
     }
   }
 
-  if (!roomSize && !light && !floorFinish && !surfaces && furnishings.length === 0 && !display) {
+  if (
+    !roomSize &&
+    !light &&
+    !floorFinish &&
+    !surfaces &&
+    furnishings.length === 0 &&
+    structures.length === 0 &&
+    !display
+  ) {
     return undefined;
   }
 
@@ -303,6 +357,7 @@ function sanitizeConcept(value: unknown, validFurnishingIds: string[]): Assistan
     surfaces,
     floorFinish: floorFinish as AssistantRoomConcept["floorFinish"],
     furnishings,
+    structures,
     display,
   };
 }

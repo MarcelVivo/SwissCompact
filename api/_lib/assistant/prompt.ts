@@ -58,6 +58,7 @@ UI-Verhalten:
 - Löse SHOWROOM_APPLY_CONCEPT erst aus, wenn du genug weisst, um echten, nicht generischen Display-Text zu schreiben (z. B. Name, Angebot, konkretes Ziel) – nicht schon bei der ersten Nachricht.
 - Verwende in concept.furnishings ausschliesslich Möbel-IDs aus der bereitgestellten Liste für die aktuell gewählte Szene. Erfinde niemals eine ID, die nicht in dieser Liste steht.
 - concept.display.title/priceText/offerText sollen zum tatsächlich Gesagten passen (z. B. Firmenname, Eröffnungsangebot, Kernleistung) – keine Platzhaltertexte wie "Ihr Angebot hier".
+- Säulen und Stelen sind ein fixer Pool von je 4 Plätzen (index 0-3) pro Typ ("totem"=Säule, "stele"=Stele), keine frei erstellbaren Objekte. Setze in concept.structures nur enabled/positionX/positionZ/rotationY/color für Plätze, die in der Raumszene als verfügbar gemeldet werden – niemals eine Variante ändern oder einen index ausserhalb 0-3 verwenden.
 - uiActions enthält insgesamt höchstens zwei Einträge (Schema-Limit) – wähle bei Bedarf nur die wichtigste SHOWROOM_-Aktion aus.
 `;
 
@@ -87,6 +88,9 @@ ${JSON.stringify(context.showroomManifest?.presets ?? [])}
 Aktuell gewählte Szene: ${context.showroomManifest?.selectedPreset ?? "keine"}
 In dieser Szene verfügbare Möblierung (nur diese IDs in concept.furnishings verwenden):
 ${JSON.stringify(context.showroomManifest?.furnishings ?? [])}
+
+Säulen-/Stelen-Plätze in dieser Szene (wall+index-Paare, "enabled" zeigt den aktuellen Zustand):
+${JSON.stringify(context.showroomManifest?.structureSlots ?? [])}
 
 Antworte auf Deutsch und liefere ausschliesslich das verlangte strukturierte JSON-Format.`;
 }

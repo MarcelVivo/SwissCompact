@@ -10,6 +10,7 @@ import {
   type AssistantSalesResponse,
   type AssistantSalesStage,
   type AssistantShowroomManifest,
+  type AssistantShowroomManifestStructureSlot,
 } from "./types.js";
 import {
   ASSISTANT_SERVICE_IDS,
@@ -103,7 +104,23 @@ export function sanitizeShowroomManifest(value: unknown): AssistantShowroomManif
         .slice(0, 60)
     : undefined;
 
-  return { presets, selectedPreset, furnishings };
+  const structureSlots = Array.isArray(value.structureSlots)
+    ? value.structureSlots
+        .filter(isRecord)
+        .map((entry) => {
+          const wall = cleanText(entry.wall, 10);
+          if (wall !== "totem" && wall !== "stele") return undefined;
+          const index = typeof entry.index === "number" ? Math.round(entry.index) : undefined;
+          if (index === undefined || index < 0 || index > 3) return undefined;
+          if (typeof entry.enabled !== "boolean") return undefined;
+          const slot: AssistantShowroomManifestStructureSlot = { wall, index, enabled: entry.enabled };
+          return slot;
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
+        .slice(0, 8)
+    : undefined;
+
+  return { presets, selectedPreset, furnishings, structureSlots };
 }
 
 export function sanitizeAssistantSalesContext(
