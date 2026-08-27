@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024">
+  <defs>
+    <linearGradient id="clinic" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#dff2ef"/><stop offset="1" stop-color="#2b746f"/>
+    </linearGradient>
+    <linearGradient id="treatment" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#e8f4fa"/><stop offset="1" stop-color="#497f9e"/>
+    </linearGradient>
+    <linearGradient id="care" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#f2efe1"/><stop offset="1" stop-color="#789660"/>
+    </linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="12" stdDeviation="18" flood-opacity=".18"/></filter>
+  </defs>
+  <rect width="512" height="1024" fill="url(#clinic)"/>
+  <circle cx="410" cy="128" r="210" fill="#fff" opacity=".14"/>
+  <text x="54" y="96" fill="#173e3b" font-family="Arial,sans-serif" font-size="24" font-weight="700" letter-spacing="4">KLINIK · WILLKOMMEN</text>
+  <text x="54" y="180" fill="#fff" font-family="Arial,sans-serif" font-size="58" font-weight="800">Sicher</text>
+  <text x="54" y="244" fill="#fff" font-family="Arial,sans-serif" font-size="58" font-weight="800">ankommen.</text>
+  <rect x="54" y="322" width="404" height="350" rx="24" fill="#f8fffd" filter="url(#shadow)"/>
+  <text x="88" y="382" fill="#287f78" font-family="Arial,sans-serif" font-size="22" font-weight="700">IHR NÄCHSTER SCHRITT</text>
+  <g fill="#244b49" font-family="Arial,sans-serif" font-size="28" font-weight="700">
+    <text x="88" y="454">01  Anmeldung</text><text x="88" y="520">02  Ambulatorium</text><text x="88" y="586">03  Besuch</text>
+  </g>
+  <path d="M88 625h286" stroke="#6cc5b9" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="256" cy="830" r="94" fill="#fff" opacity=".92"/>
+  <path d="M234 770h44v38h38v44h-38v38h-44v-38h-38v-44h38z" fill="#287f78"/>
+
+  <rect x="512" width="512" height="1024" fill="url(#treatment)"/>
+  <circle cx="934" cy="150" r="205" fill="#fff" opacity=".13"/>
+  <text x="566" y="96" fill="#274c62" font-family="Arial,sans-serif" font-size="24" font-weight="700" letter-spacing="4">BEHANDLUNG · AUFRUF</text>
+  <text x="566" y="180" fill="#fff" font-family="Arial,sans-serif" font-size="58" font-weight="800">Gut</text>
+  <text x="566" y="244" fill="#fff" font-family="Arial,sans-serif" font-size="58" font-weight="800">begleitet.</text>
+  <rect x="566" y="322" width="404" height="350" rx="24" fill="#f8fcff" filter="url(#shadow)"/>
+  <text x="600" y="382" fill="#4f8fb5" font-family="Arial,sans-serif" font-size="22" font-weight="700">DISKRETER AUFRUF</text>
+  <text x="600" y="510" fill="#264c62" font-family="Arial,sans-serif" font-size="96" font-weight="800">037</text>
+  <text x="600" y="580" fill="#264c62" font-family="Arial,sans-serif" font-size="32" font-weight="700">RAUM 4</text>
+  <path d="M600 625h286" stroke="#80c7e9" stroke-width="8" stroke-linecap="round"/>
+  <g fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M650 842h90l28-84 42 154 32-70h82"/><circle cx="650" cy="842" r="8" fill="#fff" stroke="none"/>
+  </g>
+
+  <rect x="1024" width="512" height="1024" fill="url(#care)"/>
+  <circle cx="1440" cy="142" r="210" fill="#fff" opacity=".15"/>
+  <text x="1078" y="96" fill="#3f5532" font-family="Arial,sans-serif" font-size="24" font-weight="700" letter-spacing="4">PFLEGE · GEMEINSCHAFT</text>
+  <text x="1078" y="180" fill="#fff" font-family="Arial,sans-serif" font-size="58" font-weight="800">Gemeinsam</text>
+  <text x="1078" y="244" fill="#fff" font-family="Arial,sans-serif" font-size="58" font-weight="800">durch den Tag.</text>
+  <rect x="1078" y="322" width="404" height="350" rx="24" fill="#fffdf8" filter="url(#shadow)"/>
+  <text x="1112" y="382" fill="#779b62" font-family="Arial,sans-serif" font-size="22" font-weight="700">HEUTE IM ZENTRUM</text>
+  <g fill="#405137" font-family="Arial,sans-serif" font-size="28" font-weight="700">
+    <text x="1112" y="454">10:00  Bewegung</text><text x="1112" y="520">12:00  Mittagessen</text><text x="1112" y="586">14:30  Musik</text>
+  </g>
+  <path d="M1112 625h286" stroke="#a7c68d" stroke-width="8" stroke-linecap="round"/>
+  <g fill="#fff" opacity=".94">
+    <circle cx="1212" cy="824" r="54"/><circle cx="1348" cy="824" r="54"/><path d="M1158 914c12-64 48-96 108-96s96 32 108 96z"/>
+  </g>
+</svg>

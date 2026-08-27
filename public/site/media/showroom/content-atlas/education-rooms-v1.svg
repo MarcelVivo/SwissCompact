@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024">
+  <defs>
+    <linearGradient id="campus" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f1d5c9"/><stop offset="1" stop-color="#a8382c"/></linearGradient>
+    <linearGradient id="class" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#dce7fb"/><stop offset="1" stop-color="#3e5fa8"/></linearGradient>
+    <linearGradient id="library" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eee4cd"/><stop offset="1" stop-color="#7b5d2e"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="12" stdDeviation="18" flood-opacity=".2"/></filter>
+  </defs>
+  <rect width="512" height="1024" fill="url(#campus)"/>
+  <circle cx="420" cy="130" r="210" fill="#fff" opacity=".13"/>
+  <text x="54" y="94" fill="#66251e" font-family="Arial,sans-serif" font-size="23" font-weight="700" letter-spacing="4">CAMPUS · WILLKOMMEN</text>
+  <text x="54" y="182" fill="#fff" font-family="Arial,sans-serif" font-size="56" font-weight="800">Ideen</text>
+  <text x="54" y="244" fill="#fff" font-family="Arial,sans-serif" font-size="56" font-weight="800">brauchen Raum.</text>
+  <rect x="54" y="322" width="404" height="350" rx="24" fill="#fffaf8" filter="url(#shadow)"/>
+  <text x="88" y="382" fill="#c84c3a" font-family="Arial,sans-serif" font-size="22" font-weight="700">HEUTE AUF DEM CAMPUS</text>
+  <g fill="#57322d" font-family="Arial,sans-serif" font-size="27" font-weight="700"><text x="88" y="454">09:15  Vorlesung A</text><text x="88" y="520">12:00  Campus Forum</text><text x="88" y="586">17:30  Projektabend</text></g>
+  <path d="M88 625h286" stroke="#e77867" stroke-width="8" stroke-linecap="round"/>
+  <g fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round"><path d="M150 850h212M256 744v212M178 780l78-52 78 52"/></g>
+
+  <rect x="512" width="512" height="1024" fill="url(#class)"/>
+  <circle cx="934" cy="145" r="205" fill="#fff" opacity=".13"/>
+  <text x="566" y="94" fill="#273d75" font-family="Arial,sans-serif" font-size="23" font-weight="700" letter-spacing="4">LERNRAUM · MODUL 04</text>
+  <text x="566" y="182" fill="#fff" font-family="Arial,sans-serif" font-size="56" font-weight="800">Fragen öffnen</text>
+  <text x="566" y="244" fill="#fff" font-family="Arial,sans-serif" font-size="56" font-weight="800">Welten.</text>
+  <rect x="566" y="322" width="404" height="350" rx="24" fill="#f9fbff" filter="url(#shadow)"/>
+  <text x="600" y="382" fill="#5177c7" font-family="Arial,sans-serif" font-size="22" font-weight="700">AGENDA &amp; LERNZIELE</text>
+  <g fill="#2c3f69" font-family="Arial,sans-serif" font-size="27" font-weight="700"><text x="600" y="454">01  Einstieg</text><text x="600" y="520">02  Team Challenge</text><text x="600" y="586">03  Reflexion</text></g>
+  <path d="M600 625h286" stroke="#83a8f2" stroke-width="8" stroke-linecap="round"/>
+  <g fill="#fff"><circle cx="670" cy="825" r="42"/><circle cx="768" cy="775" r="42"/><circle cx="866" cy="825" r="42"/><path d="M670 825l98-50 98 50-98 75z" opacity=".94"/></g>
+
+  <rect x="1024" width="512" height="1024" fill="url(#library)"/>
+  <circle cx="1440" cy="145" r="210" fill="#fff" opacity=".14"/>
+  <text x="1078" y="94" fill="#543f20" font-family="Arial,sans-serif" font-size="23" font-weight="700" letter-spacing="4">BIBLIOTHEK · WISSEN</text>
+  <text x="1078" y="182" fill="#fff" font-family="Arial,sans-serif" font-size="56" font-weight="800">Raum für</text>
+  <text x="1078" y="244" fill="#fff" font-family="Arial,sans-serif" font-size="56" font-weight="800">Gedanken.</text>
+  <rect x="1078" y="322" width="404" height="350" rx="24" fill="#fffdf8" filter="url(#shadow)"/>
+  <text x="1112" y="382" fill="#a57d35" font-family="Arial,sans-serif" font-size="22" font-weight="700">LERNPLÄTZE HEUTE</text>
+  <text x="1112" y="510" fill="#594729" font-family="Arial,sans-serif" font-size="92" font-weight="800">24</text>
+  <text x="1112" y="576" fill="#594729" font-family="Arial,sans-serif" font-size="30" font-weight="700">PLÄTZE FREI</text>
+  <path d="M1112 625h286" stroke="#c9a453" stroke-width="8" stroke-linecap="round"/>
+  <g fill="none" stroke="#fff" stroke-width="18" stroke-linejoin="round"><path d="M1148 770h130v172h-130zM1278 770h130v172h-130z"/><path d="M1175 810h76M1305 810h76M1175 850h76M1305 850h76"/></g>
+</svg>

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024">
+  <defs>
+    <linearGradient id="lounge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#42392f"/><stop offset="1" stop-color="#b28a5c"/></linearGradient>
+    <linearGradient id="home" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#657a70"/><stop offset="1" stop-color="#d9cfc0"/></linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#241f22"/><stop offset="1" stop-color="#c45744"/></linearGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse"><path d="M42 0H0V42" fill="none" stroke="#fff" stroke-opacity=".08"/></pattern>
+  </defs>
+  <rect width="512" height="1024" fill="url(#lounge)"/><rect x="512" width="512" height="1024" fill="url(#home)"/><rect x="1024" width="512" height="1024" fill="url(#brand)"/>
+  <path d="M0 0h1536v1024H0z" fill="url(#grid)"/>
+
+  <g font-family="Arial,Helvetica,sans-serif" fill="#fff">
+    <g transform="translate(48 62)">
+      <text font-size="22" letter-spacing="4" fill="#e4c69f">IMMOBILIEN · PROJEKTWELT</text>
+      <text y="72" font-size="48" font-weight="700">RESIDENZ</text><text y="126" font-size="48" font-weight="700">AM PARK</text>
+      <text y="174" font-size="21" fill="#f1dfc8">ZUHAUSE BEGINNT HIER</text>
+      <rect y="228" width="416" height="306" rx="20" fill="#171717" fill-opacity=".66" stroke="#fff" stroke-opacity=".18"/>
+      <path d="M45 451V343l92-64 72 52 68-91 93 72v139z" fill="#d6b382"/><path d="M72 451v-91h83v91m92 0V331h76v120" fill="none" stroke="#fff" stroke-width="10"/>
+      <g transform="translate(0 580)"><rect width="416" height="228" rx="18" fill="#fff" fill-opacity=".92"/><text x="26" y="48" font-size="18" fill="#7e6547">VERFÜGBARKEIT</text><text x="26" y="104" font-size="42" font-weight="700" fill="#2f2924">12 WOHNUNGEN</text><text x="26" y="148" font-size="24" fill="#66584a">BEZUG · HERBST 2027</text><rect x="26" y="174" width="212" height="7" rx="4" fill="#b58a57"/></g>
+    </g>
+
+    <g transform="translate(560 62)">
+      <text font-size="22" letter-spacing="4" fill="#e5f2eb">MUSTERWOHNUNG · KONFIGURATOR</text>
+      <text y="72" font-size="48" font-weight="700">IHR STIL.</text><text y="126" font-size="48" font-weight="700">IHR ZUHAUSE.</text>
+      <text y="174" font-size="21" fill="#eff7f2">LICHT · RAUM · MATERIAL</text>
+      <rect y="228" width="416" height="306" rx="20" fill="#f7f3ec" fill-opacity=".9"/>
+      <path d="M42 270h332v218H42zM176 270v218M42 378h134m0-54h198m-106 0v164" fill="none" stroke="#60796e" stroke-width="8"/>
+      <circle cx="108" cy="326" r="24" fill="#b88b5b"/><rect x="285" y="391" width="56" height="56" rx="8" fill="#c65f49"/>
+      <g transform="translate(0 580)"><rect width="416" height="228" rx="18" fill="#1c2521" fill-opacity=".88"/><text x="26" y="48" font-size="18" fill="#a9c6b9">AUSSTATTUNG</text><text x="26" y="104" font-size="36" font-weight="700">VARIANTE EICHE</text><text x="26" y="148" font-size="24" fill="#dce9e2">3½ ZIMMER · 106 M²</text><rect x="26" y="174" width="276" height="7" rx="4" fill="#8fb3a3"/></g>
+    </g>
+
+    <g transform="translate(1072 62)">
+      <text font-size="22" letter-spacing="4" fill="#ffd3ca">BRAND SPACE · LIVE EXPERIENCE</text>
+      <text y="72" font-size="48" font-weight="700">DESIGNED</text><text y="126" font-size="48" font-weight="700">TO CONNECT</text>
+      <text y="174" font-size="21" fill="#ffe6e1">MARKE WIRD RAUM</text>
+      <rect y="228" width="416" height="306" rx="20" fill="#111" fill-opacity=".72" stroke="#ff8975" stroke-opacity=".5"/>
+      <rect x="38" y="270" width="340" height="188" rx="10" fill="#d45d48"/><path d="M38 458h340l-56 48H92z" fill="#fff" fill-opacity=".86"/><circle cx="208" cy="364" r="62" fill="#1d1b1c"/><path d="m190 326 74 38-74 38z" fill="#fff"/>
+      <g transform="translate(0 580)"><rect width="416" height="228" rx="18" fill="#fff" fill-opacity=".94"/><text x="26" y="48" font-size="18" fill="#a94334">SIGNATURE COLLECTION</text><text x="26" y="104" font-size="40" font-weight="700" fill="#211e20">LIVE-DEMO</text><text x="26" y="148" font-size="24" fill="#64585c">HEUTE · 14:30</text><rect x="26" y="174" width="232" height="7" rx="4" fill="#d45d48"/></g>
+    </g>
+  </g>
+</svg>

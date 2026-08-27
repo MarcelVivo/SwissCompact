@@ -1,0 +1,8 @@
+node_modules/
+dist/
+media-source/
+exports/
+.DS_Store
+*.log
+.env*
+!.env.example
