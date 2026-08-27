@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { json, validatePublicPost } from "../_lib/assistant/security";
-import { buildAssistantRealtimeInstructions } from "../_lib/assistant/prompt";
+import { json, validatePublicPost } from "../_lib/assistant/security.js";
+import { buildAssistantRealtimeInstructions } from "../_lib/assistant/prompt.js";
 
 export const config = { runtime: "nodejs", maxDuration: 30 };
 

@@ -5,9 +5,9 @@ import {
   type AssistantNextBestAction,
   type AssistantSalesStage,
   type AssistantUiAction,
-} from "./types";
-import { sanitizeRecommendation } from "./engine";
-import { ASSISTANT_SERVICE_IDS } from "./services";
+} from "./types.js";
+import { sanitizeRecommendation } from "./engine.js";
+import { ASSISTANT_SERVICE_IDS } from "./services.js";
 
 const nullableString = { type: ["string", "null"] } as const;
 

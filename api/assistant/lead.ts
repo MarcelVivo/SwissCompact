@@ -1,7 +1,7 @@
 import { Resend } from "resend";
-import { json, validatePublicPost } from "../_lib/assistant/security";
-import { escapeHtml, isSpamSubmission, tooLong } from "../_lib/assistant/spamGuard";
-import { getAssistantSupabaseClient } from "../_lib/assistant/supabaseAdmin";
+import { json, validatePublicPost } from "../_lib/assistant/security.js";
+import { escapeHtml, isSpamSubmission, tooLong } from "../_lib/assistant/spamGuard.js";
+import { getAssistantSupabaseClient } from "../_lib/assistant/supabaseAdmin.js";
 
 export const config = { runtime: "nodejs", maxDuration: 30 };
 

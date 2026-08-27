@@ -1,5 +1,5 @@
-import { json, validatePublicPost } from "../_lib/assistant/security";
-import { cleanText } from "../_lib/assistant/engine";
+import { json, validatePublicPost } from "../_lib/assistant/security.js";
+import { cleanText } from "../_lib/assistant/engine.js";
 
 export const config = { runtime: "nodejs", maxDuration: 30 };
 

@@ -9,12 +9,12 @@ import {
   type AssistantSalesContext,
   type AssistantSalesResponse,
   type AssistantSalesStage,
-} from "./types";
+} from "./types.js";
 import {
   ASSISTANT_SERVICE_IDS,
   ASSISTANT_SERVICE_LIBRARY,
   getAssistantService,
-} from "./services";
+} from "./services.js";
 
 const MAX_FIELD_LENGTH = 240;
 const MAX_SUMMARY_LENGTH = 900;

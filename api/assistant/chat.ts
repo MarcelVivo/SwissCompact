@@ -1,13 +1,13 @@
-import { json, validatePublicPost } from "../_lib/assistant/security";
+import { json, validatePublicPost } from "../_lib/assistant/security.js";
 import {
   buildFallbackAssistantResponse,
   cleanText,
   mergeAssistantSalesContext,
   sanitizeAssistantSalesContext,
-} from "../_lib/assistant/engine";
-import { buildAssistantSalesInstructions } from "../_lib/assistant/prompt";
-import { ASSISTANT_RESPONSE_JSON_SCHEMA, parseAssistantModelOutput } from "../_lib/assistant/responseSchema";
-import type { AssistantChatMessage } from "../_lib/assistant/types";
+} from "../_lib/assistant/engine.js";
+import { buildAssistantSalesInstructions } from "../_lib/assistant/prompt.js";
+import { ASSISTANT_RESPONSE_JSON_SCHEMA, parseAssistantModelOutput } from "../_lib/assistant/responseSchema.js";
+import type { AssistantChatMessage } from "../_lib/assistant/types.js";
 
 // Web-standard Request/Response works on Vercel's default Node.js runtime
 // for non-Next.js projects (named per-HTTP-method exports) — confirmed via

@@ -1,6 +1,6 @@
-import { getAssistantServiceCatalogForPrompt } from "./services";
-import type { AssistantSalesContext } from "./types";
-import { ASSISTANT_KNOWLEDGE, ASSISTANT_SECTION_CONTEXT } from "./knowledge";
+import { getAssistantServiceCatalogForPrompt } from "./services.js";
+import type { AssistantSalesContext } from "./types.js";
+import { ASSISTANT_KNOWLEDGE, ASSISTANT_SECTION_CONTEXT } from "./knowledge.js";
 
 // No persona name has been chosen yet (deliberately, per plan) — phrased as
 // "der digitale Berater von SwissCompact" rather than inventing a brand name.
