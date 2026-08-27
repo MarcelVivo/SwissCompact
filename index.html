@@ -2043,6 +2043,55 @@
         <a href="mailto:kontakt@swisscompact.com">Kontakt aufnehmen</a>
       </section>
     </noscript>
+
+    <div class="sales-assistant" data-sales-assistant>
+      <button
+        type="button"
+        class="sales-assistant__trigger"
+        data-sales-assistant-trigger
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        aria-controls="sales-assistant-panel"
+      >
+        <span class="sales-assistant__state-dot" data-sales-assistant-state="idle" aria-hidden="true"></span>
+        <span>Beratung starten</span>
+      </button>
+      <section
+        id="sales-assistant-panel"
+        class="sales-assistant__panel"
+        data-sales-assistant-panel
+        role="dialog"
+        aria-modal="false"
+        aria-label="SwissCompact Assistent"
+        hidden
+      >
+        <header class="sales-assistant__header">
+          <span class="sales-assistant__state-dot" data-sales-assistant-state="idle" aria-hidden="true"></span>
+          <strong>Beratung</strong>
+          <button type="button" class="sales-assistant__close" data-sales-assistant-close aria-label="Schliessen">×</button>
+        </header>
+        <div class="sales-assistant__body" data-sales-assistant-body></div>
+        <button
+          type="button"
+          class="sales-assistant__live"
+          data-sales-assistant-live
+          aria-pressed="false"
+          aria-label="Live-Gespräch starten"
+        >
+          Live-Gespräch
+        </button>
+        <form class="sales-assistant__composer" data-sales-assistant-composer>
+          <textarea
+            data-sales-assistant-input
+            rows="2"
+            maxlength="1200"
+            placeholder="Womit können wir helfen?"
+          ></textarea>
+          <button type="submit" aria-label="Senden">Senden</button>
+        </form>
+      </section>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

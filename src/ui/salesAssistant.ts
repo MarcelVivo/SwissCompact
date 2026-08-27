@@ -1,0 +1,543 @@
+import type {
+  AssistantAnimationState,
+  AssistantRecommendation,
+  AssistantSalesContext,
+} from "../../api/_lib/assistant/types";
+
+export interface SalesAssistant {
+  destroy: () => void;
+}
+
+type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
+type View = "chat" | "contact-form" | "contact-success";
+type LiveStatus = "off" | "connecting" | "listening" | "thinking" | "speaking" | "error";
+
+const SECTION_IDS = ["wirkung", "loesungen", "branchen", "projekte", "media-studio", "unternehmen", "projekt-starten"];
+const SESSION_KEY = "sc-assistant-session";
+
+function createInitialContext(): AssistantSalesContext {
+  return {
+    currentStage: "welcome",
+    secondaryProblems: [],
+    notWanted: [],
+    currentTools: [],
+    leadTemperature: "unknown",
+    recommendedServices: [],
+    nextBestAction: "identify_user",
+    conversationSummary: "",
+  };
+}
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+export function mountSalesAssistant(): SalesAssistant {
+  const rootCheck = document.querySelector<HTMLElement>("[data-sales-assistant]");
+  const triggerCheck = document.querySelector<HTMLButtonElement>("[data-sales-assistant-trigger]");
+  const panelCheck = document.querySelector<HTMLElement>("[data-sales-assistant-panel]");
+  const bodyCheck = document.querySelector<HTMLElement>("[data-sales-assistant-body]");
+  const composerCheck = document.querySelector<HTMLFormElement>("[data-sales-assistant-composer]");
+  const inputCheck = document.querySelector<HTMLTextAreaElement>("[data-sales-assistant-input]");
+
+  if (!rootCheck || !triggerCheck || !panelCheck || !bodyCheck || !composerCheck || !inputCheck) {
+    return { destroy() {} };
+  }
+
+  // Re-declared as non-nullable now that the guard above has verified them
+  // at runtime — lets TypeScript's narrowing carry into the closures below.
+  const trigger = triggerCheck;
+  const panel = panelCheck;
+  const body = bodyCheck;
+  const composer = composerCheck;
+  const input = inputCheck;
+  const closeButton = document.querySelector<HTMLButtonElement>("[data-sales-assistant-close]");
+  const liveButton = document.querySelector<HTMLButtonElement>("[data-sales-assistant-live]");
+  const stateDots = [...document.querySelectorAll<HTMLElement>("[data-sales-assistant-state]")];
+
+  let destroyed = false;
+  let open = false;
+  let view: View = "chat";
+  let busy = false;
+  let messages: ChatMessage[] = [];
+  let quickReplies: string[] = [];
+  let context: AssistantSalesContext = createInitialContext();
+  let lastRecommendation: AssistantRecommendation | undefined;
+  let sectionId = "hero";
+  let voiceEnabled = true;
+  let liveStatus: LiveStatus = "off";
+
+  let peerConnection: RTCPeerConnection | null = null;
+  let localStream: MediaStream | null = null;
+  let dataChannel: RTCDataChannel | null = null;
+  let currentAudio: HTMLAudioElement | null = null;
+  let abortController: AbortController | null = null;
+
+  const cleanupListeners: Array<() => void> = [];
+
+  function persistSession() {
+    try {
+      const { name, email, phone, website, consentToContact, ...rest } = context;
+      window.sessionStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({ messages: messages.slice(-16), quickReplies, context: rest }),
+      );
+    } catch {
+      // sessionStorage unavailable (private mode, quota) — non-fatal.
+    }
+  }
+
+  function restoreSession() {
+    try {
+      const raw = window.sessionStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { messages?: ChatMessage[]; quickReplies?: string[]; context?: Partial<AssistantSalesContext> };
+      if (Array.isArray(parsed.messages)) messages = parsed.messages;
+      if (Array.isArray(parsed.quickReplies)) quickReplies = parsed.quickReplies;
+      if (parsed.context) context = { ...createInitialContext(), ...parsed.context };
+    } catch {
+      // Ignore malformed/foreign session data.
+    }
+  }
+
+  function setState(state: AssistantAnimationState) {
+    stateDots.forEach((dot) => {
+      dot.dataset.salesAssistantState = state;
+    });
+  }
+
+  function setBusy(value: boolean) {
+    busy = value;
+    input.disabled = value;
+  }
+
+  function setView(next: View) {
+    view = next;
+    composer.hidden = view !== "chat";
+    if (liveButton) liveButton.hidden = view !== "chat";
+  }
+
+  function renderChat() {
+    setView("chat");
+    body.replaceChildren();
+
+    const list = document.createElement("div");
+    list.className = "sales-assistant__messages";
+    messages.forEach((message) => {
+      const bubble = document.createElement("div");
+      bubble.className = `sales-assistant__bubble sales-assistant__bubble--${message.role}`;
+      bubble.textContent = message.content;
+      list.append(bubble);
+    });
+    body.append(list);
+
+    if (lastRecommendation) {
+      const card = document.createElement("div");
+      card.className = "sales-assistant__recommendation";
+      const title = document.createElement("strong");
+      title.textContent = lastRecommendation.title;
+      const summary = document.createElement("p");
+      summary.textContent = lastRecommendation.summary;
+      const serviceList = document.createElement("ul");
+      lastRecommendation.services.forEach((service) => {
+        const item = document.createElement("li");
+        item.textContent = `${service.name} — ${service.reason}`;
+        serviceList.append(item);
+      });
+      card.append(title, summary, serviceList);
+      body.append(card);
+    }
+
+    if (quickReplies.length > 0) {
+      const replyRow = document.createElement("div");
+      replyRow.className = "sales-assistant__quick-replies";
+      quickReplies.forEach((reply) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = reply;
+        button.addEventListener("click", () => ask(reply, "quick_reply"));
+        replyRow.append(button);
+      });
+      body.append(replyRow);
+    }
+
+    const contactCta = document.createElement("button");
+    contactCta.type = "button";
+    contactCta.className = "sales-assistant__contact-cta";
+    contactCta.textContent = "Kontakt aufnehmen";
+    contactCta.addEventListener("click", () => renderContactForm());
+    body.append(contactCta);
+
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function renderContactForm() {
+    setView("contact-form");
+    body.replaceChildren();
+
+    const hasConversationContext = messages.some((message) => message.role === "user") || Boolean(context.conversationSummary);
+    const startedAt = Date.now();
+
+    const form = document.createElement("form");
+    form.className = "sales-assistant__contact-form";
+    form.noValidate = true;
+
+    const fields: Array<{ name: string; label: string; type: string; required: boolean }> = [
+      { name: "name", label: "Name", type: "text", required: true },
+      { name: "email", label: "E-Mail", type: "email", required: true },
+      { name: "phone", label: "Telefon", type: "tel", required: true },
+      { name: "company", label: "Unternehmen (optional)", type: "text", required: false },
+    ];
+
+    fields.forEach((field) => {
+      const wrapper = document.createElement("label");
+      wrapper.textContent = field.label;
+      const control = document.createElement("input");
+      control.type = field.type;
+      control.name = field.name;
+      control.required = field.required;
+      wrapper.append(control);
+      form.append(wrapper);
+    });
+
+    let requestContextField: HTMLTextAreaElement | null = null;
+    if (!hasConversationContext) {
+      const wrapper = document.createElement("label");
+      wrapper.textContent = "Worum geht es?";
+      requestContextField = document.createElement("textarea");
+      requestContextField.name = "requestContext";
+      requestContextField.minLength = 10;
+      requestContextField.maxLength = 1600;
+      requestContextField.required = true;
+      wrapper.append(requestContextField);
+      form.append(wrapper);
+
+      const backButton = document.createElement("button");
+      backButton.type = "button";
+      backButton.textContent = "Lieber zuerst mit dem Assistenten klären";
+      backButton.addEventListener("click", () => renderChat());
+      form.append(backButton);
+    }
+
+    const honeypot = document.createElement("input");
+    honeypot.type = "text";
+    honeypot.name = "website";
+    honeypot.tabIndex = -1;
+    honeypot.autocomplete = "off";
+    honeypot.setAttribute("aria-hidden", "true");
+    honeypot.className = "sales-assistant__honeypot";
+    form.append(honeypot);
+
+    const consentLabel = document.createElement("label");
+    consentLabel.className = "sales-assistant__consent";
+    const consentInput = document.createElement("input");
+    consentInput.type = "checkbox";
+    consentInput.required = true;
+    consentLabel.append(consentInput);
+    const consentText = document.createElement("span");
+    consentText.textContent = hasConversationContext
+      ? "Ich bin einverstanden, dass dieses Gespräch zur Kontaktaufnahme an SwissCompact übermittelt wird."
+      : "Ich bin einverstanden, dass meine Angaben zur Kontaktaufnahme an SwissCompact übermittelt werden.";
+    consentLabel.append(consentText);
+    form.append(consentLabel);
+
+    const submitButton = document.createElement("button");
+    submitButton.type = "submit";
+    submitButton.textContent = "Absenden";
+    form.append(submitButton);
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (busy) return;
+      setBusy(true);
+
+      const formData = new FormData(form);
+      const payload = {
+        contact: {
+          name: String(formData.get("name") || ""),
+          email: String(formData.get("email") || ""),
+          phone: String(formData.get("phone") || ""),
+          company: String(formData.get("company") || ""),
+        },
+        directRequest: requestContextField ? String(formData.get("requestContext") || "") : undefined,
+        lead: {
+          conversationSummary: context.conversationSummary,
+          goals: context.primaryGoal ? [context.primaryGoal] : [],
+          problems: [context.primaryProblem, ...context.secondaryProblems].filter(Boolean),
+          notWanted: context.notWanted,
+          existingSystems: context.currentTools,
+          recommendedServices: context.recommendedServices,
+          industry: context.industry,
+          location: context.location,
+          leadTemperature: context.leadTemperature,
+        },
+        recommendation: lastRecommendation ? { notRecommended: lastRecommendation.notRecommended } : undefined,
+        conversation: messages.map((message) => ({ role: message.role, content: message.content })),
+        conversationSummary: context.conversationSummary,
+        consent: consentInput.checked,
+        hpWebsite: String(formData.get("website") || ""),
+        startedAt,
+      };
+
+      try {
+        const response = await fetch("/api/assistant/lead", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error(`lead submit failed: ${response.status}`);
+        context = { ...context, consentToContact: true, currentStage: "handover", leadTemperature: "hot" };
+        setState("success");
+        renderContactSuccess();
+      } catch (error) {
+        console.error("SwissCompact assistant: lead submit failed", error);
+        const errorText = document.createElement("p");
+        errorText.className = "sales-assistant__error";
+        errorText.textContent = "Das hat leider nicht geklappt. Bitte versuch es nochmal oder schreib uns direkt an kontakt@swisscompact.com.";
+        form.append(errorText);
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    body.append(form);
+  }
+
+  function renderContactSuccess() {
+    setView("contact-success");
+    body.replaceChildren();
+    const message = document.createElement("p");
+    message.className = "sales-assistant__success";
+    message.textContent = "Danke! Deine Anfrage ist bei uns angekommen. Wir melden uns innerhalb von zwei Arbeitstagen.";
+    body.append(message);
+  }
+
+  async function speak(text: string) {
+    if (!voiceEnabled || !text) return;
+    try {
+      const response = await fetch("/api/assistant/speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      currentAudio?.pause();
+      currentAudio = new Audio(url);
+      setState("speaking");
+      currentAudio.addEventListener("ended", () => {
+        URL.revokeObjectURL(url);
+        if (!destroyed) setState("idle");
+      });
+      await currentAudio.play().catch(() => undefined);
+    } catch (error) {
+      console.error("SwissCompact assistant: speech playback failed", error);
+    }
+  }
+
+  async function ask(rawMessage: string, inputMode: "text" | "voice" | "quick_reply" = "text") {
+    const trimmed = rawMessage.trim();
+    if (!trimmed || busy) return;
+
+    if (dataChannel && dataChannel.readyState === "open") {
+      dataChannel.send(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: { type: "message", role: "user", content: [{ type: "input_text", text: trimmed }] },
+        }),
+      );
+      dataChannel.send(JSON.stringify({ type: "response.create" }));
+      messages = [...messages, { id: uid(), role: "user", content: trimmed }];
+      input.value = "";
+      renderChat();
+      return;
+    }
+
+    if (!navigator.onLine) {
+      messages = [...messages, { id: uid(), role: "user", content: trimmed }, { id: uid(), role: "assistant", content: "Es sieht so aus, als wärst du offline. Sobald die Verbindung wieder da ist, helfe ich gern weiter." }];
+      input.value = "";
+      renderChat();
+      return;
+    }
+
+    messages = [...messages, { id: uid(), role: "user", content: trimmed }];
+    input.value = "";
+    renderChat();
+    setBusy(true);
+    setState("thinking");
+
+    abortController?.abort();
+    abortController = new AbortController();
+
+    try {
+      const response = await fetch("/api/assistant/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: trimmed,
+          sectionId,
+          inputMode,
+          context,
+          history: messages.slice(-10).map((message) => ({ role: message.role, content: message.content })),
+        }),
+        signal: abortController.signal,
+      });
+      const payload = await response.json();
+      context = payload.context ?? context;
+      quickReplies = Array.isArray(payload.quickReplies) ? payload.quickReplies : [];
+      lastRecommendation = payload.recommendation ?? undefined;
+      messages = [...messages, { id: uid(), role: "assistant", content: payload.answer || payload.message || "" }];
+      renderChat();
+      persistSession();
+      await speak(payload.answer || payload.message || "");
+      setState(payload.animationState || "idle");
+    } catch (error) {
+      if ((error as { name?: string }).name === "AbortError") return;
+      console.error("SwissCompact assistant: chat request failed", error);
+      messages = [...messages, { id: uid(), role: "assistant", content: "Entschuldigung, das hat gerade nicht geklappt. Magst du es nochmal versuchen?" }];
+      renderChat();
+      setState("idle");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startLiveConversation() {
+    if (liveStatus !== "off") return;
+    liveStatus = "connecting";
+    setState("listening");
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const pc = new RTCPeerConnection();
+      peerConnection = pc;
+      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream as MediaStream));
+
+      const audioElement = new Audio();
+      audioElement.autoplay = true;
+      pc.ontrack = (event) => {
+        audioElement.srcObject = event.streams[0];
+      };
+
+      const channel = pc.createDataChannel("oai-events");
+      dataChannel = channel;
+      channel.addEventListener("message", (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "response.output_audio_transcript.done" && typeof data.transcript === "string") {
+            messages = [...messages, { id: uid(), role: "assistant", content: data.transcript }];
+            renderChat();
+          }
+          if (data.type === "conversation.item.input_audio_transcription.completed" && typeof data.transcript === "string") {
+            messages = [...messages, { id: uid(), role: "user", content: data.transcript }];
+            renderChat();
+          }
+          if (data.type === "input_audio_buffer.speech_started") setState("listening");
+          if (data.type === "response.output_audio.delta") setState("speaking");
+          if (data.type === "response.done") setState("idle");
+        } catch {
+          // Non-JSON or unrecognized event — ignore.
+        }
+      });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const response = await fetch(`/api/assistant/realtime?sectionId=${encodeURIComponent(sectionId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/sdp" },
+        body: offer.sdp,
+      });
+      if (!response.ok) throw new Error(`realtime handshake failed: ${response.status}`);
+      const answerSdp = await response.text();
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+      liveStatus = "listening";
+      liveButton?.setAttribute("aria-pressed", "true");
+    } catch (error) {
+      console.error("SwissCompact assistant: live conversation failed", error);
+      liveStatus = "error";
+      setState("idle");
+      stopLiveConversation();
+    }
+  }
+
+  function stopLiveConversation() {
+    dataChannel?.close();
+    dataChannel = null;
+    peerConnection?.close();
+    peerConnection = null;
+    localStream?.getTracks().forEach((track) => track.stop());
+    localStream = null;
+    liveStatus = "off";
+    liveButton?.setAttribute("aria-pressed", "false");
+    setState("idle");
+  }
+
+  function setOpen(value: boolean) {
+    open = value;
+    panel.hidden = !value;
+    trigger.setAttribute("aria-expanded", String(value));
+    document.body.classList.toggle("is-sales-assistant-open", value);
+    if (value && messages.length === 0) renderChat();
+    if (value) input.focus();
+  }
+
+  const handleTriggerClick = () => setOpen(!open);
+  const handleCloseClick = () => setOpen(false);
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && open) setOpen(false);
+  };
+  const handleComposerSubmit = (event: Event) => {
+    event.preventDefault();
+    ask(input.value, "text");
+  };
+  const handleLiveClick = () => {
+    if (liveStatus === "off" || liveStatus === "error") startLiveConversation();
+    else stopLiveConversation();
+  };
+
+  trigger.addEventListener("click", handleTriggerClick);
+  closeButton?.addEventListener("click", handleCloseClick);
+  window.addEventListener("keydown", handleKeydown);
+  composer.addEventListener("submit", handleComposerSubmit);
+  liveButton?.addEventListener("click", handleLiveClick);
+  cleanupListeners.push(
+    () => trigger.removeEventListener("click", handleTriggerClick),
+    () => closeButton?.removeEventListener("click", handleCloseClick),
+    () => window.removeEventListener("keydown", handleKeydown),
+    () => composer.removeEventListener("submit", handleComposerSubmit),
+    () => liveButton?.removeEventListener("click", handleLiveClick),
+  );
+
+  let observer: IntersectionObserver | null = null;
+  const sectionElements = SECTION_IDS.map((id) => document.getElementById(id)).filter(
+    (element): element is HTMLElement => Boolean(element),
+  );
+  if (sectionElements.length > 0 && "IntersectionObserver" in window) {
+    observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target.id) sectionId = visible.target.id;
+      },
+      { threshold: [0.3, 0.6] },
+    );
+    sectionElements.forEach((element) => observer?.observe(element));
+  }
+
+  restoreSession();
+  setState("idle");
+
+  return {
+    destroy() {
+      destroyed = true;
+      cleanupListeners.forEach((cleanup) => cleanup());
+      observer?.disconnect();
+      abortController?.abort();
+      stopLiveConversation();
+      currentAudio?.pause();
+    },
+  };
+}

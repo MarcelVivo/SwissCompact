@@ -15650,3 +15650,352 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     max-height: calc(100% - 272px) !important;
   }
 }
+
+/* ==========================================================================
+   Sales Assistant (AI chat widget) — reuses existing tokens, no new ones.
+   ========================================================================== */
+
+.sales-assistant {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 150;
+}
+
+.sales-assistant__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 22px;
+  border-radius: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(9, 9, 11, 0.36);
+  backdrop-filter: blur(14px);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.sales-assistant__trigger:hover,
+.sales-assistant__trigger:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.62);
+}
+
+.sales-assistant__panel {
+  position: fixed;
+  right: 20px;
+  bottom: 88px;
+  z-index: 160;
+  width: min(430px, calc(100vw - 32px));
+  max-height: min(680px, calc(100vh - 96px));
+  display: flex;
+  flex-direction: column;
+  background: var(--showroom-surface);
+  border: 1px solid var(--showroom-border);
+  border-radius: var(--showroom-radius-md);
+  backdrop-filter: blur(14px) saturate(1.1);
+  color: var(--showroom-text);
+  overflow: hidden;
+}
+
+.sales-assistant__panel[hidden] {
+  display: none;
+}
+
+.sales-assistant__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--showroom-border);
+  flex: none;
+}
+
+.sales-assistant__header strong {
+  flex: 1;
+  font-size: 14px;
+}
+
+.sales-assistant__close {
+  background: none;
+  border: none;
+  color: var(--showroom-text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.sales-assistant__close:hover {
+  color: var(--white);
+}
+
+.sales-assistant__state-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  flex: none;
+  transition: box-shadow 0.3s, opacity 0.3s;
+}
+
+.sales-assistant__state-dot[data-sales-assistant-state="idle"] {
+  opacity: 0.55;
+}
+
+.sales-assistant__state-dot[data-sales-assistant-state="listening"] {
+  animation: sales-assistant-pulse 1.1s ease-in-out infinite;
+}
+
+.sales-assistant__state-dot[data-sales-assistant-state="thinking"] {
+  animation: sales-assistant-pulse 0.7s ease-in-out infinite;
+}
+
+.sales-assistant__state-dot[data-sales-assistant-state="speaking"] {
+  animation: sales-assistant-pulse 0.45s ease-in-out infinite;
+}
+
+.sales-assistant__state-dot[data-sales-assistant-state="presenting"] {
+  box-shadow: 0 0 0 6px rgba(200, 16, 46, 0.25);
+}
+
+.sales-assistant__state-dot[data-sales-assistant-state="success"] {
+  background: #3ecf8e;
+  box-shadow: 0 0 0 6px rgba(62, 207, 142, 0.25);
+}
+
+@keyframes sales-assistant-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(200, 16, 46, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(200, 16, 46, 0);
+  }
+}
+
+.sales-assistant__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sales-assistant__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sales-assistant__bubble {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: var(--showroom-radius-md);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.sales-assistant__bubble--user {
+  align-self: flex-end;
+  background: var(--red);
+  color: var(--white);
+}
+
+.sales-assistant__bubble--assistant {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--showroom-border);
+}
+
+.sales-assistant__quick-replies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sales-assistant__quick-replies button {
+  padding: 8px 14px;
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.23);
+  background: transparent;
+  color: var(--white);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sales-assistant__quick-replies button:hover {
+  border-color: var(--red);
+}
+
+.sales-assistant__recommendation {
+  padding: 14px;
+  border-radius: var(--showroom-radius-md);
+  border: 1px solid var(--showroom-border);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sales-assistant__recommendation strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.sales-assistant__recommendation p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--showroom-text-muted);
+}
+
+.sales-assistant__recommendation ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sales-assistant__contact-cta {
+  align-self: flex-start;
+  padding: 9px 18px;
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--white);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sales-assistant__contact-cta:hover {
+  border-color: var(--red);
+  background: rgba(200, 16, 46, 0.12);
+}
+
+.sales-assistant__contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sales-assistant__contact-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--showroom-text-muted);
+}
+
+.sales-assistant__contact-form input,
+.sales-assistant__contact-form textarea {
+  padding: 9px 12px;
+  border-radius: var(--showroom-radius-sm);
+  border: 1px solid var(--showroom-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  font-size: 14px;
+}
+
+.sales-assistant__contact-form button[type="submit"] {
+  padding: 11px 20px;
+  border-radius: 30px;
+  border: none;
+  background: var(--red);
+  color: var(--white);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sales-assistant__honeypot {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sales-assistant__consent {
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 8px !important;
+}
+
+.sales-assistant__error {
+  color: #ff6b6b;
+  font-size: 13px;
+}
+
+.sales-assistant__success {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.sales-assistant__live {
+  margin: 0 16px 10px;
+  padding: 9px 16px;
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--white);
+  font-size: 13px;
+  cursor: pointer;
+  flex: none;
+}
+
+.sales-assistant__live[aria-pressed="true"] {
+  border-color: var(--red);
+  background: rgba(200, 16, 46, 0.16);
+}
+
+.sales-assistant__composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--showroom-border);
+  flex: none;
+}
+
+.sales-assistant__composer textarea {
+  flex: 1;
+  resize: none;
+  padding: 10px 12px;
+  border-radius: var(--showroom-radius-sm);
+  border: 1px solid var(--showroom-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.sales-assistant__composer button {
+  padding: 0 18px;
+  border-radius: var(--showroom-radius-sm);
+  border: none;
+  background: var(--red);
+  color: var(--white);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .sales-assistant {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .sales-assistant__panel {
+    right: 8px;
+    left: 8px;
+    bottom: 78px;
+    width: auto;
+    max-height: calc(100vh - 100px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sales-assistant__state-dot {
+    animation: none !important;
+    transition: opacity 0.2s;
+  }
+}

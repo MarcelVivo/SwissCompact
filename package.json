@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && cp -R public/site/. dist/",
+    "build": "tsc --noEmit && tsc --noEmit -p api && vite build && cp -R public/site/. dist/",
     "optimize:videos": "bash scripts/optimize-videos.sh",
     "preview": "vite preview",
+    "test:assistant": "node scripts/sales-assistant-smoke.mjs",
     "test:browser": "node scripts/browser-smoke.mjs",
     "test:contrast": "node scripts/contrast-showroom-smoke.mjs",
     "test:culture": "node scripts/culture-showroom-smoke.mjs",
@@ -64,18 +65,22 @@
   },
   "dependencies": {
     "@react-three/fiber": "^9.6.1",
+    "@supabase/supabase-js": "^2.108.1",
     "@types/qrcode": "^1.5.6",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "resend": "^6.12.4",
     "three": "0.185.1"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/three": "0.185.1",
     "playwright-core": "1.61.1",
     "typescript": "7.0.2",
+    "vercel": "^42.0.0",
     "vite": "8.1.5"
   }
 }

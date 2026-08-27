@@ -46,6 +46,13 @@ gestalterische Dokumentation liegt in
 
 Das statische Produktionspaket wird nach `dist/` geschrieben und kann ohne SSR auf einem Standard-Webhosting veröffentlicht werden.
 
+## KI-Sales-Assistent
+
+Ein Chat-Widget berät Website-Besucher, empfiehlt passende Leistungen und übergibt
+qualifizierte Anfragen per E-Mail und CRM-Eintrag. Serverseitige Vercel-Functions unter
+`api/assistant/`, Frontend-Modul `src/ui/salesAssistant.ts`. Details, Setup und
+Environment-Variablen: `docs/sales-assistant.md`.
+
 ## Display-Inhaltseditor und Bild-KI
 
 Die grosse Display-Vorschau enthält einen Inhaltseditor für Texte, Preise,
