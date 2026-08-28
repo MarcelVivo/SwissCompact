@@ -15812,6 +15812,64 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   border: 1px solid var(--showroom-border);
 }
 
+.sales-assistant__start-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sales-assistant__start-intro {
+  margin: 4px 0 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--showroom-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sales-assistant__start-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--showroom-radius-md);
+  border: 1px solid var(--showroom-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s, background 0.2s;
+}
+
+.sales-assistant__start-option:hover,
+.sales-assistant__start-option:focus-visible {
+  border-color: var(--red);
+  background: rgba(200, 16, 46, 0.12);
+  transform: translateY(-2px);
+}
+
+.sales-assistant__start-option-icon {
+  flex: none;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.sales-assistant__start-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sales-assistant__start-option-text strong {
+  font-size: 14px;
+}
+
+.sales-assistant__start-option-text small {
+  font-size: 12px;
+  color: var(--showroom-text-muted);
+  line-height: 1.4;
+}
+
 .sales-assistant__quick-replies {
   display: flex;
   flex-wrap: wrap;

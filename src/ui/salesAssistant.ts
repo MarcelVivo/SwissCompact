@@ -124,6 +124,73 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     if (liveButton) liveButton.hidden = view !== "chat";
   }
 
+  function openShowroomFunnel() {
+    setOpen(false);
+    document.querySelector<HTMLButtonElement>("[data-showroom-funnel-trigger]")?.click();
+  }
+
+  // A fixed, hand-authored decision menu — not AI-generated — for the one
+  // moment where nothing is known yet about the visitor. Routes toward the
+  // 3D room configurator only where a physical space/display setup is
+  // actually the point; the other paths skip straight to (or stay clear
+  // of) the contact form rather than forcing a detour through the room
+  // builder when it wouldn't make sense.
+  function renderStartMenu(): HTMLElement {
+    const menu = document.createElement("div");
+    menu.className = "sales-assistant__start-menu";
+
+    const intro = document.createElement("p");
+    intro.className = "sales-assistant__start-intro";
+    intro.textContent = "Womit dürfen wir starten?";
+    menu.append(intro);
+
+    const options: Array<{ icon: string; label: string; hint: string; action: () => void }> = [
+      {
+        icon: "🏠",
+        label: "Meinen Raum mit Displays gestalten",
+        hint: "In wenigen Klicks zum eigenen 3D-Konzept — inklusive Bild und Text fürs Display.",
+        action: openShowroomFunnel,
+      },
+      {
+        icon: "💬",
+        label: "Direkt eine Frage stellen oder Angebot anfragen",
+        hint: "Kein Umweg — kurz Angaben hinterlassen, wir melden uns persönlich.",
+        action: () => renderContactForm(),
+      },
+      {
+        icon: "✨",
+        label: "Erst zeigen, was möglich ist",
+        hint: "Der Assistent erklärt kurz, was zu deinem Vorhaben passt.",
+        action: () => void ask("Ich möchte zuerst einen Überblick, was SwissCompact alles anbietet.", "quick_reply"),
+      },
+    ];
+
+    options.forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "sales-assistant__start-option";
+
+      const iconEl = document.createElement("span");
+      iconEl.className = "sales-assistant__start-option-icon";
+      iconEl.textContent = option.icon;
+      iconEl.setAttribute("aria-hidden", "true");
+
+      const textWrap = document.createElement("span");
+      textWrap.className = "sales-assistant__start-option-text";
+      const labelEl = document.createElement("strong");
+      labelEl.textContent = option.label;
+      const hintEl = document.createElement("small");
+      hintEl.textContent = option.hint;
+      textWrap.append(labelEl, hintEl);
+
+      button.append(iconEl, textWrap);
+      button.addEventListener("click", option.action);
+      menu.append(button);
+    });
+
+    return menu;
+  }
+
   function renderChat() {
     setView("chat");
     body.replaceChildren();
@@ -137,6 +204,14 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       list.append(bubble);
     });
     body.append(list);
+
+    // Nothing typed yet and the AI hasn't suggested anything of its own —
+    // give the visitor a fully click-driven way in instead of requiring
+    // the first move to be typed. Once a real conversation exists (either
+    // via one of these options or free text), this never reappears.
+    if (messages.length === 0 && quickReplies.length === 0) {
+      body.append(renderStartMenu());
+    }
 
     if (lastRecommendation) {
       const card = document.createElement("div");
@@ -168,12 +243,16 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       body.append(replyRow);
     }
 
-    const contactCta = document.createElement("button");
-    contactCta.type = "button";
-    contactCta.className = "sales-assistant__contact-cta";
-    contactCta.textContent = "Kontakt aufnehmen";
-    contactCta.addEventListener("click", () => renderContactForm());
-    body.append(contactCta);
+    // Redundant with the start menu's own "Direkt eine Frage stellen"
+    // option — only show this once a real conversation is under way.
+    if (messages.length > 0) {
+      const contactCta = document.createElement("button");
+      contactCta.type = "button";
+      contactCta.className = "sales-assistant__contact-cta";
+      contactCta.textContent = "Kontakt aufnehmen";
+      contactCta.addEventListener("click", () => renderContactForm());
+      body.append(contactCta);
+    }
 
     body.scrollTop = body.scrollHeight;
   }
@@ -673,6 +752,16 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     () => composer.removeEventListener("submit", handleComposerSubmit),
     () => liveButton?.removeEventListener("click", handleLiveClick),
   );
+
+  // Other "Projekt besprechen"-style CTAs across the page (hero, project-cta
+  // section) open this same assistant instead of duplicating it or falling
+  // back to a mailto link — they always open, never toggle closed.
+  const openTriggers = [...document.querySelectorAll<HTMLElement>("[data-sales-assistant-open]")];
+  const handleOpenTriggerClick = () => setOpen(true);
+  openTriggers.forEach((element) => element.addEventListener("click", handleOpenTriggerClick));
+  cleanupListeners.push(() => {
+    openTriggers.forEach((element) => element.removeEventListener("click", handleOpenTriggerClick));
+  });
 
   let observer: IntersectionObserver | null = null;
   const sectionElements = SECTION_IDS.map((id) => document.getElementById(id)).filter(

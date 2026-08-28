@@ -49,11 +49,11 @@ export function mountOverlays(stations: StationDefinition[]): OverlayUI {
             href="#wirkung"
             data-marketing-target="#wirkung"
           >Lösungen entdecken</a>
-          <a
+          <button
+            type="button"
             class="hero-actions__link"
-            href="#projekt-starten"
-            data-marketing-target="#projekt-starten"
-          >Projekt besprechen <span aria-hidden="true">↗</span></a>
+            data-sales-assistant-open
+          >Projekt besprechen <span aria-hidden="true">↗</span></button>
         </div>` : ""}
     `;
     overlayRoot.append(section);
