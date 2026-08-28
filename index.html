@@ -342,7 +342,7 @@
           </p>
         </div>
         <div class="impact-grid" aria-label="Wirkungsfelder">
-          <article class="impact-card" data-impact-scene="attention">
+          <article class="impact-card" data-impact-scene="attention" data-impact-detail="attention" role="button" tabindex="0" aria-haspopup="dialog">
             <span>01</span>
             <h3>Aufmerksamkeit gewinnen</h3>
             <p>Bewegtbild und räumliche Inszenierung machen Marken sichtbar.</p>
@@ -358,7 +358,7 @@
             >
             <canvas class="impact-card__scene" aria-hidden="true"></canvas>
           </article>
-          <article class="impact-card" data-impact-scene="decision">
+          <article class="impact-card" data-impact-scene="decision" data-impact-detail="decision" role="button" tabindex="0" aria-haspopup="dialog">
             <span>02</span>
             <h3>Entscheidungen erleichtern</h3>
             <p>Relevante Informationen erscheinen genau im richtigen Moment.</p>
@@ -374,7 +374,7 @@
             >
             <canvas class="impact-card__scene" aria-hidden="true"></canvas>
           </article>
-          <article class="impact-card" data-impact-scene="network">
+          <article class="impact-card" data-impact-scene="network" data-impact-detail="network" role="button" tabindex="0" aria-haspopup="dialog">
             <span>03</span>
             <h3>Inhalte zentral steuern</h3>
             <p>Ein System verbindet einzelne Displays und ganze Standortnetze.</p>
@@ -393,6 +393,10 @@
           <article
             class="impact-card impact-card--accent"
             data-impact-scene="space"
+            data-impact-detail="space"
+            role="button"
+            tabindex="0"
+            aria-haspopup="dialog"
           >
             <span>04</span>
             <h3>Räume emotionalisieren</h3>
@@ -410,6 +414,35 @@
             <canvas class="impact-card__scene" aria-hidden="true"></canvas>
           </article>
         </div>
+        <dialog class="project-detail impact-detail" data-impact-detail-dialog aria-labelledby="impact-detail-title" aria-describedby="impact-detail-intro">
+          <div class="project-detail__surface">
+            <button class="project-detail__close" type="button" data-impact-detail-close aria-label="Detailansicht schliessen">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <header class="project-detail__header">
+              <span data-impact-detail-number>01</span>
+              <p data-impact-detail-category>Präsenz &amp; Inszenierung</p>
+              <h3 id="impact-detail-title" data-impact-detail-title>Aufmerksamkeit gewinnen</h3>
+              <strong data-impact-detail-headline>Digitale Inhalte werden zum sichtbaren Teil des Raums.</strong>
+              <p id="impact-detail-intro" data-impact-detail-intro></p>
+            </header>
+            <div class="project-detail__body">
+              <section>
+                <span>Wie wir diese Wirkung erzeugen</span>
+                <ul data-impact-detail-services></ul>
+              </section>
+              <aside>
+                <span>Der Mehrwert</span>
+                <p data-impact-detail-result></p>
+                <small data-impact-detail-output></small>
+              </aside>
+            </div>
+            <footer>
+              <span data-impact-detail-index>Wirkungsfeld 01 von 04</span>
+              <button type="button" data-impact-detail-cta>Wirkung besprechen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+            </footer>
+          </div>
+        </dialog>
       </section>
 
       <section class="marketing-section solution-finder" id="loesungen">
