@@ -52,6 +52,9 @@ export function updateStartImageCamera({
 }: StartImageCameraOptions): void {
   const journey = clamp01(progress) * chapterCount;
   const chapterProgress = clamp01(journey);
+  const portraitMobile = window.matchMedia(
+    "(max-width: 640px) and (orientation: portrait)",
+  ).matches;
   const scrollVideoReady = Boolean(
     scrollVideo
     && scrollVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
@@ -65,16 +68,23 @@ export function updateStartImageCamera({
   media.style.opacity = (1 - scrollBlend).toFixed(4);
   if (scrollMedia) {
     scrollMedia.style.opacity = scrollBlend.toFixed(4);
-    const sun = coveredMediaPoint(1916, 1080, 1120, 465);
-    const focusProgress = smoothstep((chapterProgress - 0.82) / 0.165);
-    const focusZoom = 1 + 5.6 * focusProgress ** 1.35;
-    const translateX = (window.innerWidth * 0.5 - sun.x) * focusProgress;
-    const translateY = (window.innerHeight * 0.5 - sun.y) * focusProgress;
-    scrollMedia.style.transformOrigin = `${sun.x.toFixed(2)}px ${sun.y.toFixed(2)}px`;
-    scrollMedia.style.transform = [
-      `translate3d(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px, 0)`,
-      `scale(${focusZoom.toFixed(5)})`,
-    ].join(" ");
+    if (portraitMobile) {
+      // Keep the complete 16:9 frame visible throughout the mobile chapter.
+      // The desktop sun-focus zoom would otherwise crop both horizontal edges.
+      scrollMedia.style.transformOrigin = "50% 50%";
+      scrollMedia.style.transform = "none";
+    } else {
+      const sun = coveredMediaPoint(1916, 1080, 1120, 465);
+      const focusProgress = smoothstep((chapterProgress - 0.82) / 0.165);
+      const focusZoom = 1 + 5.6 * focusProgress ** 1.35;
+      const translateX = (window.innerWidth * 0.5 - sun.x) * focusProgress;
+      const translateY = (window.innerHeight * 0.5 - sun.y) * focusProgress;
+      scrollMedia.style.transformOrigin = `${sun.x.toFixed(2)}px ${sun.y.toFixed(2)}px`;
+      scrollMedia.style.transform = [
+        `translate3d(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px, 0)`,
+        `scale(${focusZoom.toFixed(5)})`,
+      ].join(" ");
+    }
   }
 
   if (copy) {

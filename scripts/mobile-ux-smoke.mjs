@@ -102,6 +102,36 @@ for (const viewport of viewports) {
     };
   });
   await page.screenshot({ path: `/tmp/swisscompact-mobile-${viewport.name}-scroll-video.png` });
+
+  await page.evaluate(() => {
+    const scroller = document.querySelector("#scroller");
+    const maximum = Math.max(
+      1,
+      (scroller instanceof HTMLElement ? scroller.offsetHeight : 1)
+        - window.innerHeight,
+    );
+    window.scrollTo(0, 0.91 / 11 * maximum);
+  });
+  await page.waitForTimeout(450);
+  const lateHeroVideo = await page.evaluate(() => {
+    const media = document.querySelector(".intro__scroll-media");
+    const video = document.querySelector(".intro__scroll-video--forward");
+    if (!(media instanceof HTMLElement) || !(video instanceof HTMLVideoElement)) {
+      return null;
+    }
+    const mediaBounds = media.getBoundingClientRect();
+    const scale = Math.min(
+      window.innerWidth / video.videoWidth,
+      window.innerHeight / video.videoHeight,
+    );
+    return {
+      transform: media.style.transform,
+      mediaWidth: mediaBounds.width,
+      renderedContentWidth: video.videoWidth * scale,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  await page.screenshot({ path: `/tmp/swisscompact-mobile-${viewport.name}-scroll-video-late.png` });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(100);
 
@@ -191,6 +221,9 @@ for (const viewport of viewports) {
     && heroVideo?.objectFit === "contain"
     && heroVideo.renderedContentWidth >= heroVideo.viewportWidth - 1
     && heroVideo.funnel?.width >= heroVideo.viewportWidth - 100
+    && lateHeroVideo?.transform === "none"
+    && lateHeroVideo.mediaWidth >= lateHeroVideo.viewportWidth - 1
+    && lateHeroVideo.renderedContentWidth >= lateHeroVideo.viewportWidth - 1
     && initial.touchTargets.every((target) => target.height >= 44 && target.width >= 44)
     && menuOpen.expanded === "true"
     && !menuOpen.inert
@@ -211,7 +244,7 @@ for (const viewport of viewports) {
     && assistant.closeHasFocus
     && assistant.funnelHidden;
 
-  results.push({ viewport, valid, errors, initial, heroVideo, menuOpen, menuClosed, marketing, assistant });
+  results.push({ viewport, valid, errors, initial, heroVideo, lateHeroVideo, menuOpen, menuClosed, marketing, assistant });
   await context.close();
 }
 
