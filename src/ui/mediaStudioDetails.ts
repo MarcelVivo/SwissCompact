@@ -13,6 +13,8 @@ interface MediaDetail {
   services: string[];
   result: string;
   output: string;
+  image: string;
+  imageAlt: string;
 }
 
 const MEDIA_DETAILS: Record<MediaDetailKey, MediaDetail> = {
@@ -32,6 +34,8 @@ const MEDIA_DETAILS: Record<MediaDetailKey, MediaDetail> = {
     result:
       "Ein eigenständiger visueller Auftritt, der Aufmerksamkeit führt, Inhalte verdichtet und die Marke in Bewegung unverwechselbar macht.",
     output: "Mögliche Deliverables: Key Visuals · Animations-Master · Format- und Sprachversionen",
+    image: "/images/media-studio/detail-motion.webp",
+    imageAlt: "Motion Designer an zwei professionellen Arbeitsmonitoren",
   },
   film: {
     number: "02",
@@ -49,6 +53,8 @@ const MEDIA_DETAILS: Record<MediaDetailKey, MediaDetail> = {
     result:
       "Filmischer Content, der ohne unnötige Erklärung funktioniert und Menschen auch in bewegten, lauten oder weitläufigen Räumen erreicht.",
     output: "Mögliche Deliverables: Imagefilm · Produktfilm · Interviews · modulare Kurzformate",
+    image: "/images/media-studio/detail-film.webp",
+    imageAlt: "Filmteam bei einer hochwertigen Produktproduktion",
   },
   "three-d": {
     number: "03",
@@ -66,6 +72,8 @@ const MEDIA_DETAILS: Record<MediaDetailKey, MediaDetail> = {
     result:
       "Hochwertige Bildwelten mit maximaler gestalterischer Kontrolle, die flexibel weiterentwickelt und für viele Kanäle genutzt werden können.",
     output: "Mögliche Deliverables: Renderings · Produktanimation · räumliche Simulation · Echtzeit-Assets",
+    image: "/images/media-studio/detail-three-d.webp",
+    imageAlt: "3D Artist bei der fotorealistischen Produktvisualisierung",
   },
   campaigns: {
     number: "04",
@@ -83,6 +91,8 @@ const MEDIA_DETAILS: Record<MediaDetailKey, MediaDetail> = {
     result:
       "Ein konsistenter Markenauftritt bei deutlich weniger Produktionsaufwand – skalierbar über Formate, Standorte, Sprachen und Zeiträume.",
     output: "Mögliche Deliverables: Campaign Toolkit · Variantenmatrix · Playlists · Governance",
+    image: "/images/media-studio/detail-campaigns.webp",
+    imageAlt: "Synchronisierte Kampagne auf verschiedenen Retail-Displays",
   },
   templates: {
     number: "05",
@@ -100,6 +110,8 @@ const MEDIA_DETAILS: Record<MediaDetailKey, MediaDetail> = {
     result:
       "Teams erstellen aktuelle, professionelle Inhalte selbstständig – schneller, konsistenter und ohne jedes Format neu produzieren zu müssen.",
     output: "Mögliche Deliverables: Template-Bibliothek · Designregeln · Redaktionsleitfaden · Training",
+    image: "/images/media-studio/detail-templates.webp",
+    imageAlt: "Content-Team vor einer modularen Template-Bibliothek",
   },
 };
 
@@ -127,6 +139,14 @@ export function mountMediaStudioDetails(): MediaStudioDetails {
   const services = dialog.querySelector<HTMLUListElement>(
     "[data-media-detail-services]",
   );
+  const detailImage = dialog.querySelector<HTMLImageElement>(
+    "[data-media-detail-image]",
+  );
+  const imagePreloads = Object.values(MEDIA_DETAILS).map(({ image }) => {
+    const preloader = new Image();
+    preloader.src = image;
+    return preloader;
+  });
   const fields = {
     number: dialog.querySelector<HTMLElement>("[data-media-detail-number]"),
     category: dialog.querySelector<HTMLElement>("[data-media-detail-category]"),
@@ -157,6 +177,10 @@ export function mountMediaStudioDetails(): MediaStudioDetails {
     fields.result!.textContent = detail.result;
     fields.output!.textContent = detail.output;
     fields.index!.textContent = `Media-Kompetenz ${detail.number} von 05`;
+    if (detailImage) {
+      detailImage.src = detail.image;
+      detailImage.alt = detail.imageAlt;
+    }
     services!.replaceChildren(...detail.services.map((service) => {
       const item = document.createElement("li");
       item.textContent = service;
@@ -198,6 +222,7 @@ export function mountMediaStudioDetails(): MediaStudioDetails {
       dialog.removeEventListener("click", backdropHandler);
       dialog.removeEventListener("close", nativeCloseHandler);
       cta?.removeEventListener("click", ctaHandler);
+      imagePreloads.forEach((preloader) => preloader.removeAttribute("src"));
       close(false);
     },
   };
