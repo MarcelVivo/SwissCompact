@@ -6,6 +6,7 @@ import {
   type AssistantRoomConcept,
   type AssistantRoomConceptFurnishing,
   type AssistantRoomConceptStructure,
+  type AssistantRoomConceptWallDisplay,
   type AssistantSalesStage,
   type AssistantUiAction,
 } from "./types.js";
@@ -63,7 +64,7 @@ export function buildAssistantResponseSchema(validFurnishingIds: string[]) {
   const conceptSchema = {
     type: ["object", "null"],
     additionalProperties: false,
-    required: ["roomSize", "light", "surfaces", "floorFinish", "furnishings", "structures", "display"],
+    required: ["roomSize", "light", "surfaces", "floorFinish", "furnishings", "structures", "display", "wallDisplays"],
     properties: {
       roomSize: { type: ["string", "null"], enum: ["xs", "small", "compact", "standard", null] },
       light: { type: ["string", "null"], enum: ["day", "warm", null] },
@@ -126,6 +127,22 @@ export function buildAssistantResponseSchema(validFurnishingIds: string[]) {
           title: nullableString,
           priceText: nullableString,
           offerText: nullableString,
+        },
+      },
+      // Placement/sizing — not content. Technology (LED vs. LCD) is
+      // deliberately absent: it's derived from size, never asked for.
+      wallDisplays: {
+        type: "array",
+        maxItems: 8,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["wall", "enabled", "size"],
+          properties: {
+            wall: { type: "string" },
+            enabled: { type: "boolean" },
+            size: { type: ["string", "null"], enum: ["small", "medium", "large", null] },
+          },
         },
       },
     },
@@ -339,6 +356,20 @@ function sanitizeConcept(value: unknown, validFurnishingIds: string[]): Assistan
     }
   }
 
+  const wallDisplays: AssistantRoomConceptWallDisplay[] = Array.isArray(value.wallDisplays)
+    ? value.wallDisplays
+        .filter(isRecord)
+        .map((item): AssistantRoomConceptWallDisplay | undefined => {
+          const wall = text(item.wall, 20);
+          if (!wall || typeof item.enabled !== "boolean") return undefined;
+          const sizeRaw = text(item.size, 10);
+          const size = sizeRaw === "small" || sizeRaw === "medium" || sizeRaw === "large" ? sizeRaw : undefined;
+          return { wall, enabled: item.enabled, size };
+        })
+        .filter((entry): entry is AssistantRoomConceptWallDisplay => entry !== undefined)
+        .slice(0, 8)
+    : [];
+
   if (
     !roomSize &&
     !light &&
@@ -346,7 +377,8 @@ function sanitizeConcept(value: unknown, validFurnishingIds: string[]): Assistan
     !surfaces &&
     furnishings.length === 0 &&
     structures.length === 0 &&
-    !display
+    !display &&
+    wallDisplays.length === 0
   ) {
     return undefined;
   }
@@ -359,6 +391,7 @@ function sanitizeConcept(value: unknown, validFurnishingIds: string[]): Assistan
     furnishings,
     structures,
     display,
+    wallDisplays,
   };
 }
 

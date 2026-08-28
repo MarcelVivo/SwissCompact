@@ -16273,6 +16273,56 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   font-size: 13px;
 }
 
+.showroom-funnel__wall-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.showroom-funnel__wall-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: var(--showroom-radius-md);
+  border: 1px solid var(--showroom-border);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.showroom-funnel__wall-row strong {
+  font-size: 14px;
+}
+
+.showroom-funnel__wall-tiers {
+  display: flex;
+  gap: 6px;
+}
+
+.showroom-funnel__wall-tiers button {
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.showroom-funnel__wall-tiers button:hover,
+.showroom-funnel__wall-tiers button:focus-visible {
+  border-color: var(--red);
+}
+
+.showroom-funnel__wall-tiers button.is-active {
+  border-color: var(--red);
+  background: var(--red);
+  color: var(--white);
+}
+
 .showroom-funnel__primary {
   align-self: flex-start;
   padding: 13px 26px;

@@ -9,6 +9,8 @@ type LightOption = NonNullable<RoomConceptPatch["light"]>;
 type DisplayContentPatch = NonNullable<RoomConceptPatch["displayContent"]>[number];
 type DisplayComposition = DisplayContentPatch["composition"];
 type DisplayElement = DisplayComposition["elements"][number];
+type WallDisplayPatch = NonNullable<RoomConceptPatch["wallDisplays"]>[number];
+type WallTier = "off" | NonNullable<WallDisplayPatch["size"]>;
 
 type StepId = "hook" | "theme" | "roomtype" | "size" | "displays" | "light" | "reveal" | "content" | "network" | "cta" | "success";
 
@@ -33,11 +35,19 @@ const SIZE_OPTIONS: { value: RoomSizeOption; label: string; hint: string }[] = [
   { value: "standard", label: "Flagship / mehrere Zonen", hint: "Grössere Fläche oder mehrere Standorte" },
 ];
 
-const DISPLAY_OPTIONS: { value: "single" | "multi" | "led"; label: string; hint: string; count: number; size: number }[] = [
-  { value: "single", label: "Ein Blickfang", hint: "Ein zentrales Display", count: 1, size: 32 },
-  { value: "multi", label: "Mehrere Zonen", hint: "Mehrere Displays im Raum", count: 2, size: 55 },
-  { value: "led", label: "Grosses LED-Konzept", hint: "Grossflächig, maximale Wirkung", count: 3, size: 75 },
+const WALL_TIER_OPTIONS: { value: WallTier; label: string }[] = [
+  { value: "off", label: "Aus" },
+  { value: "small", label: "Klein" },
+  { value: "medium", label: "Mittel" },
+  { value: "large", label: "Gross" },
 ];
+
+function tierFromDisplaySize(size: number | null): WallTier {
+  if (!size) return "off";
+  if (size <= 32) return "small";
+  if (size <= 55) return "medium";
+  return "large";
+}
 
 const LIGHT_OPTIONS: { value: LightOption; label: string }[] = [
   { value: "warm", label: "Warm & einladend" },
@@ -85,7 +95,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     preset?: RoomPreset;
     presetLabel?: string;
     roomSize?: RoomSizeOption;
-    displayTier?: (typeof DISPLAY_OPTIONS)[number];
+    wallDisplays: Record<string, WallTier>;
     light?: LightOption;
     description: string;
     generatedTitle?: string;
@@ -95,7 +105,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     networkPreviewOn: boolean;
     targetWall?: string;
     targetIndex: number;
-  } = { description: "", networkPreviewOn: false, targetIndex: 0 };
+  } = { description: "", wallDisplays: {}, networkPreviewOn: false, targetIndex: 0 };
 
   const cleanupListeners: Array<() => void> = [];
 
@@ -126,6 +136,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
       state.theme = undefined;
       state.preset = undefined;
       state.description = "";
+      state.wallDisplays = {};
       state.generatedTitle = undefined;
       state.generatedImage = undefined;
       state.networkPreviewOn = false;
@@ -192,9 +203,14 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     const patch: RoomConceptPatch = {};
     if (state.roomSize) patch.roomSize = state.roomSize;
     if (state.light) patch.light = state.light;
-    if (state.displayTier) {
-      patch.displayLayout = { displayCount: state.displayTier.count, displaySize: state.displayTier.size as never };
-    }
+    const wallDisplays = Object.entries(state.wallDisplays).map(
+      ([wall, tier]): WallDisplayPatch => (
+        tier === "off"
+          ? { wall: wall as WallDisplayPatch["wall"], enabled: false }
+          : { wall: wall as WallDisplayPatch["wall"], enabled: true, size: tier }
+      ),
+    );
+    if (wallDisplays.length > 0) patch.wallDisplays = wallDisplays;
     showroom.applyRoomConcept(state.preset, patch);
     const manifest = showroom.getRoomManifest(state.preset);
     const primaryWall = manifest.displayWalls.find((wall) => wall.unitCount > 0);
@@ -255,6 +271,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     options.forEach((option) => {
       grid.append(
         card(option.label, undefined, () => {
+          if (state.preset !== option.id) state.wallDisplays = {};
           state.preset = option.id as RoomPreset;
           state.presetLabel = option.label;
           next();
@@ -283,19 +300,65 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
 
   function renderDisplays() {
     const heading = document.createElement("h3");
-    heading.textContent = "Wie viele Displays stellst du dir vor?";
-    body.append(heading, backLink());
-    const grid = document.createElement("div");
-    grid.className = "showroom-funnel__grid";
-    DISPLAY_OPTIONS.forEach((option) => {
-      grid.append(
-        card(option.label, option.hint, () => {
-          state.displayTier = option;
-          next();
-        }, state.displayTier?.value === option.value),
-      );
+    heading.textContent = "Wo sollen Displays hin — und wie gross?";
+    const hint = document.createElement("p");
+    hint.textContent = "Pro Wand: aus, klein, mittel oder gross. Ob LED oder Display verbaut wird, entscheidet die Grösse automatisch.";
+    body.append(heading, hint, backLink());
+
+    if (!state.preset) {
+      next();
+      return;
+    }
+    const manifest = showroom.getRoomManifest(state.preset);
+    // A room preset can have well over a dozen technical wall slots (extra
+    // "Zone 2/3/4" side-wall variants for elaborate multi-display setups),
+    // most of them empty by design. Only showing the ones the room's own
+    // default layout actually placed a display on keeps this to a handful
+    // of meaningful rows — the rest stay reachable through the full manual
+    // editor and through the AI chat, where a long list isn't a UI problem.
+    const relevantWalls = manifest.displayWalls.filter((wall) => (
+      wall.enabled || state.wallDisplays[wall.wall] !== undefined
+    ));
+
+    const list = document.createElement("div");
+    list.className = "showroom-funnel__wall-list";
+    relevantWalls.forEach((wall) => {
+      if (!(wall.wall in state.wallDisplays)) {
+        state.wallDisplays[wall.wall] = wall.enabled ? tierFromDisplaySize(wall.size) : "off";
+      }
+
+      const row = document.createElement("div");
+      row.className = "showroom-funnel__wall-row";
+      const label = document.createElement("strong");
+      // "· Zone 1" only means something once Zone 2/3/4 are visible too —
+      // since this simplified list never shows them, the qualifier is just
+      // noise here.
+      label.textContent = wall.label.replace(/\s*·\s*Zone 1$/, "");
+      const tiers = document.createElement("div");
+      tiers.className = "showroom-funnel__wall-tiers";
+      WALL_TIER_OPTIONS.forEach((tier) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = tier.label;
+        button.classList.toggle("is-active", state.wallDisplays[wall.wall] === tier.value);
+        button.addEventListener("click", () => {
+          state.wallDisplays[wall.wall] = tier.value;
+          render();
+        });
+        tiers.append(button);
+      });
+      row.append(label, tiers);
+      list.append(row);
     });
-    body.append(grid);
+    body.append(list);
+
+    if (relevantWalls.length === 0) {
+      const empty = document.createElement("p");
+      empty.textContent = "Für diesen Raum sind die Display-Positionen bereits fest vorgegeben.";
+      body.append(empty);
+    }
+
+    body.append(primaryButton("Weiter", next));
   }
 
   function renderLight() {
@@ -710,7 +773,12 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
       const summary = [
         `Raum: ${state.presetLabel ?? state.preset ?? "unbekannt"}`,
         state.roomSize ? `Grösse: ${state.roomSize}` : "",
-        state.displayTier ? `Displays: ${state.displayTier.label}` : "",
+        (() => {
+          const active = Object.entries(state.wallDisplays).filter(([, tier]) => tier !== "off");
+          return active.length > 0
+            ? `Displays: ${active.map(([wall, tier]) => `${wall} (${tier})`).join(", ")}`
+            : "";
+        })(),
         state.light ? `Licht: ${state.light}` : "",
         state.description ? `Inhalt: ${state.description}` : "",
       ]

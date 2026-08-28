@@ -49,11 +49,25 @@ export interface ShowroomAiManifestStructureSlot {
   enabled: boolean;
 }
 
+// One entry per wall/zone that actually exists in the current room preset
+// (not every preset has a counter, a partition, etc.) — label is the same
+// contextual, human-readable name (e.g. "Videowall & Neuheiten",
+// "Empfang & Concierge-Wand") the manual editor already shows, not the
+// internal wall id, so both the wizard's wall-picker cards and the chat
+// assistant can present/reference walls the way a customer would.
+export interface ShowroomAiManifestDisplayWall {
+  wall: DisplayWall;
+  label: string;
+  enabled: boolean;
+  unitCount: number;
+  size: DisplaySize | null;
+}
+
 export interface ShowroomAiManifest {
   presets: ShowroomAiManifestPreset[];
   selectedPreset: RoomPreset;
   furnishings: ShowroomAiManifestFurnishing[];
-  displayWalls: { wall: DisplayWall; unitCount: number }[];
+  displayWalls: ShowroomAiManifestDisplayWall[];
   structureSlots: ShowroomAiManifestStructureSlot[];
 }
 
@@ -98,6 +112,18 @@ export interface RoomConceptDisplayLayoutPatch {
   displaySize?: DisplaySize;
 }
 
+// One toggle per wall — on/off plus a coarse size, not a raw inch value or
+// an LED-vs-Display technology choice. Technology is deliberately not
+// settable here: it's picked automatically from size (see applyRoomConcept),
+// the same "auto" behaviour the manual editor already falls back to above
+// LED_AUTO_THRESHOLD_INCHES — a customer decides how big and impactful a
+// wall should be, not which panel technology renders it.
+export interface RoomConceptWallDisplayPatch {
+  wall: DisplayWall;
+  enabled: boolean;
+  size?: "small" | "medium" | "large";
+}
+
 // Shows the real (already-working) partner-content rendering mechanic on
 // one display — a preview, not a live cross-business connection (see
 // docs/showroom-funnel.md). Reuses the existing NETWORK_MATCHES/
@@ -120,6 +146,7 @@ export interface RoomConceptPatch {
   structures?: RoomConceptStructurePatch[];
   displayContent?: RoomConceptDisplayContentPatch[];
   displayLayout?: RoomConceptDisplayLayoutPatch;
+  wallDisplays?: RoomConceptWallDisplayPatch[];
   networkPreview?: RoomConceptNetworkPreviewPatch;
 }
 
@@ -7588,8 +7615,9 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       Math.max(0.55, localSize.y * Math.abs(worldScale.y) - 0.18),
     ];
   };
-  const getWallLabel = (wall: DisplayWall): string => {
-    const theme = getThemeForPreset(config.preset);
+  const getWallLabel = (wall: DisplayWall, presetOverride?: RoomPreset): string => {
+    const preset = presetOverride ?? config.preset;
+    const theme = getThemeForPreset(preset);
     if (theme === "gastronomy") {
       return WALL_LABELS[wall];
     }
@@ -7603,110 +7631,110 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
         counterTop: "Über dem Empfang",
       },
       culture: {
-        menu: config.preset === "eventHall"
+        menu: preset === "eventHall"
           ? "Bühnen- & Programmwand"
           : "Programm- & Informationswand",
-        counterFront: config.preset === "cinema"
+        counterFront: preset === "cinema"
           ? "Ticket- & Foyertheke"
           : "Empfang & Check-in",
         counterTop: "Über dem Empfang",
       },
       sport: {
-        menu: config.preset === "mountainStation"
+        menu: preset === "mountainStation"
           ? "Pisten- & Informationswand"
-          : config.preset === "fitnessCenter"
+          : preset === "fitnessCenter"
             ? "Training & Kurswand"
             : "Produkt- & Beratungswand",
-        counterFront: config.preset === "mountainStation"
+        counterFront: preset === "mountainStation"
           ? "Ticketschalter"
           : "Empfang & Service",
-        counterTop: config.preset === "mountainStation"
+        counterTop: preset === "mountainStation"
           ? "Über dem Ticketschalter"
           : "Über dem Empfang",
       },
       retail: {
-        menu: config.preset === "shoppingMall"
+        menu: preset === "shoppingMall"
           ? "Centerplan & Hauptinformation"
-          : config.preset === "electronicsStore"
+          : preset === "electronicsStore"
             ? "Videowall & Neuheiten"
             : "Kollektion & Schaufenster",
-        counterFront: config.preset === "shoppingMall"
+        counterFront: preset === "shoppingMall"
           ? "Center-Information"
-          : config.preset === "electronicsStore"
+          : preset === "electronicsStore"
             ? "Service & Kasse"
             : "Kassenbereich",
-        counterTop: config.preset === "shoppingMall"
+        counterTop: preset === "shoppingMall"
           ? "Über der Center-Information"
-          : config.preset === "electronicsStore"
+          : preset === "electronicsStore"
             ? "Über Service & Beratung"
             : "Über der Kasse",
       },
       corporate: {
-        menu: config.preset === "corporateMeeting"
+        menu: preset === "corporateMeeting"
           ? "Collaboration- & Präsentationswand"
-          : config.preset === "corporateCanteen"
+          : preset === "corporateCanteen"
             ? "Menü- & Informationswand"
             : "Welcome- & Markenwand",
-        counterFront: config.preset === "corporateCanteen"
+        counterFront: preset === "corporateCanteen"
           ? "Ausgabe & Service"
           : "Empfang & Besuchercheck-in",
-        counterTop: config.preset === "corporateCanteen"
+        counterTop: preset === "corporateCanteen"
           ? "Über der Ausgabe"
           : "Über dem Empfang",
       },
       hospitality: {
-        menu: config.preset === "spaWellness"
+        menu: preset === "spaWellness"
           ? "Wellness- & Ritualwand"
-          : config.preset === "guestSuite"
+          : preset === "guestSuite"
             ? "In-Room- & Medienwand"
             : "Welcome- & Concierge-Wand",
         counterFront: "Hotelrezeption",
         counterTop: "Über der Rezeption",
       },
       mobility: {
-        menu: config.preset === "trafficControl"
+        menu: preset === "trafficControl"
           ? "Live-Lagewand"
-          : config.preset === "mobilityHub"
+          : preset === "mobilityHub"
             ? "Park- & Mobilitätsinformation"
             : "Abfahrts- & Fahrgastinformation",
-        counterFront: config.preset === "stationTerminal"
+        counterFront: preset === "stationTerminal"
           ? "Ticket & Service"
           : "Ein- & Ausfahrtsterminal",
-        counterTop: config.preset === "stationTerminal"
+        counterTop: preset === "stationTerminal"
           ? "Über Ticket & Service"
           : "Über dem Mobilitätsterminal",
       },
       health: {
-        menu: config.preset === "clinicReception"
+        menu: preset === "clinicReception"
           ? "Welcome- & Wegeleitungswand"
-          : config.preset === "waitingTreatment"
+          : preset === "waitingTreatment"
             ? "Patienten- & Behandlungsinformation"
             : "Tagesstruktur & Gemeinschaft",
         counterFront: "Empfang & diskreter Check-in",
         counterTop: "Über dem Empfang",
       },
       education: {
-        menu: config.preset === "campusFoyer"
+        menu: preset === "campusFoyer"
           ? "Campus-Welcome & Orientierung"
-          : config.preset === "classroom"
+          : preset === "classroom"
             ? "Lern- & Präsentationswand"
             : "Katalog & Wissenswand",
         counterFront: "Campus-Information & Service",
         counterTop: "Über der Information",
       },
       industry: {
-        menu: config.preset === "productionHall"
+        menu: preset === "productionHall"
           ? "Linienstatus & Qualität"
-          : config.preset === "logisticsCenter"
+          : preset === "logisticsCenter"
             ? "Aufträge & Warenfluss"
             : "KPI- & Anlagenlage",
         counterFront: "Betriebs- & Servicepunkt",
         counterTop: "Über dem Servicepunkt",
       },
       realestate: {
-        menu: config.preset === "realEstateLounge"
+        menu: preset === "realEstateLounge"
           ? "Projekt- & Verfügbarkeitswand"
-          : config.preset === "modelApartment"
+          : preset === "modelApartment"
             ? "Wohn- & Variantenwand"
             : "Marken- & Präsentationswand",
         counterFront: "Beratung & Welcome",
@@ -30896,9 +30924,19 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       .filter((item) => item.presets.includes(targetPreset))
       .map((item) => ({ id: item.id, label: item.label, category: item.category }));
     const room = roomConfigurations[targetPreset];
-    const displayWalls = (Object.keys(room.installations) as DisplayWall[])
+    const displayWalls: ShowroomAiManifestDisplayWall[] = (Object.keys(room.installations) as DisplayWall[])
       .filter((wall) => room.enabledObjects[wall])
-      .map((wall) => ({ wall, unitCount: room.installations[wall].displays.length }));
+      .map((wall) => {
+        const installation = room.installations[wall];
+        const unitCount = installation.displays.length;
+        return {
+          wall,
+          label: getWallLabel(wall, targetPreset),
+          enabled: unitCount > 0,
+          unitCount,
+          size: installation.displays[0]?.displaySize ?? null,
+        };
+      });
     const structureSlots: ShowroomAiManifestStructureSlot[] = (["totem", "stele"] as const).flatMap(
       (wall) => room.structures[wall].map((slot, index) => ({ wall, index, enabled: slot.enabled })),
     );
@@ -31118,6 +31156,30 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       installation.displaySize = config.displaySize;
       installation.layout = "row";
     }
+
+    // Per-wall display toggle — mutates room.installations[wall] directly
+    // rather than going through the "currently selected wall" indirection
+    // patch.displayLayout above uses, so an arbitrary wall can be turned
+    // on/off regardless of what's selected in the manual editor UI. Always
+    // resolves to exactly one display per wall when enabling (a simple
+    // on/off per wall, not a count stepper) and always "auto" technology —
+    // size decides LED vs. LCD automatically, it's not a customer choice.
+    (patch.wallDisplays ?? []).forEach(({ wall, enabled, size }) => {
+      if (!room.enabledObjects[wall]) return;
+      const installation = room.installations[wall];
+      if (!installation) return;
+      installation.displayCount = enabled ? 1 : 0;
+      installation.layout = "row";
+      if (enabled && size) {
+        installation.displaySize = normalizeDisplaySize(
+          size === "small" ? 32 : size === "large" ? 75 : 55,
+        );
+      }
+      ensureDisplayUnits(installation).forEach((unit) => {
+        if (enabled && size) unit.displaySize = installation.displaySize;
+        unit.technology = "auto";
+      });
+    });
 
     if (patch.networkPreview) {
       const { wall, displayIndex, enabled } = patch.networkPreview;

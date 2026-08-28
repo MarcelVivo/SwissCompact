@@ -516,6 +516,7 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
   type ConceptDisplayWall = ConceptDisplayPatch["wall"];
   type ConceptDisplayComposition = ConceptDisplayPatch["composition"];
   type ConceptDisplayElement = ConceptDisplayComposition["elements"][number];
+  type ConceptWallDisplayPatch = NonNullable<RoomConceptPatch["wallDisplays"]>[number];
 
   function mapConceptToPatch(concept: AssistantRoomConcept): RoomConceptPatch {
     const patch: RoomConceptPatch = {};
@@ -608,6 +609,14 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       }
     }
 
+    if (concept.wallDisplays.length > 0) {
+      patch.wallDisplays = concept.wallDisplays.map((item): ConceptWallDisplayPatch => (
+        item.enabled
+          ? { wall: item.wall as ConceptWallDisplayPatch["wall"], enabled: true, size: item.size }
+          : { wall: item.wall as ConceptWallDisplayPatch["wall"], enabled: false }
+      ));
+    }
+
     return patch;
   }
 
@@ -698,6 +707,11 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
             wall: slot.wall,
             index: slot.index,
             enabled: slot.enabled,
+          })),
+          displayWalls: manifest.displayWalls.map((wall) => ({
+            wall: wall.wall,
+            label: wall.label,
+            enabled: wall.enabled,
           })),
         },
       };

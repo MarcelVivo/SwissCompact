@@ -118,6 +118,16 @@ export type AssistantRoomConceptDisplay = {
   offerText?: string;
 };
 
+// Placement/sizing — separate from AssistantRoomConceptDisplay above, which
+// only ever writes content onto a display that already exists. Technology
+// (LED vs. LCD) is deliberately not settable: it's picked automatically
+// from size, the same way the manual editor and the showroom wizard do it.
+export type AssistantRoomConceptWallDisplay = {
+  wall: string;
+  enabled: boolean;
+  size?: "small" | "medium" | "large";
+};
+
 // Säulen/Stelen are a fixed pool of 4 pre-positioned slots per wall type
 // ("totem" | "stele"), addressed by index (0-3), not a free-form list.
 // Variant is deliberately not settable (see gastronomyShowroom.ts's
@@ -146,6 +156,7 @@ export type AssistantRoomConcept = {
   furnishings: AssistantRoomConceptFurnishing[];
   structures: AssistantRoomConceptStructure[];
   display?: AssistantRoomConceptDisplay;
+  wallDisplays: AssistantRoomConceptWallDisplay[];
 };
 
 export type AssistantUiAction = {
@@ -183,11 +194,18 @@ export type AssistantShowroomManifestStructureSlot = {
   enabled: boolean;
 };
 
+export type AssistantShowroomManifestDisplayWall = {
+  wall: string;
+  label: string;
+  enabled: boolean;
+};
+
 export type AssistantShowroomManifest = {
   presets: AssistantShowroomManifestPreset[];
   selectedPreset?: string;
   furnishings?: AssistantShowroomManifestFurnishing[];
   structureSlots?: AssistantShowroomManifestStructureSlot[];
+  displayWalls?: AssistantShowroomManifestDisplayWall[];
 };
 
 export type AssistantSalesResponse = {
