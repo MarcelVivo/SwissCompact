@@ -16389,6 +16389,14 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(6px);
   padding: 24px;
+  /* Appended as a direct child of .showroom-funnel__panel (a sibling of
+     __header/__body, not a descendant of either) — during content/network
+     steps the panel itself is pointer-events:none (see .is-reveal-step),
+     and only __header/__body are explicitly re-enabled there. Without this,
+     the overlay silently inherits pointer-events:none and every click on
+     it (including its own buttons) falls through to whatever is rendered
+     underneath instead. */
+  pointer-events: auto;
 }
 
 .showroom-funnel__image-modal {
