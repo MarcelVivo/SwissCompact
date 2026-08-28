@@ -12,8 +12,8 @@ export async function GET(): Promise<Response> {
   const emailConfigured = Boolean(process.env.RESEND_API_KEY);
   if (!supabase) {
     return json(
-      { ok: false, crm: "not-configured", email: emailConfigured ? "configured" : "not-configured" },
-      { status: 503 },
+      { ok: emailConfigured, crm: "not-configured", email: emailConfigured ? "configured" : "not-configured" },
+      { status: emailConfigured ? 200 : 503 },
     );
   }
 
@@ -107,8 +107,8 @@ export async function POST(request: Request): Promise<Response> {
 
     const resendKey = process.env.RESEND_API_KEY;
     const supabase = getAssistantSupabaseClient();
-    if (!supabase) {
-      console.error("assistant/lead: missing Supabase configuration");
+    if (!supabase && !resendKey) {
+      console.error("assistant/lead: neither Supabase nor Resend is configured");
       return json({ error: "Kontaktübergabe ist nicht vollständig konfiguriert" }, { status: 503 });
     }
 
@@ -172,67 +172,85 @@ export async function POST(request: Request): Promise<Response> {
       .join("\n\n")
       .slice(0, 30_000);
 
-    const { data: requestRow, error: requestError } = await supabase
-      .from("kontaktanfragen")
-      .insert({ name, email, nachricht: crmNotes, sprache: "de", quelle: "sales-assistant", status: "neu" })
-      .select("id")
-      .single();
-    if (requestError) throw new Error(`Kontaktanfrage: ${requestError.message}`);
+    let requestId: string | undefined;
+    let customerId: string | undefined;
+    let dealId: string | undefined;
+    let crmDelivered = false;
+    if (supabase) {
+      try {
+        const { data: requestRow, error: requestError } = await supabase
+          .from("kontaktanfragen")
+          .insert({ name, email, nachricht: crmNotes, sprache: "de", quelle: "sales-assistant", status: "neu" })
+          .select("id")
+          .single();
+        if (requestError) throw new Error(`Kontaktanfrage: ${requestError.message}`);
+        requestId = requestRow?.id;
 
-    const { data: existingCustomer, error: existingError } = await supabase
-      .from("kunden")
-      .select("id,notizen")
-      .eq("email", email)
-      .limit(1)
-      .maybeSingle();
-    if (existingError) throw new Error(`Kundensuche: ${existingError.message}`);
+        const { data: existingCustomer, error: existingError } = await supabase
+          .from("kunden")
+          .select("id,notizen")
+          .eq("email", email)
+          .limit(1)
+          .maybeSingle();
+        if (existingError) throw new Error(`Kundensuche: ${existingError.message}`);
 
-    let customerId = existingCustomer?.id as string | undefined;
-    if (customerId) {
-      const notes = [existingCustomer?.notizen, crmNotes].filter(Boolean).join("\n\n––––––––––\n\n").slice(0, 50_000);
-      const { error } = await supabase
-        .from("kunden")
-        .update({
-          kontaktperson: name,
-          firmenname: company || null,
-          telefon: phone,
-          branche: industry || null,
-          status: "lead",
-          notizen: notes,
-        })
-        .eq("id", customerId);
-      if (error) throw new Error(`Kundenaktualisierung: ${error.message}`);
+        customerId = existingCustomer?.id as string | undefined;
+        if (customerId) {
+          const notes = [existingCustomer?.notizen, crmNotes].filter(Boolean).join("\n\n––––––––––\n\n").slice(0, 50_000);
+          const { error } = await supabase
+            .from("kunden")
+            .update({
+              kontaktperson: name,
+              firmenname: company || null,
+              telefon: phone,
+              branche: industry || null,
+              status: "lead",
+              notizen: notes,
+            })
+            .eq("id", customerId);
+          if (error) throw new Error(`Kundenaktualisierung: ${error.message}`);
+        } else {
+          const { data, error } = await supabase
+            .from("kunden")
+            .insert({
+              kontaktperson: name,
+              firmenname: company || null,
+              email,
+              telefon: phone,
+              branche: industry || null,
+              status: "lead",
+              notizen: crmNotes,
+            })
+            .select("id")
+            .single();
+          if (error) throw new Error(`Kundenerstellung: ${error.message}`);
+          customerId = data?.id;
+        }
+
+        const probability = leadTemperature === "hot" ? 70 : leadTemperature === "warm" ? 50 : 30;
+        const { data: dealRow, error: dealError } = await supabase
+          .from("deals")
+          .insert({
+            titel: `Assistant-Anfrage · ${company || name}`,
+            kunden_id: customerId || null,
+            status: "lead",
+            wahrscheinlichkeit: probability,
+            notizen: crmNotes,
+          })
+          .select("id")
+          .single();
+        if (dealError) throw new Error(`Pipeline-Lead: ${dealError.message}`);
+        dealId = dealRow?.id;
+        crmDelivered = true;
+      } catch (crmError) {
+        console.error(
+          "assistant/lead: CRM delivery failed; trying email fallback",
+          crmError instanceof Error ? crmError.message : "Unknown error",
+        );
+      }
     } else {
-      const { data, error } = await supabase
-        .from("kunden")
-        .insert({
-          kontaktperson: name,
-          firmenname: company || null,
-          email,
-          telefon: phone,
-          branche: industry || null,
-          status: "lead",
-          notizen: crmNotes,
-        })
-        .select("id")
-        .single();
-      if (error) throw new Error(`Kundenerstellung: ${error.message}`);
-      customerId = data?.id;
+      console.warn("assistant/lead: Supabase is not configured; using email delivery only");
     }
-
-    const probability = leadTemperature === "hot" ? 70 : leadTemperature === "warm" ? 50 : 30;
-    const { data: dealRow, error: dealError } = await supabase
-      .from("deals")
-      .insert({
-        titel: `Assistant-Anfrage · ${company || name}`,
-        kunden_id: customerId || null,
-        status: "lead",
-        wahrscheinlichkeit: probability,
-        notizen: crmNotes,
-      })
-      .select("id")
-      .single();
-    if (dealError) throw new Error(`Pipeline-Lead: ${dealError.message}`);
 
     const safe = {
       name: escapeHtml(name),
@@ -287,7 +305,7 @@ export async function POST(request: Request): Promise<Response> {
               <a href="mailto:${safe.email}?subject=Ihre Anfrage bei SwissCompact" style="display:inline-block;padding:12px 20px;background:#c8102e;color:#ffffff;text-decoration:none;font-weight:700">Direkt antworten</a>
             </div>
           </div>
-          <div style="padding:14px 30px;border-top:1px solid #2a2a30;color:#77777e;font-size:11px">Kontakt ${requestRow?.id || ""} · Kunde ${customerId || ""} · Deal ${dealRow?.id || ""}</div>
+          <div style="padding:14px 30px;border-top:1px solid #2a2a30;color:#77777e;font-size:11px">Kontakt ${requestId || "E-Mail"} · Kunde ${customerId || "–"} · Deal ${dealId || "–"}</div>
         </div>`,
         });
         if (adminMail.error) {
@@ -321,13 +339,17 @@ export async function POST(request: Request): Promise<Response> {
       console.warn("assistant/lead: Resend is not configured; lead saved without email notifications");
     }
 
+    if (!crmDelivered && !adminEmailDelivered) {
+      return json({ error: "Die Kontaktübergabe konnte nicht abgeschlossen werden." }, { status: 502 });
+    }
+
     return json({
       ok: true,
-      requestId: requestRow?.id,
+      requestId,
       customerId,
-      dealId: dealRow?.id,
+      dealId,
       delivery: {
-        crm: true,
+        crm: crmDelivered,
         adminEmail: adminEmailDelivered,
         customerEmail: customerEmailDelivered,
       },

@@ -107,15 +107,14 @@ alter default privileges in schema swisscompact grant all on tables to service_r
 | `OPENAI_ASSISTANT_TTS_MODEL` | speech | optional, Default `gpt-4o-mini-tts` |
 | `OPENAI_ASSISTANT_VOICE` | speech, realtime | optional, Default `alloy` |
 | `OPENAI_ASSISTANT_REALTIME_MODEL` | realtime | optional, Default `gpt-realtime-2.1` |
-| `SUPABASE_URL` | lead | 503 — `https://dmqgitvcpxtxjxotlrja.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | lead | 503 — aus Supabase Dashboard kopieren, nie in Chat/Screenshot teilen |
+| `SUPABASE_URL` | CRM-Speicherung | Optional, wenn Resend konfiguriert ist — `https://dmqgitvcpxtxjxotlrja.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | CRM-Speicherung | Optional, wenn Resend konfiguriert ist — aus Supabase Dashboard kopieren, nie in Chat/Screenshot teilen |
 | `RESEND_API_KEY` | E-Mail-Benachrichtigung | Optional — ohne Key oder bei einem Mailfehler wird die Anfrage weiterhin im CRM gespeichert und im Frontend bestätigt |
 | `SITE_URL` | alle vier (Origin-Check) | optional |
 
-Die CRM-Übergabe funktioniert unabhängig von Resend. Solange `RESEND_API_KEY`
-fehlt oder die Domain-Verifizierung noch nicht abgeschlossen ist, wird die
-Anfrage im CRM gespeichert und im Frontend bestätigt; lediglich die interne
-Benachrichtigung und die Kundenbestätigung per E-Mail entfallen.
+CRM und E-Mail sind zwei unabhängige Zustellwege. Sobald mindestens einer davon
+die Anfrage erfolgreich übernimmt, wird sie im Frontend bestätigt. Für den
+Produktivbetrieb sollten langfristig beide Wege konfiguriert sein.
 
 ## Lokal testen
 
