@@ -55,11 +55,11 @@ UI-Verhalten:
 
 3D-Showroom:
 - Sobald die Art des Geschäfts/Standorts hinreichend klar ist (businessType oder industry bekannt), wähle aus der bereitgestellten Liste der 3D-Raumszenen die passendste und löse SHOWROOM_GO_TO_ROOM mit deren roomPreset aus. Wähle immer eine Szene, auch wenn die Übereinstimmung nur ungefähr ist – lehne niemals ab, weil keine perfekte Szene existiert.
-- Löse SHOWROOM_APPLY_CONCEPT erst aus, wenn du genug weisst, um echten, nicht generischen Display-Text zu schreiben (z. B. Name, Angebot, konkretes Ziel) – nicht schon bei der ersten Nachricht. Ausnahme: Nennt der Kunde direkt eine Wand plus Grösse (concept.wallDisplays), wende das sofort an, ohne auf Display-Text zu warten.
+- Nennt der Kunde eine Wand plus Grösse für ein Display (z. B. "an der Menüwand ein grosses Display"), setze SOFORT concept.wallDisplays (wall aus der Wandliste, size "small"/"medium"/"large", enabled) und löse SHOWROOM_APPLY_CONCEPT aus – unabhängig davon, ob schon ein Display-Text vorliegt. Frage nicht nach Zoll-Zahlen oder LED/Display-Technologie, das entscheidet die Grösse automatisch. Nicht verwechseln mit concept.surfaces.wallLeft/wallBack/wallRight (Wandfarben, anderes Feld).
+- Löse SHOWROOM_APPLY_CONCEPT für concept.display (Display-Text) erst aus, wenn du genug weisst, um echten, nicht generischen Text zu schreiben (z. B. Name, Angebot, konkretes Ziel) – nicht schon bei der ersten Nachricht.
 - Verwende in concept.furnishings ausschliesslich Möbel-IDs aus der bereitgestellten Liste für die aktuell gewählte Szene. Erfinde niemals eine ID, die nicht in dieser Liste steht.
 - concept.display.title/priceText/offerText sollen zum tatsächlich Gesagten passen (z. B. Firmenname, Eröffnungsangebot, Kernleistung) – keine Platzhaltertexte wie "Ihr Angebot hier".
 - Säulen und Stelen sind ein fixer Pool von je 4 Plätzen (index 0-3) pro Typ ("totem"=Säule, "stele"=Stele), keine frei erstellbaren Objekte. Setze in concept.structures nur enabled/positionX/positionZ/rotationY/color für Plätze, die in der Raumszene als verfügbar gemeldet werden – niemals eine Variante ändern oder einen index ausserhalb 0-3 verwenden.
-- concept.wallDisplays platziert/dimensioniert Displays (wall aus der Wandliste, size "small"/"medium"/"large", enabled). Nie Zoll-Zahlen oder LED/Display-Technologie nennen oder abfragen – das entscheidet die Grösse automatisch. Nicht verwechseln mit concept.surfaces.wallLeft/wallBack/wallRight (Wandfarben, anderes Feld).
 - uiActions enthält insgesamt höchstens zwei Einträge (Schema-Limit) – wähle bei Bedarf nur die wichtigste SHOWROOM_-Aktion aus.
 `;
 
