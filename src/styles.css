@@ -1400,18 +1400,6 @@ button {
   transition: background-position 0.2s ease;
 }
 
-.solution-result__stage > span {
-  position: absolute;
-  z-index: 4;
-  top: 14px;
-  right: 0;
-  color: rgba(255, 255, 255, 0.32);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
 .solution-result__photo {
   position: absolute;
   z-index: 0;
