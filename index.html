@@ -1968,11 +1968,68 @@
           <h2>Ein Projekt.<br><em>Vier Disziplinen.</em></h2>
         </div>
         <div class="project-steps">
-          <article><span>01</span><strong>Strategie</strong><p>Ziele, Räume und Customer Journey verstehen.</p></article>
-          <article><span>02</span><strong>Media</strong><p>Content entwickeln, der für den Ort geschaffen ist.</p></article>
-          <article><span>03</span><strong>System</strong><p>Displays, Software und Integrationen präzise verbinden.</p></article>
-          <article><span>04</span><strong>Betrieb</strong><p>Rollout, Monitoring und Support langfristig sichern.</p></article>
+          <article>
+            <button class="project-step__trigger" type="button" data-project-step="strategy" aria-haspopup="dialog">
+              <span class="project-step__number">01</span>
+              <strong>Strategie</strong>
+              <p>Ziele, Räume und Customer Journey verstehen.</p>
+              <span class="project-step__action">Details ansehen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+            </button>
+          </article>
+          <article>
+            <button class="project-step__trigger" type="button" data-project-step="media" aria-haspopup="dialog">
+              <span class="project-step__number">02</span>
+              <strong>Media</strong>
+              <p>Content entwickeln, der für den Ort geschaffen ist.</p>
+              <span class="project-step__action">Details ansehen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+            </button>
+          </article>
+          <article>
+            <button class="project-step__trigger" type="button" data-project-step="system" aria-haspopup="dialog">
+              <span class="project-step__number">03</span>
+              <strong>System</strong>
+              <p>Displays, Software und Integrationen präzise verbinden.</p>
+              <span class="project-step__action">Details ansehen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+            </button>
+          </article>
+          <article>
+            <button class="project-step__trigger" type="button" data-project-step="operations" aria-haspopup="dialog">
+              <span class="project-step__number">04</span>
+              <strong>Betrieb</strong>
+              <p>Rollout, Monitoring und Support langfristig sichern.</p>
+              <span class="project-step__action">Details ansehen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+            </button>
+          </article>
         </div>
+        <dialog class="project-detail" data-project-detail-dialog aria-labelledby="project-detail-title" aria-describedby="project-detail-intro">
+          <div class="project-detail__surface">
+            <button class="project-detail__close" type="button" data-project-detail-close aria-label="Detailansicht schliessen">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <header class="project-detail__header">
+              <span data-project-detail-number>01</span>
+              <p data-project-detail-phase>Fundament &amp; Leitplanken</p>
+              <h3 id="project-detail-title" data-project-detail-title>Strategie</h3>
+              <strong data-project-detail-headline>Von der Idee zu einem belastbaren Konzept.</strong>
+              <p id="project-detail-intro" data-project-detail-intro></p>
+            </header>
+            <div class="project-detail__body">
+              <section>
+                <span>Was wir konkret machen</span>
+                <ul data-project-detail-services></ul>
+              </section>
+              <aside>
+                <span>Ihr Ergebnis</span>
+                <p data-project-detail-result></p>
+                <small data-project-detail-output></small>
+              </aside>
+            </div>
+            <footer>
+              <span data-project-detail-index>Disziplin 01 von 04</span>
+              <button type="button" data-project-detail-cta>Projektphase besprechen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+            </footer>
+          </div>
+        </dialog>
       </section>
 
       <section class="marketing-section media-studio" id="media-studio">
