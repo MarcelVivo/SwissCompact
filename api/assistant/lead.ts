@@ -7,6 +7,30 @@ export const config = { runtime: "nodejs", maxDuration: 30 };
 
 type ConversationMessage = { role: "user" | "assistant"; content: string };
 
+export async function GET(): Promise<Response> {
+  const supabase = getAssistantSupabaseClient();
+  const emailConfigured = Boolean(process.env.RESEND_API_KEY);
+  if (!supabase) {
+    return json(
+      { ok: false, crm: "not-configured", email: emailConfigured ? "configured" : "not-configured" },
+      { status: 503 },
+    );
+  }
+
+  const { error } = await supabase
+    .from("kontaktanfragen")
+    .select("id", { count: "exact", head: true });
+  if (error) {
+    console.error("assistant/lead health: CRM unavailable", error.message);
+    return json(
+      { ok: false, crm: "unavailable", email: emailConfigured ? "configured" : "not-configured" },
+      { status: 503 },
+    );
+  }
+
+  return json({ ok: true, crm: "ready", email: emailConfigured ? "configured" : "not-configured" });
+}
+
 function text(value: unknown, max = 500) {
   if (typeof value !== "string") return "";
   return value.replace(/\s+/g, " ").trim().slice(0, max);
