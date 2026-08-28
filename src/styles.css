@@ -16356,15 +16356,24 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
 }
 
 .showroom-funnel__panel.is-reveal-step .showroom-funnel__body {
+  /* __body is flex:1 1 auto by default, filling the panel's entire
+     remaining height — without overriding that here, the card background
+     below stretches to that same full height instead of hugging its own
+     (much shorter) content. flex:none + margin-top:auto makes it size to
+     content and float to the bottom of the panel's column layout, the
+     same trick the original reveal-only badge used before it was folded
+     into __body directly. */
+  flex: none;
+  margin-top: auto;
   max-width: 560px;
   width: calc(100% - 32px);
+  max-height: calc(100% - 80px);
   margin-bottom: 40px;
   padding: 22px 26px 26px;
   border-radius: 28px;
   background: rgba(6, 6, 7, 0.78);
   backdrop-filter: blur(14px);
   border: 1px solid var(--showroom-border);
-  justify-content: flex-end;
   animation: showroom-funnel-reveal-in 0.5s ease-out;
 }
 

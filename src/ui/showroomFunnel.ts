@@ -393,7 +393,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     });
   }
 
-  function openImageGenerationModal(description: string) {
+  function openImageGenerationModal(description: string, onApplied?: () => void) {
     if (activeImageModal) return;
 
     const overlay = document.createElement("div");
@@ -434,6 +434,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
         state.generatedImage = dataUrl;
         pushCompositionToDisplay();
         closeModal();
+        onApplied?.();
       });
       const dismissButton = document.createElement("button");
       dismissButton.type = "button";
@@ -518,71 +519,106 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
   }
 
   function renderContent() {
-    const heading = document.createElement("h3");
-    heading.textContent = "Was zeigt dein Business auf dem Display?";
-    const hint = document.createElement("p");
-    hint.textContent = "Kurz beschreiben — wir machen daraus einen Vorschlag für Text und Bild.";
-    body.append(heading, hint, backLink());
+    // The card itself is tall enough (heading, textarea, two buttons,
+    // status, "Weiter") to cover most of the room while filling it in —
+    // acceptable while the visitor is still typing, but not once the
+    // result is on the display: at that point the whole point is to see
+    // it, so the card collapses to a minimal confirmation strip that gets
+    // out of the way. Re-opens on "Inhalt bearbeiten" for another round.
+    let collapsed = false;
 
-    const textarea = document.createElement("textarea");
-    textarea.className = "showroom-funnel__textarea";
-    textarea.rows = 3;
-    textarea.maxLength = 400;
-    textarea.placeholder = "z. B. Frisches Sauerteigbrot, täglich ab 7 Uhr";
-    textarea.value = state.description;
-    textarea.addEventListener("input", () => {
-      state.description = textarea.value;
-    });
-    body.append(textarea);
+    function draw() {
+      body.replaceChildren();
 
-    const actions = document.createElement("div");
-    actions.className = "showroom-funnel__actions";
-
-    const status = document.createElement("p");
-    status.className = "showroom-funnel__status";
-
-    const textButton = primaryButton("Text vorschlagen", async () => {
-      const description = textarea.value.trim();
-      if (!description) {
-        status.textContent = "Bitte zuerst kurz beschreiben, worum es geht.";
-        return;
-      }
-      setBusy(true);
-      status.textContent = "Text wird erstellt …";
-      textButton.disabled = true;
-      try {
-        const response = await fetch("/api/wizard-copy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ description, businessType: state.presetLabel, roomPreset: state.preset }),
+      if (collapsed) {
+        const heading = document.createElement("h3");
+        heading.textContent = "Auf dem Display sichtbar";
+        const hint = document.createElement("p");
+        hint.textContent = "Schau dir das Ergebnis direkt im Raum an — oder passe es nochmal an.";
+        const editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.className = "showroom-funnel__back";
+        editButton.textContent = "← Inhalt bearbeiten";
+        editButton.addEventListener("click", () => {
+          collapsed = false;
+          draw();
         });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || "Fehler");
-        state.generatedTitle = payload.title;
-        state.generatedOffer = payload.offerText;
-        state.generatedPrice = payload.priceText ?? undefined;
-        pushCompositionToDisplay();
-        status.textContent = "Text wurde auf dem Display eingesetzt.";
-      } catch {
-        status.textContent = "Textvorschlag hat gerade nicht geklappt — du kannst es nochmal versuchen.";
-      } finally {
-        textButton.disabled = false;
-        setBusy(false);
-      }
-    });
-
-    const imageButton = primaryButton("Bild dazu erstellen", () => {
-      if (activeImageModal) return;
-      const description = textarea.value.trim();
-      if (!description) {
-        status.textContent = "Bitte zuerst kurz beschreiben, worum es geht.";
+        body.append(heading, hint, editButton, primaryButton("Weiter", next));
         return;
       }
-      openImageGenerationModal(description);
-    });
 
-    actions.append(textButton, imageButton);
-    body.append(actions, status, primaryButton("Weiter", next));
+      const heading = document.createElement("h3");
+      heading.textContent = "Was zeigt dein Business auf dem Display?";
+      const hint = document.createElement("p");
+      hint.textContent = "Kurz beschreiben — wir machen daraus einen Vorschlag für Text und Bild.";
+      body.append(heading, hint, backLink());
+
+      const textarea = document.createElement("textarea");
+      textarea.className = "showroom-funnel__textarea";
+      textarea.rows = 3;
+      textarea.maxLength = 400;
+      textarea.placeholder = "z. B. Frisches Sauerteigbrot, täglich ab 7 Uhr";
+      textarea.value = state.description;
+      textarea.addEventListener("input", () => {
+        state.description = textarea.value;
+      });
+      body.append(textarea);
+
+      const actions = document.createElement("div");
+      actions.className = "showroom-funnel__actions";
+
+      const status = document.createElement("p");
+      status.className = "showroom-funnel__status";
+
+      const textButton = primaryButton("Text vorschlagen", async () => {
+        const description = textarea.value.trim();
+        if (!description) {
+          status.textContent = "Bitte zuerst kurz beschreiben, worum es geht.";
+          return;
+        }
+        setBusy(true);
+        status.textContent = "Text wird erstellt …";
+        textButton.disabled = true;
+        try {
+          const response = await fetch("/api/wizard-copy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ description, businessType: state.presetLabel, roomPreset: state.preset }),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload?.error || "Fehler");
+          state.generatedTitle = payload.title;
+          state.generatedOffer = payload.offerText;
+          state.generatedPrice = payload.priceText ?? undefined;
+          pushCompositionToDisplay();
+          collapsed = true;
+          draw();
+        } catch {
+          status.textContent = "Textvorschlag hat gerade nicht geklappt — du kannst es nochmal versuchen.";
+        } finally {
+          textButton.disabled = false;
+          setBusy(false);
+        }
+      });
+
+      const imageButton = primaryButton("Bild dazu erstellen", () => {
+        if (activeImageModal) return;
+        const description = textarea.value.trim();
+        if (!description) {
+          status.textContent = "Bitte zuerst kurz beschreiben, worum es geht.";
+          return;
+        }
+        openImageGenerationModal(description, () => {
+          collapsed = true;
+          draw();
+        });
+      });
+
+      actions.append(textButton, imageButton);
+      body.append(actions, status, primaryButton("Weiter", next));
+    }
+
+    draw();
   }
 
   function renderNetwork() {
