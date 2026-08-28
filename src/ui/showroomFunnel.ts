@@ -384,17 +384,126 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     });
   }
 
+  function openImageGenerationModal(description: string) {
+    const overlay = document.createElement("div");
+    overlay.className = "showroom-funnel__image-modal-overlay";
+    const dialog = document.createElement("div");
+    dialog.className = "showroom-funnel__image-modal";
+    overlay.append(dialog);
+    panel.append(overlay);
+
+    const closeModal = () => overlay.remove();
+
+    function renderGenerating() {
+      dialog.replaceChildren();
+      const spinner = document.createElement("div");
+      spinner.className = "showroom-funnel__spinner";
+      const heading = document.createElement("h4");
+      heading.textContent = "Dein Bild wird erstellt …";
+      const hint = document.createElement("p");
+      hint.textContent = "Das dauert bis zu einer Minute.";
+      dialog.append(spinner, heading, hint);
+    }
+
+    function renderPreview(dataUrl: string) {
+      dialog.replaceChildren();
+      const heading = document.createElement("h4");
+      heading.textContent = "Dein Bild ist fertig";
+      const image = document.createElement("img");
+      image.className = "showroom-funnel__image-preview";
+      image.src = dataUrl;
+      image.alt = "KI-generiertes Bild";
+      const actions = document.createElement("div");
+      actions.className = "showroom-funnel__actions";
+      const useButton = primaryButton("Auf Display übernehmen", () => {
+        state.generatedImage = dataUrl;
+        pushCompositionToDisplay();
+        closeModal();
+      });
+      const dismissButton = document.createElement("button");
+      dismissButton.type = "button";
+      dismissButton.className = "showroom-funnel__back";
+      dismissButton.textContent = "Verwerfen";
+      dismissButton.addEventListener("click", closeModal);
+      actions.append(useButton, dismissButton);
+      dialog.append(heading, image, actions);
+    }
+
+    function renderError(message: string) {
+      dialog.replaceChildren();
+      const heading = document.createElement("h4");
+      heading.textContent = "Das hat gerade nicht geklappt";
+      const hint = document.createElement("p");
+      hint.textContent = message;
+      const actions = document.createElement("div");
+      actions.className = "showroom-funnel__actions";
+      actions.append(
+        primaryButton("Nochmal versuchen", () => {
+          void run();
+        }),
+      );
+      const dismissButton = document.createElement("button");
+      dismissButton.type = "button";
+      dismissButton.className = "showroom-funnel__back";
+      dismissButton.textContent = "Schliessen";
+      dismissButton.addEventListener("click", closeModal);
+      actions.append(dismissButton);
+      dialog.append(heading, hint, actions);
+    }
+
+    async function run() {
+      renderGenerating();
+      try {
+        const response = await fetch("/api/display-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: description, room: state.preset, role: "background", orientation: "landscape" }),
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.dataUrl) throw new Error(payload?.error || "Fehler");
+        renderPreview(payload.dataUrl);
+      } catch {
+        renderError("Bilderstellung ist gerade nicht erreichbar — du kannst es nochmal versuchen.");
+      }
+    }
+
+    void run();
+  }
+
   function setBusy(value: boolean) {
     busy = value;
   }
 
   function renderReveal() {
     panel.classList.add("is-reveal-step");
-    const heading = document.createElement("h3");
-    heading.textContent = `${state.presetLabel ?? "Dein Raum"} — so sieht das live aus.`;
-    const hint = document.createElement("p");
-    hint.textContent = "Schau dich um. Sobald du bereit bist, geht's weiter mit deinen eigenen Inhalten.";
-    body.append(heading, hint, primaryButton("Weiter zu meinen Inhalten", next));
+    // Deliberately minimal — the whole point of this step is that the room
+    // itself is the content, not the panel. A small pill at the very
+    // bottom, not a card that competes with the view for attention.
+    const badge = document.createElement("div");
+    badge.className = "showroom-funnel__reveal-badge";
+    const label = document.createElement("strong");
+    label.textContent = `${state.presetLabel ?? "Dein Raum"} wird aufgebaut …`;
+    const nextButton = primaryButton("Weiter →", next, true);
+    badge.append(label, nextButton);
+    body.append(badge);
+
+    // The 3D scene needs a moment to actually settle after goToRoom() —
+    // gate the "Weiter" button on the showroom's own readiness signal
+    // (data-showroom-ready, the same one the smoke tests already wait on)
+    // instead of guessing a fixed delay, so a slow first load doesn't let
+    // the visitor click through before there's actually a room to see.
+    const showroomRoot = document.querySelector<HTMLElement>("[data-showroom]");
+    let attempts = 0;
+    const poll = window.setInterval(() => {
+      attempts += 1;
+      const ready = showroomRoot?.dataset.showroomReady === "true";
+      if (ready || attempts > 40) {
+        window.clearInterval(poll);
+        if (currentStep() !== "reveal") return;
+        label.textContent = `${state.presetLabel ?? "Dein Raum"} ist fertig`;
+        nextButton.disabled = false;
+      }
+    }, 200);
   }
 
   function renderContent() {
@@ -451,32 +560,13 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
       }
     });
 
-    const imageButton = primaryButton("Bild dazu erstellen", async () => {
+    const imageButton = primaryButton("Bild dazu erstellen", () => {
       const description = textarea.value.trim();
       if (!description) {
         status.textContent = "Bitte zuerst kurz beschreiben, worum es geht.";
         return;
       }
-      setBusy(true);
-      status.textContent = "Bild wird erstellt … das dauert bis zu einer Minute.";
-      imageButton.disabled = true;
-      try {
-        const response = await fetch("/api/display-images", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: description, room: state.preset, role: "background", orientation: "landscape" }),
-        });
-        const payload = await response.json();
-        if (!response.ok || !payload.dataUrl) throw new Error(payload?.error || "Fehler");
-        state.generatedImage = payload.dataUrl;
-        pushCompositionToDisplay();
-        status.textContent = "Bild wurde auf dem Display eingesetzt.";
-      } catch {
-        status.textContent = "Bilderstellung hat gerade nicht geklappt — du kannst es nochmal versuchen.";
-      } finally {
-        imageButton.disabled = false;
-        setBusy(false);
-      }
+      openImageGenerationModal(description);
     });
 
     actions.append(textButton, imageButton);
