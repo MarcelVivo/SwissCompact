@@ -8,6 +8,7 @@ interface SolutionCopy {
   title: string;
   description: string;
   tags: string[];
+  image: string;
 }
 
 const solutions: Record<string, SolutionCopy> = {
@@ -18,6 +19,7 @@ const solutions: Record<string, SolutionCopy> = {
     description:
       "Digitale Verkaufsflächen verbinden Kampagnen, Produkte und Beratung zu einem durchgängigen Erlebnis am Point of Sale.",
     tags: ["Digital Signage", "Interactive", "Retail Media"],
+    image: "/images/solutions/sell.webp",
   },
   informieren: {
     number: "02",
@@ -26,6 +28,7 @@ const solutions: Record<string, SolutionCopy> = {
     description:
       "Zentral gesteuerte Inhalte erreichen Gäste, Mitarbeitende und Kundschaft aktuell, verständlich und standortgenau.",
     tags: ["Content Management", "Live Data", "Multi-Site"],
+    image: "/images/solutions/inform.webp",
   },
   orientieren: {
     number: "03",
@@ -34,6 +37,7 @@ const solutions: Record<string, SolutionCopy> = {
     description:
       "Digitale Orientierung verbindet Wegführung, Serviceinformationen und barrierearme Interaktion in einem klaren System.",
     tags: ["Wayfinding", "Touch", "Accessibility"],
+    image: "/images/solutions/orient.webp",
   },
   begeistern: {
     number: "04",
@@ -42,6 +46,7 @@ const solutions: Record<string, SolutionCopy> = {
     description:
       "LED, Bewegtbild und interaktive Medien verschmelzen mit der Architektur und machen Marken räumlich erlebbar.",
     tags: ["LED Walls", "Motion Design", "Interactive"],
+    image: "/images/solutions/inspire.webp",
   },
   monetarisieren: {
     number: "05",
@@ -50,6 +55,7 @@ const solutions: Record<string, SolutionCopy> = {
     description:
       "Planbare Werbeflächen, flexible Kampagnen und relevante Daten schaffen ein skalierbares Angebot für Marken und Partner.",
     tags: ["Campaigns", "Scheduling", "Analytics"],
+    image: "/images/solutions/monetize.webp",
   },
 };
 
@@ -73,6 +79,11 @@ export function mountSiteNavigation(): SiteNavigation {
     ...document.querySelectorAll<HTMLButtonElement>("[data-solution-goal]"),
   ];
   const solutionResult = document.querySelector<HTMLElement>("[data-solution-result]");
+  const solutionImagePreloads = Object.values(solutions).map(({ image }) => {
+    const preload = new Image();
+    preload.src = image;
+    return preload;
+  });
   const timers = new Set<number>();
   const cleanupListeners: Array<() => void> = [];
   let menuOpen = false;
@@ -208,10 +219,21 @@ export function mountSiteNavigation(): SiteNavigation {
         "[data-solution-description]",
       );
       const tags = solutionResult.querySelector<HTMLElement>("[data-solution-tags]");
+      const photo = solutionResult.querySelector<HTMLImageElement>("[data-solution-photo]");
       if (number) number.textContent = solution.number;
       if (label) label.textContent = solution.label;
       if (title) title.textContent = solution.title;
       if (description) description.textContent = solution.description;
+      if (photo && photo.getAttribute("src") !== solution.image) {
+        photo.src = solution.image;
+        photo.animate(
+          [
+            { opacity: 0.2, filter: "saturate(0.45) brightness(0.72)" },
+            { opacity: 1, filter: "saturate(0.9) brightness(0.82)" },
+          ],
+          { duration: 420, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
+        );
+      }
       if (tags) {
         tags.replaceChildren(
           ...solution.tags.map((tag) => {
@@ -263,6 +285,7 @@ export function mountSiteNavigation(): SiteNavigation {
       destroyed = true;
       timers.forEach((timer) => window.clearTimeout(timer));
       cleanupListeners.forEach((cleanup) => cleanup());
+      solutionImagePreloads.forEach((image) => image.removeAttribute("src"));
     },
   };
 }
