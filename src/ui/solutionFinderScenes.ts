@@ -34,6 +34,35 @@ function smoothstep(value: number): number {
   return clamped * clamped * (3 - 2 * clamped);
 }
 
+interface ImageRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function projectCoverRect(
+  stageWidth: number,
+  stageHeight: number,
+  imageWidth: number,
+  imageHeight: number,
+  positionX: number,
+  positionY: number,
+  rect: ImageRect,
+): ImageRect {
+  const scale = Math.max(stageWidth / imageWidth, stageHeight / imageHeight);
+  const renderedWidth = imageWidth * scale;
+  const renderedHeight = imageHeight * scale;
+  const offsetX = (stageWidth - renderedWidth) * positionX;
+  const offsetY = (stageHeight - renderedHeight) * positionY;
+  return {
+    x: offsetX + rect.x * scale,
+    y: offsetY + rect.y * scale,
+    width: rect.width * scale,
+    height: rect.height * scale,
+  };
+}
+
 function noise(x: number, y: number): number {
   const value = Math.sin(x * 12.9898 + y * 78.233) * 43_758.5453;
   return value - Math.floor(value);
@@ -85,42 +114,73 @@ function drawSell(
   time: number,
   pointerX: number,
 ): void {
-  const floorY = height * 0.79;
-  const productX = width * mix(0.5, 0.55, pointerX);
-  screen(context, width * 0.08, height * 0.19, width * 0.2, height * 0.38, true);
-  context.fillStyle = "rgba(255, 255, 255, 0.035)";
-  context.fillRect(productX - 42, floorY - 24, 84, 24);
-  context.strokeStyle = "rgba(255, 255, 255, 0.28)";
-  context.strokeRect(productX - 23, floorY - 72, 46, 48);
-  context.fillStyle = RED;
-  context.fillRect(productX - 13, floorY - 61, 26, 5);
-  context.fillStyle = "rgba(255, 255, 255, 0.52)";
-  context.fillRect(productX - 13, floorY - 49, 18, 2);
+  const display = projectCoverRect(
+    width,
+    height,
+    1200,
+    600,
+    0.58,
+    0.52,
+    { x: 635, y: 10, width: 375, height: 565 },
+  );
+  const pulse = 0.5 + Math.sin(time * 2.1) * 0.5;
+  const handX = display.x + display.width * 0.28;
+  const handY = display.y + display.height * 0.58;
+  const glow = context.createRadialGradient(
+    handX,
+    handY,
+    0,
+    handX,
+    handY,
+    Math.max(36, display.width * (0.22 + pointerX * 0.08)),
+  );
+  glow.addColorStop(0, `rgba(255, 49, 86, ${0.34 + pulse * 0.24})`);
+  glow.addColorStop(0.42, "rgba(211, 10, 47, 0.14)");
+  glow.addColorStop(1, "rgba(211, 10, 47, 0)");
+  context.fillStyle = glow;
+  context.fillRect(
+    display.x - display.width * 0.2,
+    display.y,
+    display.width * 1.2,
+    display.height,
+  );
 
-  const checkoutX = width * 0.88;
-  context.strokeStyle = WHITE;
-  context.strokeRect(checkoutX - 18, floorY - 38, 36, 38);
-  context.fillStyle = RED;
-  context.fillRect(checkoutX - 8, floorY - 29, 16, 4);
-  const path = [
-    [width * 0.28, height * 0.38],
-    [productX - 28, floorY - 50],
-    [productX + 28, floorY - 50],
-    [checkoutX - 18, floorY - 20],
-  ] as Array<[number, number]>;
-  line(context, path, "rgba(211, 10, 47, 0.66)", 1.2, [5, 5]);
-  const travel = (time * 0.28) % 1;
-  const segment = Math.min(path.length - 2, Math.floor(travel * (path.length - 1)));
-  const local = travel * (path.length - 1) - segment;
-  const pulseX = mix(path[segment][0], path[segment + 1][0], local);
-  const pulseY = mix(path[segment][1], path[segment + 1][1], local);
-  context.fillStyle = BRIGHT_RED;
-  context.fillRect(pulseX - 3, pulseY - 3, 6, 6);
+  context.save();
+  context.beginPath();
+  context.rect(display.x, display.y, display.width, display.height);
+  context.clip();
+  const scanProgress = (time * 0.16) % 1;
+  const scanY = display.y + display.height * scanProgress;
+  const scan = context.createLinearGradient(0, scanY - 28, 0, scanY + 28);
+  scan.addColorStop(0, "rgba(255, 49, 86, 0)");
+  scan.addColorStop(0.5, "rgba(255, 49, 86, 0.34)");
+  scan.addColorStop(1, "rgba(255, 49, 86, 0)");
+  context.fillStyle = scan;
+  context.fillRect(display.x, scanY - 28, display.width, 56);
 
-  const ring = 30 + Math.sin(time * 1.8) * 5;
-  context.strokeStyle = "rgba(211, 10, 47, 0.28)";
-  context.strokeRect(productX - ring, floorY - 48 - ring, ring * 2, ring * 2);
-  line(context, [[width * 0.04, floorY], [width * 0.96, floorY]], MUTED);
+  const selections = [
+    [0.3, 0.29],
+    [0.72, 0.26],
+    [0.3, 0.73],
+    [0.72, 0.71],
+  ];
+  const activeSelection = Math.floor((time * 0.42) % selections.length);
+  selections.forEach(([x, y], index) => {
+    const active = index === activeSelection;
+    const size = Math.min(display.width, display.height) * (active ? 0.12 : 0.08);
+    const centerX = display.x + display.width * x;
+    const centerY = display.y + display.height * y;
+    context.strokeStyle = active
+      ? `rgba(255, 49, 86, ${0.66 + pulse * 0.28})`
+      : "rgba(255, 255, 255, 0.18)";
+    context.lineWidth = active ? 1.6 : 1;
+    context.strokeRect(centerX - size / 2, centerY - size / 2, size, size);
+  });
+  context.restore();
+
+  context.strokeStyle = `rgba(211, 10, 47, ${0.34 + pulse * 0.3})`;
+  context.lineWidth = 1.5;
+  context.strokeRect(display.x, display.y, display.width, display.height);
 }
 
 function drawInform(
@@ -220,13 +280,6 @@ function drawInspire(
   pointerX: number,
   pointerY: number,
 ): void {
-  const back = {
-    left: width * 0.29,
-    right: width * 0.71,
-    top: height * 0.17,
-    bottom: height * 0.66,
-  };
-  const outer = { left: width * 0.05, right: width * 0.95, top: height * 0.08, bottom: height * 0.9 };
   const lightX = width * mix(0.5 + Math.sin(time * 0.3) * 0.06, pointerX, 0.65);
   const lightY = height * mix(0.72, Math.max(0.5, pointerY), 0.45);
   const glow = context.createRadialGradient(lightX, lightY, 0, lightX, lightY, width * 0.35);
@@ -234,21 +287,6 @@ function drawInspire(
   glow.addColorStop(1, "rgba(211, 10, 47, 0)");
   context.fillStyle = glow;
   context.fillRect(0, 0, width, height);
-  context.strokeStyle = "rgba(255, 255, 255, 0.25)";
-  context.strokeRect(back.left, back.top, back.right - back.left, back.bottom - back.top);
-  line(context, [[outer.left, outer.top], [back.left, back.top]], MUTED);
-  line(context, [[outer.right, outer.top], [back.right, back.top]], MUTED);
-  line(context, [[outer.left, outer.bottom], [back.left, back.bottom]], MUTED);
-  line(context, [[outer.right, outer.bottom], [back.right, back.bottom]], MUTED);
-  screen(context, width * 0.42, height * 0.31, width * 0.16, height * 0.2, true);
-  context.fillStyle = "rgba(211, 10, 47, 0.11)";
-  context.beginPath();
-  context.moveTo(width * 0.44, height * 0.51);
-  context.lineTo(width * 0.56, height * 0.51);
-  context.lineTo(Math.min(outer.right, lightX + 56), lightY);
-  context.lineTo(Math.max(outer.left, lightX - 56), lightY);
-  context.closePath();
-  context.fill();
 }
 
 function drawMonetize(
@@ -257,48 +295,71 @@ function drawMonetize(
   height: number,
   time: number,
   pointerX: number,
-  pointerY: number,
 ): void {
-  const columns = 3;
-  const rows = 2;
-  const gap = 10;
-  const left = width * 0.09;
-  const top = height * 0.12;
-  const gridWidth = width * 0.58;
-  const slotWidth = (gridWidth - gap * (columns - 1)) / columns;
-  const slotHeight = height * 0.23;
-  const selectedColumn = Math.min(columns - 1, Math.floor(pointerX * columns));
-  const selectedRow = Math.min(rows - 1, Math.floor(pointerY * rows));
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      const index = row * columns + column;
-      const active = column === selectedColumn && row === selectedRow;
-      const x = left + column * (slotWidth + gap);
-      const y = top + row * (slotHeight + gap);
-      screen(context, x, y, slotWidth, slotHeight, active);
-      if ((time * 0.6 + index * 0.17) % 1 > 0.68) {
-        context.fillStyle = "rgba(211, 10, 47, 0.42)";
-        context.fillRect(x, y, slotWidth, slotHeight);
-      }
-    }
-  }
-  const chartLeft = width * 0.74;
-  const chartBottom = height * 0.7;
-  line(context, [[chartLeft, height * 0.19], [chartLeft, chartBottom], [width * 0.95, chartBottom]], MUTED);
-  line(
-    context,
-    [
-      [chartLeft + 6, chartBottom - 8],
-      [chartLeft + 24, chartBottom - 22],
-      [chartLeft + 42, chartBottom - 17],
-      [chartLeft + 62, chartBottom - 51],
-      [width * 0.93, chartBottom - 64],
-    ],
-    RED,
-    2,
+  const sourceScreens: ImageRect[] = [
+    { x: 28, y: 32, width: 242, height: 514 },
+    { x: 283, y: 148, width: 236, height: 112 },
+    { x: 550, y: 255, width: 88, height: 238 },
+    { x: 895, y: 220, width: 278, height: 224 },
+  ];
+  const screens = sourceScreens.map((rect) => projectCoverRect(
+    width,
+    height,
+    1200,
+    595,
+    0.5,
+    0.5,
+    rect,
+  ));
+  const selected = Math.min(
+    screens.length - 1,
+    Math.floor(clamp01(pointerX) * screens.length),
   );
-  context.fillStyle = RED;
-  context.fillRect(width * 0.91, chartBottom - 70, 7, 7);
+
+  screens.forEach((display, index) => {
+    const phase = (time * 0.34 + index * 0.23) % 1;
+    const pulse = Math.sin(phase * Math.PI);
+    const active = index === selected;
+    const centerX = display.x + display.width / 2;
+    const centerY = display.y + display.height / 2;
+    const radius = Math.max(28, Math.min(display.width, display.height) * 0.7);
+    const glow = context.createRadialGradient(
+      centerX,
+      centerY,
+      0,
+      centerX,
+      centerY,
+      radius,
+    );
+    glow.addColorStop(0, `rgba(255, 49, 86, ${(active ? 0.2 : 0.08) + pulse * 0.12})`);
+    glow.addColorStop(1, "rgba(211, 10, 47, 0)");
+    context.fillStyle = glow;
+    context.fillRect(
+      centerX - radius,
+      centerY - radius,
+      radius * 2,
+      radius * 2,
+    );
+
+    context.save();
+    context.beginPath();
+    context.rect(display.x, display.y, display.width, display.height);
+    context.clip();
+    const sweepX = display.x + display.width * phase;
+    const sweep = context.createLinearGradient(sweepX - 22, 0, sweepX + 22, 0);
+    sweep.addColorStop(0, "rgba(255, 255, 255, 0)");
+    sweep.addColorStop(0.5, `rgba(255, 255, 255, ${active ? 0.26 : 0.13})`);
+    sweep.addColorStop(1, "rgba(255, 255, 255, 0)");
+    context.fillStyle = sweep;
+    context.fillRect(sweepX - 22, display.y, 44, display.height);
+    context.restore();
+
+    context.strokeStyle = active
+      ? `rgba(255, 49, 86, ${0.62 + pulse * 0.28})`
+      : `rgba(211, 10, 47, ${0.18 + pulse * 0.2})`;
+    context.lineWidth = active ? 1.7 : 1;
+    context.strokeRect(display.x, display.y, display.width, display.height);
+  });
 }
 
 function drawScene(
@@ -317,7 +378,7 @@ function drawScene(
   else if (key === "begeistern") {
     drawInspire(context, width, height, time, pointerX, pointerY);
   } else {
-    drawMonetize(context, width, height, time, pointerX, pointerY);
+    drawMonetize(context, width, height, time, pointerX);
   }
 }
 
