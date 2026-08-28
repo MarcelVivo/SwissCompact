@@ -72,6 +72,11 @@ export async function POST(request: Request): Promise<Response> {
         model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
         prompt: scenePrompt,
         size,
+        // Was previously unset (defaults to OpenAI's most expensive tier at
+        // this size) — "medium" is a deliberate cost control for a live
+        // display preview, not a technical necessity. Overridable via env
+        // var without a code change if the tradeoff should shift later.
+        quality: process.env.OPENAI_IMAGE_QUALITY || "medium",
         n: 1,
       }),
       signal: AbortSignal.timeout(110_000),
