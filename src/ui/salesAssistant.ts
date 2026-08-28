@@ -129,65 +129,145 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     document.querySelector<HTMLButtonElement>("[data-showroom-funnel-trigger]")?.click();
   }
 
-  // A fixed, hand-authored decision menu — not AI-generated — for the one
-  // moment where nothing is known yet about the visitor. Routes toward the
-  // 3D room configurator only where a physical space/display setup is
-  // actually the point; the other paths skip straight to (or stay clear
-  // of) the contact form rather than forcing a detour through the room
-  // builder when it wouldn't make sense.
+  // A fixed, hand-authored decision funnel — not AI-generated — for the
+  // moment nothing is known yet about the visitor. Two clicks (topic, then
+  // intent) instead of one, so a visitor gets to a relevant recommendation
+  // without typing: the 3D room configurator only where a physical
+  // space/display setup is actually the point, the contact form when it
+  // isn't, and the normal AI chat — pre-armed with the chosen topic — for
+  // anyone who wants to talk it through first. Reuses the exact same
+  // theme list the 3D wizard's own first step uses (showroom.getRoomManifest()),
+  // so the two funnels stay in sync automatically.
   function renderStartMenu(): HTMLElement {
     const menu = document.createElement("div");
     menu.className = "sales-assistant__start-menu";
 
-    const intro = document.createElement("p");
-    intro.className = "sales-assistant__start-intro";
-    intro.textContent = "Womit dürfen wir starten?";
-    menu.append(intro);
+    type Phase = { kind: "topic" } | { kind: "intent"; themeLabel: string };
+    let phase: Phase = { kind: "topic" };
 
-    const options: Array<{ icon: string; label: string; hint: string; action: () => void }> = [
-      {
-        icon: "🏠",
-        label: "Meinen Raum mit Displays gestalten",
-        hint: "In wenigen Klicks zum eigenen 3D-Konzept — inklusive Bild und Text fürs Display.",
-        action: openShowroomFunnel,
-      },
-      {
-        icon: "💬",
-        label: "Direkt eine Frage stellen oder Angebot anfragen",
-        hint: "Kein Umweg — kurz Angaben hinterlassen, wir melden uns persönlich.",
-        action: () => renderContactForm(),
-      },
-      {
-        icon: "✨",
-        label: "Erst zeigen, was möglich ist",
-        hint: "Der Assistent erklärt kurz, was zu deinem Vorhaben passt.",
-        action: () => void ask("Ich möchte zuerst einen Überblick, was SwissCompact alles anbietet.", "quick_reply"),
-      },
-    ];
-
-    options.forEach((option) => {
+    function optionButton(icon: string, label: string, hint: string, action: () => void): HTMLButtonElement {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "sales-assistant__start-option";
 
       const iconEl = document.createElement("span");
       iconEl.className = "sales-assistant__start-option-icon";
-      iconEl.textContent = option.icon;
+      iconEl.textContent = icon;
       iconEl.setAttribute("aria-hidden", "true");
 
       const textWrap = document.createElement("span");
       textWrap.className = "sales-assistant__start-option-text";
       const labelEl = document.createElement("strong");
-      labelEl.textContent = option.label;
+      labelEl.textContent = label;
       const hintEl = document.createElement("small");
-      hintEl.textContent = option.hint;
+      hintEl.textContent = hint;
       textWrap.append(labelEl, hintEl);
 
       button.append(iconEl, textWrap);
-      button.addEventListener("click", option.action);
-      menu.append(button);
-    });
+      button.addEventListener("click", action);
+      return button;
+    }
 
+    function draw() {
+      menu.replaceChildren();
+
+      if (phase.kind === "topic") {
+        const intro = document.createElement("p");
+        intro.className = "sales-assistant__start-intro";
+        intro.textContent = "Worum geht es bei dir?";
+        menu.append(intro);
+
+        const manifest = showroom.getRoomManifest();
+        const seen = new Set<string>();
+        const themes: { id: string; label: string }[] = [];
+        manifest.presets.forEach((preset) => {
+          if (seen.has(preset.theme)) return;
+          seen.add(preset.theme);
+          themes.push({ id: preset.theme, label: preset.themeLabel });
+        });
+
+        const chipRow = document.createElement("div");
+        chipRow.className = "sales-assistant__start-chips";
+        themes.forEach((theme) => {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.textContent = theme.label;
+          chip.addEventListener("click", () => {
+            phase = { kind: "intent", themeLabel: theme.label };
+            draw();
+          });
+          chipRow.append(chip);
+        });
+        menu.append(chipRow);
+
+        const orLabel = document.createElement("p");
+        orLabel.className = "sales-assistant__start-intro";
+        orLabel.textContent = "Oder direkt:";
+        menu.append(orLabel);
+
+        menu.append(
+          optionButton(
+            "💬",
+            "Direkt eine Frage stellen oder Angebot anfragen",
+            "Kein Umweg — kurz Angaben hinterlassen, wir melden uns persönlich.",
+            () => renderContactForm(),
+          ),
+          optionButton(
+            "✨",
+            "Ich schau mich erst um",
+            "Der Assistent erklärt kurz, was zu deinem Vorhaben passt.",
+            () => void ask("Ich möchte zuerst einen Überblick, was SwissCompact alles anbietet.", "quick_reply"),
+          ),
+        );
+        return;
+      }
+
+      // Reached only from the branch above returning, so TS can narrow
+      // `phase` here — capture it in a const so closures below keep that
+      // narrowed type instead of re-widening to the full Phase union.
+      const activePhase = phase;
+
+      const backButton = document.createElement("button");
+      backButton.type = "button";
+      backButton.className = "sales-assistant__start-back";
+      backButton.textContent = "← Andere Branche";
+      backButton.addEventListener("click", () => {
+        phase = { kind: "topic" };
+        draw();
+      });
+      menu.append(backButton);
+
+      const intro = document.createElement("p");
+      intro.className = "sales-assistant__start-intro";
+      intro.textContent = `${activePhase.themeLabel} — was passt am besten?`;
+      menu.append(intro);
+
+      menu.append(
+        optionButton(
+          "🏠",
+          "Meinen Raum mit Displays gestalten",
+          "In wenigen Klicks zum eigenen 3D-Konzept — inklusive Bild und Text fürs Display.",
+          openShowroomFunnel,
+        ),
+        optionButton(
+          "💬",
+          "Direkt eine Frage stellen oder Angebot anfragen",
+          "Kein Umweg — kurz Angaben hinterlassen, wir melden uns persönlich.",
+          () => {
+            context = { ...context, industry: activePhase.themeLabel };
+            renderContactForm();
+          },
+        ),
+        optionButton(
+          "✨",
+          `Mehr zu "${activePhase.themeLabel}" erfahren`,
+          "Der Assistent geht direkt auf diesen Bereich ein.",
+          () => void ask(`Ich interessiere mich für den Bereich "${activePhase.themeLabel}". Was empfiehlst du mir?`, "quick_reply"),
+        ),
+      );
+    }
+
+    draw();
     return menu;
   }
 

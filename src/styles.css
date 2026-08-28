@@ -15864,6 +15864,46 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   font-size: 14px;
 }
 
+.sales-assistant__start-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sales-assistant__start-chips button {
+  padding: 9px 16px;
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.23);
+  background: transparent;
+  color: var(--white);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.sales-assistant__start-chips button:hover,
+.sales-assistant__start-chips button:focus-visible {
+  border-color: var(--red);
+  background: rgba(200, 16, 46, 0.12);
+}
+
+.sales-assistant__start-back {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  color: var(--showroom-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sales-assistant__start-back:hover,
+.sales-assistant__start-back:focus-visible {
+  color: var(--white);
+}
+
 .sales-assistant__start-option-text small {
   font-size: 12px;
   color: var(--showroom-text-muted);
