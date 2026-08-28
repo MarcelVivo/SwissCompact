@@ -756,12 +756,13 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     body.append(heading, hint, closeBtn);
   }
 
-  // The room itself is the point from "reveal" onward — keep the panel
-  // mostly transparent through content/network too, not just the initial
-  // reveal, so the visitor can actually see their generated text/image
-  // land on the display instead of it being hidden behind an opaque card
-  // for the rest of the flow.
-  const ROOM_VISIBLE_STEPS: StepId[] = ["reveal", "content", "network"];
+  // Once the room exists (from "reveal" onward), it stays visible for the
+  // rest of the flow, including the final contact form and success
+  // screen — there's no step after reveal where blacking the room out
+  // behind an opaque panel is acceptable. Only the steps before reveal
+  // (hook/theme/roomtype/size/displays/light) stay opaque, since there's
+  // no configured room yet to show.
+  const ROOM_VISIBLE_STEPS: StepId[] = ["reveal", "content", "network", "cta", "success"];
 
   function render() {
     body.replaceChildren();
