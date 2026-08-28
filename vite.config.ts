@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   // Fotoquellen in public/3DPictures bleiben für spätere Raumgestaltungen erhalten,
@@ -10,5 +11,11 @@ export default defineConfig({
     // grossen Dateien sonst sporadisch mit ETIMEDOUT abbrechen.
     copyPublicDir: false,
     chunkSizeWarningLimit: 650,
+    rollupOptions: {
+      input: {
+        website: fileURLToPath(new URL("index.html", import.meta.url)),
+        dashboard: fileURLToPath(new URL("dashboard.html", import.meta.url)),
+      },
+    },
   },
 });

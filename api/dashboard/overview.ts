@@ -1,0 +1,40 @@
+import { authorizeDashboard, isResponse } from "../_lib/dashboard/auth.js";
+import { json } from "../_lib/assistant/security.js";
+
+export const config = { runtime: "nodejs", maxDuration: 15 };
+
+export async function GET(request: Request): Promise<Response> {
+  const authorized = await authorizeDashboard(request);
+  if (isResponse(authorized)) return authorized;
+  const { client, profile } = authorized;
+  const [clients, opportunities, projects, tasks, invoices, founderTransactions, aiJobs, settings, audit] = await Promise.all([
+    client.from("clients").select("id,customer_number,company_name,contact_name,email,lifecycle,created_at").order("created_at", { ascending: false }).limit(12),
+    client.from("opportunities").select("id,title,stage,owner_area,value_chf,probability,next_action,next_action_at,client:clients(company_name)").order("updated_at", { ascending: false }).limit(80),
+    client.from("projects").select("id,order_number,title,status,deposit_received,installation_payment_received,final_payment_received,target_completion,client:clients(company_name)").order("updated_at", { ascending: false }).limit(12),
+    client.from("tasks").select("id,title,responsibility,status,priority,due_at").neq("status", "done").order("due_at", { ascending: true, nullsFirst: false }).limit(20),
+    client.from("invoices").select("id,invoice_number,status,amount,due_on,installment,client:clients(company_name)").order("created_at", { ascending: false }).limit(12),
+    client.from("founder_transactions").select("id,transaction_date,transaction_type,paid_by,received_by,amount_chf,category,description,receipt_path,status").order("transaction_date", { ascending: true }),
+    client.from("ai_jobs").select("id,bot,action,status,estimated_cost_chf,actual_cost_chf,created_at").order("created_at", { ascending: false }).limit(12),
+    client.from("system_settings").select("key,value"),
+    client.from("audit_log").select("id,actor_email,action,entity_type,entity_id,created_at").order("created_at", { ascending: false }).limit(12),
+  ]);
+  const firstError = [clients, opportunities, projects, tasks, invoices, founderTransactions, aiJobs, settings, audit]
+    .find((result) => result.error)?.error;
+  if (firstError) {
+    console.error("dashboard overview:", firstError.message);
+    return json({ error: "Dashboard-Datenmodell ist noch nicht vollständig eingerichtet" }, { status: 503 });
+  }
+  return json({
+    profile,
+    clients: clients.data ?? [],
+    opportunities: opportunities.data ?? [],
+    projects: projects.data ?? [],
+    tasks: tasks.data ?? [],
+    invoices: invoices.data ?? [],
+    founderTransactions: founderTransactions.data ?? [],
+    aiJobs: aiJobs.data ?? [],
+    settings: Object.fromEntries((settings.data ?? []).map((entry) => [entry.key, entry.value])),
+    audit: audit.data ?? [],
+    generatedAt: new Date().toISOString(),
+  });
+}
