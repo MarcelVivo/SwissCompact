@@ -69,6 +69,15 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
   let open = false;
   let stepIndex = 0;
   let busy = false;
+  // Guards against stacking multiple overlays — without this, a second
+  // click on "Bild dazu erstellen" while one generation is still running
+  // (easy to do, since the button doesn't visibly react for a moment)
+  // opens a second independent modal on top of the first. Confirming or
+  // dismissing the top one then just reveals the other one still mid- or
+  // just-finished-generating underneath, which looks exactly like the
+  // image "keeps regenerating instead of applying" and like the dismiss
+  // button "doesn't work".
+  let activeImageModal: HTMLElement | null = null;
 
   const state: {
     theme?: string;
@@ -385,14 +394,20 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
   }
 
   function openImageGenerationModal(description: string) {
+    if (activeImageModal) return;
+
     const overlay = document.createElement("div");
     overlay.className = "showroom-funnel__image-modal-overlay";
+    activeImageModal = overlay;
     const dialog = document.createElement("div");
     dialog.className = "showroom-funnel__image-modal";
     overlay.append(dialog);
     panel.append(overlay);
 
-    const closeModal = () => overlay.remove();
+    const closeModal = () => {
+      overlay.remove();
+      if (activeImageModal === overlay) activeImageModal = null;
+    };
 
     function renderGenerating() {
       dialog.replaceChildren();
@@ -557,6 +572,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     });
 
     const imageButton = primaryButton("Bild dazu erstellen", () => {
+      if (activeImageModal) return;
       const description = textarea.value.trim();
       if (!description) {
         status.textContent = "Bitte zuerst kurz beschreiben, worum es geht.";
