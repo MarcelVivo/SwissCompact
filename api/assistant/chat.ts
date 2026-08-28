@@ -85,7 +85,8 @@ export async function POST(request: Request): Promise<Response> {
   const history = cleanHistory(body.history);
   const currentContext = sanitizeAssistantSalesContext(body.context);
   const validFurnishingIds = currentContext.showroomManifest?.furnishings?.map((item) => item.id) ?? [];
-  const responseSchema = buildAssistantResponseSchema(validFurnishingIds);
+  const validWallIds = currentContext.showroomManifest?.displayWalls?.map((item) => item.wall) ?? [];
+  const responseSchema = buildAssistantResponseSchema(validFurnishingIds, validWallIds);
 
   let response: Response;
   try {
@@ -140,7 +141,7 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  const parsed = parseAssistantModelOutput(parsedJson, validFurnishingIds);
+  const parsed = parseAssistantModelOutput(parsedJson, validFurnishingIds, validWallIds);
   if (!parsed) {
     return json({ ...buildFallbackAssistantResponse(currentContext), degraded: true });
   }

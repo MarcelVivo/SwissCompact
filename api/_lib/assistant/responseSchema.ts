@@ -57,9 +57,17 @@ const contextProperties = {
 // as a static export. An empty validFurnishingIds list (no room selected
 // yet) disables the furnishings array structurally (maxItems 0) instead of
 // emitting an invalid zero-value JSON-schema enum.
-export function buildAssistantResponseSchema(validFurnishingIds: string[]) {
+export function buildAssistantResponseSchema(validFurnishingIds: string[], validWallIds: string[] = []) {
   const hasFurnishings = validFurnishingIds.length > 0;
   const furnishingIdEnum = hasFurnishings ? validFurnishingIds : ["__none__"];
+  // Same reasoning as furnishingIdEnum: without a strict per-request enum
+  // here, the model confuses this wall-position id with the unrelated
+  // surfaces.wallLeft/wallBack/wallRight colour fields it also sees in the
+  // same schema and invents a value like "wallBack" that silently matches
+  // nothing — confirmed live: the model said it had placed a display, but
+  // the room never changed because that wall id doesn't exist.
+  const hasWalls = validWallIds.length > 0;
+  const wallIdEnum = hasWalls ? validWallIds : ["__none__"];
 
   const conceptSchema = {
     type: ["object", "null"],
@@ -122,7 +130,7 @@ export function buildAssistantResponseSchema(validFurnishingIds: string[]) {
         additionalProperties: false,
         required: ["wall", "displayIndex", "title", "priceText", "offerText"],
         properties: {
-          wall: nullableString,
+          wall: { type: ["string", "null"], enum: [...wallIdEnum, null] },
           displayIndex: nullableNumber,
           title: nullableString,
           priceText: nullableString,
@@ -133,13 +141,13 @@ export function buildAssistantResponseSchema(validFurnishingIds: string[]) {
       // deliberately absent: it's derived from size, never asked for.
       wallDisplays: {
         type: "array",
-        maxItems: 8,
+        maxItems: hasWalls ? 8 : 0,
         items: {
           type: "object",
           additionalProperties: false,
           required: ["wall", "enabled", "size"],
           properties: {
-            wall: { type: "string" },
+            wall: { type: "string", enum: wallIdEnum },
             enabled: { type: "boolean" },
             size: { type: ["string", "null"], enum: ["small", "medium", "large", null] },
           },
@@ -266,9 +274,14 @@ function number(value: unknown, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function sanitizeConcept(value: unknown, validFurnishingIds: string[]): AssistantRoomConcept | undefined {
+function sanitizeConcept(
+  value: unknown,
+  validFurnishingIds: string[],
+  validWallIds: string[] = [],
+): AssistantRoomConcept | undefined {
   if (!isRecord(value)) return undefined;
   const validIds = new Set(validFurnishingIds);
+  const validWalls = new Set(validWallIds);
 
   const roomSize = text(value.roomSize, 20);
   const light = text(value.light, 10);
@@ -345,7 +358,10 @@ function sanitizeConcept(value: unknown, validFurnishingIds: string[]): Assistan
   if (isRecord(value.display)) {
     const wall = text(value.display.wall, 20);
     const displayIndex = number(value.display.displayIndex, 0, 20);
-    if (wall && displayIndex !== undefined) {
+    // Re-check against the real manifest even under strict mode, same as
+    // furnishing ids above — never trust the model's own wall id.
+    const wallIsValid = wall && (validWalls.size === 0 || validWalls.has(wall));
+    if (wallIsValid && displayIndex !== undefined) {
       display = {
         wall,
         displayIndex: Math.round(displayIndex),
@@ -362,6 +378,7 @@ function sanitizeConcept(value: unknown, validFurnishingIds: string[]): Assistan
         .map((item): AssistantRoomConceptWallDisplay | undefined => {
           const wall = text(item.wall, 20);
           if (!wall || typeof item.enabled !== "boolean") return undefined;
+          if (validWalls.size > 0 && !validWalls.has(wall)) return undefined;
           const sizeRaw = text(item.size, 10);
           const size = sizeRaw === "small" || sizeRaw === "medium" || sizeRaw === "large" ? sizeRaw : undefined;
           return { wall, enabled: item.enabled, size };
@@ -398,6 +415,7 @@ function sanitizeConcept(value: unknown, validFurnishingIds: string[]): Assistan
 export function parseAssistantModelOutput(
   value: unknown,
   validFurnishingIds: string[] = [],
+  validWallIds: string[] = [],
 ): ParsedModelOutput | null {
   if (!isRecord(value)) return null;
   const message = text(value.message, 900);
@@ -435,7 +453,7 @@ export function parseAssistantModelOutput(
             serviceId: text(action.serviceId, 80),
             label: text(action.label, 100),
             roomPreset,
-            concept: sanitizeConcept(action.concept, validFurnishingIds),
+            concept: sanitizeConcept(action.concept, validFurnishingIds, validWallIds),
           };
           if (result.type === "SHOWROOM_GO_TO_ROOM" && !result.roomPreset) return undefined;
           if (result.type === "SHOWROOM_APPLY_CONCEPT" && (!result.roomPreset || !result.concept)) {
