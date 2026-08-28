@@ -10,9 +10,21 @@ type DisplayContentPatch = NonNullable<RoomConceptPatch["displayContent"]>[numbe
 type DisplayComposition = DisplayContentPatch["composition"];
 type DisplayElement = DisplayComposition["elements"][number];
 
-type StepId = "hook" | "theme" | "roomtype" | "size" | "displays" | "light" | "content" | "network" | "cta" | "success";
+type StepId = "hook" | "theme" | "roomtype" | "size" | "displays" | "light" | "reveal" | "content" | "network" | "cta" | "success";
 
-const STEP_ORDER: StepId[] = ["hook", "theme", "roomtype", "size", "displays", "light", "content", "network", "cta", "success"];
+const STEP_ORDER: StepId[] = [
+  "hook",
+  "theme",
+  "roomtype",
+  "size",
+  "displays",
+  "light",
+  "reveal",
+  "content",
+  "network",
+  "cta",
+  "success",
+];
 
 const SIZE_OPTIONS: { value: RoomSizeOption; label: string; hint: string }[] = [
   { value: "xs", label: "Kleiner Laden", hint: "Bis ca. 40 m²" },
@@ -166,6 +178,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
 
   function applyCurrentSelection() {
     if (!state.preset) return;
+    document.querySelector("[data-showroom]")?.scrollIntoView({ behavior: "smooth", block: "start" });
     showroom.goToRoom(state.preset);
     const patch: RoomConceptPatch = {};
     if (state.roomSize) patch.roomSize = state.roomSize;
@@ -373,6 +386,15 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
 
   function setBusy(value: boolean) {
     busy = value;
+  }
+
+  function renderReveal() {
+    panel.classList.add("is-reveal-step");
+    const heading = document.createElement("h3");
+    heading.textContent = `${state.presetLabel ?? "Dein Raum"} — so sieht das live aus.`;
+    const hint = document.createElement("p");
+    hint.textContent = "Schau dich um. Sobald du bereit bist, geht's weiter mit deinen eigenen Inhalten.";
+    body.append(heading, hint, primaryButton("Weiter zu meinen Inhalten", next));
   }
 
   function renderContent() {
@@ -599,6 +621,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
   function render() {
     body.replaceChildren();
     renderDots();
+    panel.classList.remove("is-reveal-step");
     switch (currentStep()) {
       case "hook":
         renderHook();
@@ -617,6 +640,9 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
         break;
       case "light":
         renderLight();
+        break;
+      case "reveal":
+        renderReveal();
         break;
       case "content":
         renderContent();

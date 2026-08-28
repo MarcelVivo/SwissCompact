@@ -16278,3 +16278,24 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     padding: 12px 16px 40px;
   }
 }
+
+.showroom-funnel__panel.is-reveal-step {
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+
+.showroom-funnel__panel.is-reveal-step .showroom-funnel__header,
+.showroom-funnel__panel.is-reveal-step .showroom-funnel__body {
+  pointer-events: auto;
+}
+
+.showroom-funnel__panel.is-reveal-step .showroom-funnel__body {
+  margin-top: auto;
+  margin-bottom: 64px;
+  background: rgba(6, 6, 7, 0.72);
+  backdrop-filter: blur(14px);
+  border-radius: var(--showroom-radius-md);
+  padding: 24px 28px;
+  border: 1px solid var(--showroom-border);
+}
