@@ -20475,15 +20475,16 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       // The prefilled email still carries the complete request.
     }
     if (contentAiStatus) {
-      contentAiStatus.value = `Bestellanfrage ${reference} vorbereitet. Dein E-Mail-Programm wird geöffnet.`;
+      contentAiStatus.value = `Bestellanfrage ${reference} vorbereitet — weiter im Beratungsformular.`;
     }
-    const subject = encodeURIComponent(`SwissCompact Bildbestellung ${reference}`);
-    const body = encodeURIComponent(
-      `Referenz: ${reference}\nRaum: ${PRESET_LABELS[config.preset]}\nVerwendung: ${
-        contentAiRole?.value === "hero" ? "Hauptbild" : "Hintergrund"
-      }\n\nBildwunsch:\n${prompt}\n\nBitte senden Sie mir eine Offerte.`,
-    );
-    window.location.href = `mailto:kontakt@swisscompact.com?subject=${subject}&body=${body}`;
+    // Routes through the same real lead pipeline as every other consult
+    // entry point (see salesAssistant.ts's "swisscompact:open-consultation"
+    // listener) instead of a mailto: link, which requires the visitor's own
+    // email client to be configured and never reaches Supabase/Resend.
+    const note = `Bildbestellung ${reference}\nRaum: ${PRESET_LABELS[config.preset]}\nVerwendung: ${
+      contentAiRole?.value === "hero" ? "Hauptbild" : "Hintergrund"
+    }\n\nBildwunsch:\n${prompt}`;
+    window.dispatchEvent(new CustomEvent("swisscompact:open-consultation", { detail: { note } }));
   };
   contentAiGenerate?.addEventListener("click", contentAiGenerateHandler);
   contentAiOrder?.addEventListener("click", contentAiOrderHandler);
@@ -30842,7 +30843,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   });
 
   const configurationCtas = Array.from(
-    root.querySelectorAll<HTMLAnchorElement>(
+    root.querySelectorAll<HTMLElement>(
       ".showroom-config__cta, .showroom-edge-cta",
     ),
   );

@@ -19,7 +19,6 @@ import { mountMarketingEntryDissolve } from "./ui/marketingEntryDissolve";
 import { mountScrollReveal } from "./ui/scrollReveal";
 import { mountSiteNavigation } from "./ui/siteNavigation";
 import { mountSolutionFinderScenes } from "./ui/solutionFinderScenes";
-import { mountShowroomExperience } from "./ui/showroomExperience";
 import { mountSalesAssistant } from "./ui/salesAssistant";
 import { mountShowroomFunnel } from "./ui/showroomFunnel";
 
@@ -54,7 +53,6 @@ const marketingEntryDissolve = mountMarketingEntryDissolve();
 const impactScenes = mountImpactScenes();
 const solutionFinderScenes = mountSolutionFinderScenes();
 const gastronomyShowroom = mountGastronomyShowroom();
-const showroomExperience = mountShowroomExperience();
 const salesAssistant = mountSalesAssistant(gastronomyShowroom);
 const showroomFunnel = mountShowroomFunnel(gastronomyShowroom);
 const journeyScroller = document.querySelector<HTMLElement>("#scroller");
@@ -731,7 +729,6 @@ if (prefersReducedMotion) {
       impactScenes.destroy();
       solutionFinderScenes.destroy();
       gastronomyShowroom.destroy();
-      showroomExperience.destroy();
       mediaPreloader.destroy();
       firstSceneVideoController?.destroy();
       firstSceneReverseVideoController?.destroy();

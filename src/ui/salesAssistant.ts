@@ -853,6 +853,26 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     openTriggers.forEach((element) => element.removeEventListener("click", handleOpenTriggerClick));
   });
 
+  // Two places in gastronomyShowroom.ts dispatch this instead of depending
+  // on this module directly: the "Meine Räume" saved-rooms panel's "Projekt
+  // beraten lassen" button (no detail), and the display-content editor's
+  // "Bei SwissCompact bestellen" button (detail.note — what they were
+  // trying to order). Both used to fall through to mailto: links with no
+  // real lead capture; this is their one real listener now. With a note,
+  // skip straight to the contact form instead of the start menu — intent
+  // is already unambiguous, so re-asking "womit dürfen wir starten?" would
+  // just be an extra click for no reason.
+  const handleOpenConsultationEvent = (event: Event) => {
+    const detail = (event as CustomEvent<{ note?: string }>).detail;
+    setOpen(true);
+    if (detail?.note) {
+      context = { ...context, conversationSummary: detail.note };
+      renderContactForm();
+    }
+  };
+  window.addEventListener("swisscompact:open-consultation", handleOpenConsultationEvent);
+  cleanupListeners.push(() => window.removeEventListener("swisscompact:open-consultation", handleOpenConsultationEvent));
+
   let observer: IntersectionObserver | null = null;
   const sectionElements = SECTION_IDS.map((id) => document.getElementById(id)).filter(
     (element): element is HTMLElement => Boolean(element),
