@@ -637,6 +637,18 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
           if (!action.roomPreset) break;
           document.querySelector("[data-showroom]")?.scrollIntoView({ behavior: "smooth", block: "start" });
           showroom.goToRoom(action.roomPreset as RoomPreset);
+          // The model reliably reaches for this action type but, live-tested,
+          // essentially never emitted a separate SHOWROOM_APPLY_CONCEPT
+          // afterwards for wallDisplays even across several prompt/effort
+          // changes — it seems to treat "pick a room" and "configure it" as
+          // sequential, not composable. The schema already lets a concept
+          // ride along on this same action (flat/non-discriminated), so
+          // apply it here too if present instead of requiring a second,
+          // separate action the model wasn't reliably producing.
+          if (action.concept) {
+            setState("presenting");
+            showroom.applyRoomConcept(action.roomPreset as RoomPreset, mapConceptToPatch(action.concept));
+          }
           break;
         }
         case "SHOWROOM_APPLY_CONCEPT": {
