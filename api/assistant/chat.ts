@@ -101,7 +101,13 @@ export async function POST(request: Request): Promise<Response> {
         instructions: buildAssistantSalesInstructions({ sectionId, context: currentContext }),
         input: [...history, { role: "user", content: message }],
         max_output_tokens: 1200,
-        reasoning: { effort: "low" },
+        // Was "low" — live-tested and the model reliably chose not to act
+        // on the new wallDisplays capability (asking follow-up questions
+        // instead), even after several rounds of prompt tuning, most
+        // likely because "low" left too little budget to juggle it
+        // alongside the existing off-topic/context/furnishings/structures
+        // rules. "medium" trades some latency/cost for reliability.
+        reasoning: { effort: process.env.OPENAI_ASSISTANT_REASONING_EFFORT || "medium" },
         text: {
           format: {
             type: "json_schema",
