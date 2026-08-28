@@ -30404,6 +30404,58 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     return true;
   };
 
+  let lastDisplayTouchTapAt = 0;
+  let lastDisplayTouchTapX = 0;
+  let lastDisplayTouchTapY = 0;
+  let lastDisplayTouchTapRoot: Object3D | null = null;
+  const openDisplayContentFromPointer = (
+    event: MouseEvent | PointerEvent,
+    action: "display-double-click" | "display-double-tap",
+  ): boolean => {
+    const hit = getDirectPointerHit(event as PointerEvent);
+    if (hit?.kind !== "display") return false;
+    if (selectedDisplayObject !== hit.root || !displayFlyoutOpen) {
+      selectDisplayHit(hit);
+    }
+    openDisplayPreview();
+    if (!displayPreviewOpen) return false;
+    root.dataset.showroomLastSelectionAction = action;
+    event.preventDefault();
+    return true;
+  };
+  const displayDoubleClickHandler = (event: MouseEvent): void => {
+    if (event.button !== 0 || isSceneSelectionGuarded()) return;
+    if (openDisplayContentFromPointer(event, "display-double-click")) {
+      event.stopPropagation();
+    }
+  };
+  const openDisplayContentFromDoubleTap = (
+    event: PointerEvent,
+  ): boolean => {
+    if (event.pointerType !== "touch") return false;
+    const hit = getDirectPointerHit(event);
+    if (hit?.kind !== "display") {
+      lastDisplayTouchTapRoot = null;
+      return false;
+    }
+    const now = performance.now();
+    const isDoubleTap = (
+      lastDisplayTouchTapRoot === hit.root
+      && now - lastDisplayTouchTapAt <= 480
+      && Math.hypot(
+        event.clientX - lastDisplayTouchTapX,
+        event.clientY - lastDisplayTouchTapY,
+      ) <= 44
+    );
+    lastDisplayTouchTapAt = now;
+    lastDisplayTouchTapX = event.clientX;
+    lastDisplayTouchTapY = event.clientY;
+    lastDisplayTouchTapRoot = isDoubleTap ? null : hit.root;
+    return isDoubleTap
+      ? openDisplayContentFromPointer(event, "display-double-tap")
+      : false;
+  };
+
   const pointerDown = (event: PointerEvent): void => {
     if (
       povActive
@@ -30420,6 +30472,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       root.dataset.showroomLastSelectionAction = "guarded-click";
       return;
     }
+    if (openDisplayContentFromDoubleTap(event)) return;
     scenePointerDownId = event.pointerId;
     scenePointerDownX = event.clientX;
     scenePointerDownY = event.clientY;
@@ -30832,6 +30885,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   canvas.addEventListener("pointermove", pointerMove);
   canvas.addEventListener("pointerup", pointerUp);
   canvas.addEventListener("pointercancel", pointerUp);
+  canvas.addEventListener("dblclick", displayDoubleClickHandler);
   const pointerLeave = () => {
     if (!furnishingDragging) root.classList.remove("is-furnishing-hover");
     if (!furnishingDragging) {
@@ -30867,6 +30921,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     canvas.removeEventListener("pointermove", pointerMove);
     canvas.removeEventListener("pointerup", pointerUp);
     canvas.removeEventListener("pointercancel", pointerUp);
+    canvas.removeEventListener("dblclick", displayDoubleClickHandler);
     canvas.removeEventListener("pointerleave", pointerLeave);
   });
 
