@@ -16194,6 +16194,18 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   border: 1px solid var(--showroom-border);
 }
 
+.sales-assistant__bubble--pending {
+  color: rgba(255, 255, 255, 0.62);
+  animation: sales-assistant-wait 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes sales-assistant-wait {
+  to {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.13);
+  }
+}
+
 .sales-assistant__start-menu {
   display: flex;
   flex-direction: column;
@@ -16483,7 +16495,8 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sales-assistant__state-dot {
+  .sales-assistant__state-dot,
+  .sales-assistant__bubble--pending {
     animation: none !important;
     transition: opacity 0.2s;
   }

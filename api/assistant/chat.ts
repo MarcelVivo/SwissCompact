@@ -55,6 +55,24 @@ function outputText(payload: unknown): string | null {
   return parts.length > 0 ? parts.join("") : null;
 }
 
+function requiresShowroomPlanning(
+  message: string,
+  context: ReturnType<typeof sanitizeAssistantSalesContext>,
+): boolean {
+  const normalized = message.toLocaleLowerCase("de-CH");
+  const hasDesignAction = /gestalt|konfigurier|platzier|entwirf|visualisier|richte|plane/.test(
+    normalized,
+  );
+  const hasSpatialTarget = /3d|showroom|raum|display|led|stele|säule|wand|screen/.test(
+    normalized,
+  );
+  return (hasDesignAction && hasSpatialTarget)
+    || (
+      Boolean(context.primaryGoal && (context.industry || context.businessType))
+      && /konzept|empfehl|lösung/.test(normalized)
+    );
+}
+
 export async function POST(request: Request): Promise<Response> {
   const guardError = validatePublicPost(request, {
     key: "assistant-chat",
@@ -87,6 +105,14 @@ export async function POST(request: Request): Promise<Response> {
   const validFurnishingIds = currentContext.showroomManifest?.furnishings?.map((item) => item.id) ?? [];
   const validWallIds = currentContext.showroomManifest?.displayWalls?.map((item) => item.wall) ?? [];
   const responseSchema = buildAssistantResponseSchema(validFurnishingIds, validWallIds);
+  const configuredMaxOutput = Number(
+    process.env.OPENAI_ASSISTANT_MAX_OUTPUT_TOKENS,
+  );
+  const maxOutputTokens = Number.isFinite(configuredMaxOutput)
+    ? Math.max(500, Math.min(1200, Math.round(configuredMaxOutput)))
+    : 850;
+  const reasoningEffort = process.env.OPENAI_ASSISTANT_REASONING_EFFORT
+    || (requiresShowroomPlanning(message, currentContext) ? "medium" : "low");
 
   let response: Response;
   try {
@@ -100,14 +126,12 @@ export async function POST(request: Request): Promise<Response> {
         model: process.env.OPENAI_ASSISTANT_MODEL || "gpt-5.6-terra",
         instructions: buildAssistantSalesInstructions({ sectionId, context: currentContext }),
         input: [...history, { role: "user", content: message }],
-        max_output_tokens: 1200,
-        // Was "low" — live-tested and the model reliably chose not to act
-        // on the new wallDisplays capability (asking follow-up questions
-        // instead), even after several rounds of prompt tuning, most
-        // likely because "low" left too little budget to juggle it
-        // alongside the existing off-topic/context/furnishings/structures
-        // rules. "medium" trades some latency/cost for reliability.
-        reasoning: { effort: process.env.OPENAI_ASSISTANT_REASONING_EFFORT || "medium" },
+        max_output_tokens: maxOutputTokens,
+        // Ordinary consultation turns use low effort for a fast response.
+        // The larger budget remains reserved for requests that actually ask
+        // the model to plan or manipulate a 3D room, where the structured
+        // furnishing/display constraints need the extra reasoning headroom.
+        reasoning: { effort: reasoningEffort },
         text: {
           format: {
             type: "json_schema",
@@ -118,7 +142,7 @@ export async function POST(request: Request): Promise<Response> {
         },
         store: false,
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(18_000),
     });
   } catch (error) {
     console.error("assistant/chat: OpenAI request failed", error);

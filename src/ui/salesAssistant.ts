@@ -54,6 +54,7 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
   // Re-declared as non-nullable now that the guard above has verified them
   // at runtime — lets TypeScript's narrowing carry into the closures below.
   const trigger = triggerCheck;
+  const root = rootCheck;
   const panel = panelCheck;
   const body = bodyCheck;
   const composer = composerCheck;
@@ -62,7 +63,6 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
   const liveButton = document.querySelector<HTMLButtonElement>("[data-sales-assistant-live]");
   const stateDots = [...document.querySelectorAll<HTMLElement>("[data-sales-assistant-state]")];
 
-  let destroyed = false;
   let open = false;
   let view: View = "chat";
   let busy = false;
@@ -71,13 +71,11 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
   let context: AssistantSalesContext = createInitialContext();
   let lastRecommendation: AssistantRecommendation | undefined;
   let sectionId = "hero";
-  let voiceEnabled = true;
   let liveStatus: LiveStatus = "off";
 
   let peerConnection: RTCPeerConnection | null = null;
   let localStream: MediaStream | null = null;
   let dataChannel: RTCDataChannel | null = null;
-  let currentAudio: HTMLAudioElement | null = null;
   let abortController: AbortController | null = null;
 
   const cleanupListeners: Array<() => void> = [];
@@ -281,7 +279,7 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     return menu;
   }
 
-  function renderChat() {
+  function renderChat(pending = false) {
     setView("chat");
     body.replaceChildren();
 
@@ -294,6 +292,15 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       list.append(bubble);
     });
     body.append(list);
+
+    if (pending) {
+      const status = document.createElement("div");
+      status.className =
+        "sales-assistant__bubble sales-assistant__bubble--assistant sales-assistant__bubble--pending";
+      status.setAttribute("role", "status");
+      status.textContent = "Ich prüfe das kurz …";
+      list.append(status);
+    }
 
     // Nothing typed yet and the AI hasn't suggested anything of its own —
     // give the visitor a fully click-driven way in instead of requiring
@@ -491,30 +498,6 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     body.append(message);
   }
 
-  async function speak(text: string) {
-    if (!voiceEnabled || !text) return;
-    try {
-      const response = await fetch("/api/assistant/speech", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      if (!response.ok) return;
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      currentAudio?.pause();
-      currentAudio = new Audio(url);
-      setState("speaking");
-      currentAudio.addEventListener("ended", () => {
-        URL.revokeObjectURL(url);
-        if (!destroyed) setState("idle");
-      });
-      await currentAudio.play().catch(() => undefined);
-    } catch (error) {
-      console.error("SwissCompact assistant: speech playback failed", error);
-    }
-  }
-
   type ConceptDisplayPatch = NonNullable<RoomConceptPatch["displayContent"]>[number];
   type ConceptDisplayWall = ConceptDisplayPatch["wall"];
   type ConceptDisplayComposition = ConceptDisplayPatch["composition"];
@@ -693,11 +676,13 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       return;
     }
 
+    const previousMessages = messages.slice(-10);
     messages = [...messages, { id: uid(), role: "user", content: trimmed }];
     input.value = "";
-    renderChat();
+    renderChat(true);
     setBusy(true);
     setState("thinking");
+    const requestStartedAt = performance.now();
 
     abortController?.abort();
     abortController = new AbortController();
@@ -739,7 +724,7 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
           sectionId,
           inputMode,
           context: outgoingContext,
-          history: messages.slice(-10).map((message) => ({ role: message.role, content: message.content })),
+          history: previousMessages.map((message) => ({ role: message.role, content: message.content })),
         }),
         signal: abortController.signal,
       });
@@ -752,8 +737,10 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       persistSession();
       const uiActions: AssistantUiAction[] = Array.isArray(payload.uiActions) ? payload.uiActions : [];
       handleUiActions(uiActions);
-      await speak(payload.answer || payload.message || "");
       setState(payload.animationState || "idle");
+      root.dataset.salesAssistantLastResponseMs = String(
+        Math.round(performance.now() - requestStartedAt),
+      );
     } catch (error) {
       if ((error as { name?: string }).name === "AbortError") return;
       console.error("SwissCompact assistant: chat request failed", error);
@@ -841,7 +828,7 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     panel.hidden = !value;
     trigger.setAttribute("aria-expanded", String(value));
     document.body.classList.toggle("is-sales-assistant-open", value);
-    if (value && messages.length === 0) renderChat();
+    if (value && body.childElementCount === 0) renderChat();
     if (value) {
       window.requestAnimationFrame(() => {
         body.scrollTop = 0;
@@ -925,16 +912,19 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
   }
 
   restoreSession();
+  // Prepare the first view while the panel is still hidden. Opening the CTA
+  // is then a single visibility change instead of building its full menu in
+  // the same frame as the user's click.
+  renderChat();
+  root.dataset.salesAssistantReady = "true";
   setState("idle");
 
   return {
     destroy() {
-      destroyed = true;
       cleanupListeners.forEach((cleanup) => cleanup());
       observer?.disconnect();
       abortController?.abort();
       stopLiveConversation();
-      currentAudio?.pause();
     },
   };
 }
