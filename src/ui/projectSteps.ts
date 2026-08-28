@@ -13,6 +13,8 @@ interface ProjectStepDetail {
   services: string[];
   result: string;
   output: string;
+  image: string;
+  imageAlt: string;
 }
 
 const PROJECT_STEP_DETAILS: Record<ProjectStepKey, ProjectStepDetail> = {
@@ -32,6 +34,8 @@ const PROJECT_STEP_DETAILS: Record<ProjectStepKey, ProjectStepDetail> = {
     result:
       "Alle Beteiligten entscheiden auf derselben Grundlage. Investitionen, Inhalte und Technologie folgen einem nachvollziehbaren Zielbild.",
     output: "Typische Ergebnisse: Experience-Konzept · Use-Case-Map · Projekt-Roadmap",
+    image: "/images/project/detail-strategy.webp",
+    imageAlt: "Beratungsteam bei der räumlichen Projektplanung",
   },
   media: {
     number: "02",
@@ -49,6 +53,8 @@ const PROJECT_STEP_DETAILS: Record<ProjectStepKey, ProjectStepDetail> = {
     result:
       "Eine konsistente visuelle Sprache, die Aufmerksamkeit schafft, Informationen verständlich vermittelt und langfristig effizient bespielbar bleibt.",
     output: "Typische Ergebnisse: Content-Konzept · Master Assets · skalierbares Template-System",
+    image: "/images/project/detail-media.webp",
+    imageAlt: "Filmteam bei der Produktion räumlicher Medieninhalte",
   },
   system: {
     number: "03",
@@ -66,6 +72,8 @@ const PROJECT_STEP_DETAILS: Record<ProjectStepKey, ProjectStepDetail> = {
     result:
       "Ein robustes, wartbares System ohne unnötige Komplexität – technisch sauber dimensioniert und bereit für Erweiterungen.",
     output: "Typische Ergebnisse: Systemdesign · Komponentenplan · Integrations- und Testkonzept",
+    image: "/images/project/detail-system.webp",
+    imageAlt: "Techniker bei der Inbetriebnahme eines integrierten Displaysystems",
   },
   operations: {
     number: "04",
@@ -83,6 +91,8 @@ const PROJECT_STEP_DETAILS: Record<ProjectStepKey, ProjectStepDetail> = {
     result:
       "Planbare Verfügbarkeit, schnelle Reaktion im Störungsfall und ein Betrieb, der mit neuen Standorten und Anforderungen mitwächst.",
     output: "Typische Ergebnisse: Rollout-Plan · Betriebshandbuch · Monitoring- und Supportmodell",
+    image: "/images/project/detail-operations.webp",
+    imageAlt: "Servicetechniker bei der Wartung vernetzter Displays",
   },
 };
 
@@ -111,6 +121,14 @@ export function mountProjectSteps(): ProjectSteps {
   const services = dialog.querySelector<HTMLUListElement>(
     "[data-project-detail-services]",
   );
+  const detailImage = dialog.querySelector<HTMLImageElement>(
+    "[data-project-detail-image]",
+  );
+  const imagePreloads = Object.values(PROJECT_STEP_DETAILS).map(({ image }) => {
+    const preload = new Image();
+    preload.src = image;
+    return preload;
+  });
   const fields = {
     number: dialog.querySelector<HTMLElement>("[data-project-detail-number]"),
     phase: dialog.querySelector<HTMLElement>("[data-project-detail-phase]"),
@@ -141,6 +159,10 @@ export function mountProjectSteps(): ProjectSteps {
     fields.result!.textContent = detail.result;
     fields.output!.textContent = detail.output;
     fields.index!.textContent = `Disziplin ${detail.number} von 04`;
+    if (detailImage) {
+      detailImage.src = detail.image;
+      detailImage.alt = detail.imageAlt;
+    }
     services!.replaceChildren(...detail.services.map((service) => {
       const item = document.createElement("li");
       item.textContent = service;
@@ -182,6 +204,7 @@ export function mountProjectSteps(): ProjectSteps {
       dialog.removeEventListener("click", backdropHandler);
       dialog.removeEventListener("close", nativeCloseHandler);
       cta?.removeEventListener("click", ctaHandler);
+      imagePreloads.forEach((image) => image.removeAttribute("src"));
       close(false);
     },
   };

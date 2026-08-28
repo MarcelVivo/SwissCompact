@@ -4848,19 +4848,55 @@ button {
 }
 
 .project-step__trigger {
+  position: relative;
   display: flex;
   width: 100%;
   min-height: 330px;
   flex-direction: column;
   align-items: flex-start;
   padding: 32px 26px;
+  overflow: hidden;
   border: 0;
   outline: 0;
   color: inherit;
   background: transparent;
   text-align: left;
   cursor: pointer;
+  isolation: isolate;
   transition: background 220ms ease, transform 220ms ease;
+}
+
+.project-step__trigger::before {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(6, 6, 8, 0.08) 0%,
+    rgba(6, 6, 8, 0.42) 42%,
+    rgba(6, 6, 8, 0.96) 78%
+  );
+  content: "";
+  pointer-events: none;
+  transition: background 280ms ease;
+}
+
+.project-step__photo {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 28%;
+  filter: saturate(0.78) contrast(1.04) brightness(0.78);
+  pointer-events: none;
+  transition: filter 280ms ease;
+}
+
+.project-step__trigger > :not(.project-step__photo) {
+  position: relative;
+  z-index: 2;
 }
 
 .project-step__number {
@@ -4910,6 +4946,21 @@ button {
 .project-step__trigger:hover,
 .project-step__trigger:focus-visible {
   background: linear-gradient(145deg, rgba(227, 11, 53, 0.2), rgba(255, 255, 255, 0.035));
+}
+
+.project-step__trigger:hover::before,
+.project-step__trigger:focus-visible::before {
+  background: linear-gradient(
+    180deg,
+    rgba(211, 10, 47, 0.08) 0%,
+    rgba(6, 6, 8, 0.34) 42%,
+    rgba(6, 6, 8, 0.94) 78%
+  );
+}
+
+.project-step__trigger:hover .project-step__photo,
+.project-step__trigger:focus-visible .project-step__photo {
+  filter: saturate(0.98) contrast(1.06) brightness(0.88);
 }
 
 .project-step__trigger:focus-visible {
@@ -5124,6 +5175,109 @@ button {
   background: #ff1747;
 }
 
+[data-project-detail-dialog] {
+  width: min(1120px, calc(100vw - 40px));
+}
+
+[data-project-detail-dialog] .project-detail__surface {
+  padding: clamp(24px, 3vw, 36px);
+}
+
+[data-project-detail-dialog] .project-detail__header {
+  display: grid;
+  max-width: none;
+  grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.92fr);
+  grid-template-rows: auto auto auto auto;
+  column-gap: clamp(28px, 4vw, 52px);
+  align-items: start;
+}
+
+[data-project-detail-dialog] .project-detail__header > span,
+[data-project-detail-dialog] .project-detail__header > p:first-of-type {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+[data-project-detail-dialog] .project-detail__header h3 {
+  grid-column: 1;
+  grid-row: 2;
+  margin-top: 18px;
+  font-size: clamp(40px, 4.8vw, 58px);
+}
+
+[data-project-detail-dialog] .project-detail__header > strong {
+  grid-column: 1;
+  grid-row: 3;
+  margin-top: 10px;
+  font-size: clamp(18px, 1.8vw, 23px);
+}
+
+[data-project-detail-dialog] .project-detail__header > p:last-of-type {
+  grid-column: 1;
+  grid-row: 4;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.project-detail__image {
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  max-height: 280px;
+  grid-column: 2;
+  grid-row: 1 / 5;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  object-fit: cover;
+  object-position: center;
+  filter: saturate(0.88) contrast(1.03);
+}
+
+[data-project-detail-dialog] .project-detail__body {
+  gap: clamp(26px, 4vw, 48px);
+  margin-top: 20px;
+  padding-top: 18px;
+}
+
+[data-project-detail-dialog] .project-detail__body ul {
+  margin-top: 10px;
+}
+
+[data-project-detail-dialog] .project-detail__body li {
+  padding: 8px 0 8px 22px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+[data-project-detail-dialog] .project-detail__body li::before {
+  top: 13px;
+}
+
+[data-project-detail-dialog] .project-detail__body aside {
+  padding: 18px;
+}
+
+[data-project-detail-dialog] .project-detail__body aside p {
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.36;
+}
+
+[data-project-detail-dialog] .project-detail__body aside small {
+  margin-top: 14px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+[data-project-detail-dialog] footer {
+  margin-top: 18px;
+}
+
+[data-project-detail-dialog] footer button {
+  min-height: 46px;
+}
+
 .impact-detail {
   width: min(1180px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
@@ -5265,6 +5419,29 @@ button {
 
   .project-detail footer button {
     width: 100%;
+  }
+
+  [data-project-detail-dialog] .project-detail__surface {
+    padding: 64px 20px calc(22px + env(safe-area-inset-bottom));
+  }
+
+  [data-project-detail-dialog] .project-detail__header {
+    display: block;
+  }
+
+  [data-project-detail-dialog] .project-detail__header > p:first-of-type {
+    margin-left: 14px;
+  }
+
+  [data-project-detail-dialog] .project-detail__header h3 {
+    margin-top: 20px;
+    font-size: clamp(40px, 13vw, 56px);
+  }
+
+  .project-detail__image {
+    height: 180px;
+    min-height: 0;
+    margin-top: 22px;
   }
 
   .impact-detail,
