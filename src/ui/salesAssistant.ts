@@ -240,7 +240,7 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       const backButton = document.createElement("button");
       backButton.type = "button";
       backButton.className = "sales-assistant__start-back";
-      backButton.textContent = "← Andere Branche";
+      backButton.textContent = "Andere Branche";
       backButton.addEventListener("click", () => {
         phase = { kind: "topic" };
         draw();

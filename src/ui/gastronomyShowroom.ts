@@ -8323,7 +8323,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
         </div>
         <em>${
           status === "approved"
-            ? "✓ Freigegeben"
+            ? "Freigegeben"
             : status === "pending"
               ? "Anfrage offen"
               : "Noch nicht freigegeben"
@@ -17868,7 +17868,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     context.fillStyle = "#08090b";
     context.font = `900 ${Math.round(height * 0.038)}px Arial, sans-serif`;
     context.fillText(
-      `${profile.cta}  →`,
+      profile.cta,
       left + ctaWidth * 0.07,
       ctaY + ctaHeight * 0.64,
     );
@@ -22834,7 +22834,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
         ? structureCount > 0
         : enabled[wall];
       if (isFreestandingWall(wall)) {
-        button.textContent = `${getWallLabel(wall)} ${structureCount}/4 ＋`;
+        button.textContent = `${getWallLabel(wall)} ${structureCount}/4 hinzufügen`;
         button.disabled = structureCount >= 4;
       } else {
         button.textContent = getObjectNavigationLabel(wall);

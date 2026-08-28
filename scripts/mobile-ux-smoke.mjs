@@ -50,12 +50,60 @@ for (const viewport of viewports) {
     return {
       hero,
       touchTargets,
+      pictogramCount: document.querySelectorAll(".ui-pictogram").length,
+      heroUsesSvgPictograms: document.querySelectorAll(
+        ".hero-actions .ui-pictogram",
+      ).length >= 2,
       horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
       navInert: document.querySelector("#primary-nav")?.hasAttribute("inert") ?? false,
       contentFits: Boolean(hero && hero.top >= 0 && hero.bottom <= window.innerHeight),
     };
   });
   await page.screenshot({ path: `/tmp/swisscompact-mobile-${viewport.name}-hero.png` });
+
+  await page.evaluate(() => {
+    const scroller = document.querySelector("#scroller");
+    const maximum = Math.max(
+      1,
+      (scroller instanceof HTMLElement ? scroller.offsetHeight : 1)
+        - window.innerHeight,
+    );
+    window.scrollTo(0, 0.12 / 11 * maximum);
+  });
+  await page.waitForFunction(() => {
+    const video = document.querySelector(".intro__scroll-video--forward");
+    return video instanceof HTMLVideoElement
+      && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      && video.videoWidth > 0;
+  }, undefined, { timeout: 20_000 });
+  await page.waitForTimeout(450);
+  const heroVideo = await page.evaluate(() => {
+    const video = document.querySelector(".intro__scroll-video--forward");
+    if (!(video instanceof HTMLVideoElement)) return null;
+    const funnel = document.querySelector(".showroom-funnel__trigger")?.getBoundingClientRect();
+    const scale = Math.min(
+      window.innerWidth / video.videoWidth,
+      window.innerHeight / video.videoHeight,
+    );
+    return {
+      objectFit: getComputedStyle(video).objectFit,
+      scrollMediaOpacity: getComputedStyle(video.parentElement).opacity,
+      heroCopyOpacity: getComputedStyle(document.querySelector("#station-1")).opacity,
+      naturalWidth: video.videoWidth,
+      naturalHeight: video.videoHeight,
+      renderedContentWidth: video.videoWidth * scale,
+      viewportWidth: window.innerWidth,
+      funnel: funnel && {
+        left: funnel.left,
+        right: funnel.right,
+        width: funnel.width,
+        text: document.querySelector(".showroom-funnel__trigger")?.textContent?.trim(),
+      },
+    };
+  });
+  await page.screenshot({ path: `/tmp/swisscompact-mobile-${viewport.name}-scroll-video.png` });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(100);
 
   await page.locator("[data-menu-toggle]").click();
   await page.waitForTimeout(380);
@@ -138,6 +186,11 @@ for (const viewport of viewports) {
     && !initial.horizontalOverflow
     && initial.navInert
     && initial.contentFits
+    && initial.pictogramCount > 10
+    && initial.heroUsesSvgPictograms
+    && heroVideo?.objectFit === "contain"
+    && heroVideo.renderedContentWidth >= heroVideo.viewportWidth - 1
+    && heroVideo.funnel?.width >= heroVideo.viewportWidth - 100
     && initial.touchTargets.every((target) => target.height >= 44 && target.width >= 44)
     && menuOpen.expanded === "true"
     && !menuOpen.inert
@@ -158,7 +211,7 @@ for (const viewport of viewports) {
     && assistant.closeHasFocus
     && assistant.funnelHidden;
 
-  results.push({ viewport, valid, errors, initial, menuOpen, menuClosed, marketing, assistant });
+  results.push({ viewport, valid, errors, initial, heroVideo, menuOpen, menuClosed, marketing, assistant });
   await context.close();
 }
 

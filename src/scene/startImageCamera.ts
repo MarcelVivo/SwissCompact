@@ -26,15 +26,17 @@ function coveredMediaPoint(
 ): { x: number; y: number } {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  const coverScale = Math.max(
-    viewportWidth / sourceWidth,
-    viewportHeight / sourceHeight,
-  );
-  const mediaLeft = (viewportWidth - sourceWidth * coverScale) * 0.5;
-  const mediaTop = (viewportHeight - sourceHeight * coverScale) * 0.5;
+  const showFullWidth = window.matchMedia(
+    "(max-width: 640px) and (orientation: portrait)",
+  ).matches;
+  const mediaScale = showFullWidth
+    ? Math.min(viewportWidth / sourceWidth, viewportHeight / sourceHeight)
+    : Math.max(viewportWidth / sourceWidth, viewportHeight / sourceHeight);
+  const mediaLeft = (viewportWidth - sourceWidth * mediaScale) * 0.5;
+  const mediaTop = (viewportHeight - sourceHeight * mediaScale) * 0.5;
   return {
-    x: mediaLeft + sourceX * coverScale,
-    y: mediaTop + sourceY * coverScale,
+    x: mediaLeft + sourceX * mediaScale,
+    y: mediaTop + sourceY * mediaScale,
   };
 }
 

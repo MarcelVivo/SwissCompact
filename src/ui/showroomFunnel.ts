@@ -191,7 +191,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     const button = document.createElement("button");
     button.type = "button";
     button.className = "showroom-funnel__back";
-    button.textContent = "← Zurück";
+    button.textContent = "Zurück";
     button.addEventListener("click", back);
     return button;
   }
@@ -559,7 +559,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     // the other room-visible steps (content, network), just with less in it.
     const label = document.createElement("strong");
     label.textContent = `${state.presetLabel ?? "Dein Raum"} wird aufgebaut …`;
-    const nextButton = primaryButton("Weiter →", next, true);
+    const nextButton = primaryButton("Weiter", next, true);
     body.append(label, nextButton);
 
     // The 3D scene needs a moment to actually settle after goToRoom() —
@@ -601,7 +601,7 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
         const editButton = document.createElement("button");
         editButton.type = "button";
         editButton.className = "showroom-funnel__back";
-        editButton.textContent = "← Inhalt bearbeiten";
+        editButton.textContent = "Inhalt bearbeiten";
         editButton.addEventListener("click", () => {
           collapsed = false;
           draw();
