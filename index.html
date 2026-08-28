@@ -2092,6 +2092,33 @@
       </section>
     </div>
 
+    <button
+      type="button"
+      class="showroom-funnel__trigger"
+      data-showroom-funnel-trigger
+      aria-haspopup="dialog"
+      aria-expanded="false"
+      aria-controls="showroom-funnel-panel"
+    >
+      <span class="showroom-funnel__trigger-badge">KI</span>
+      <span>Meinen Raum gestalten</span>
+    </button>
+    <section
+      id="showroom-funnel-panel"
+      class="showroom-funnel__panel"
+      data-showroom-funnel-panel
+      role="dialog"
+      aria-modal="false"
+      aria-label="SwissCompact Raum-Konfigurator"
+      hidden
+    >
+      <header class="showroom-funnel__header">
+        <div class="showroom-funnel__dots" data-showroom-funnel-dots></div>
+        <button type="button" class="showroom-funnel__close" data-showroom-funnel-close aria-label="Schliessen">×</button>
+      </header>
+      <div class="showroom-funnel__body" data-showroom-funnel-body></div>
+    </section>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

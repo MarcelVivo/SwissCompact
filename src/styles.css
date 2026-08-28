@@ -15999,3 +15999,282 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     transition: opacity 0.2s;
   }
 }
+
+/* ==========================================================================
+   Showroom Funnel (guided AI room configurator) — same visual language as
+   the sales-assistant widget, larger centered panel instead of a corner card.
+   ========================================================================== */
+
+.showroom-funnel__trigger {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  z-index: 150;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 24px;
+  border-radius: 44px;
+  border: none;
+  background: var(--red);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 0 10px 40px rgba(200, 16, 46, 0.5);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.showroom-funnel__trigger:hover,
+.showroom-funnel__trigger:focus-visible {
+  transform: translateY(-3px);
+}
+
+.showroom-funnel__trigger-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.showroom-funnel__panel {
+  position: fixed;
+  inset: 0;
+  z-index: 170;
+  display: flex;
+  flex-direction: column;
+  background: rgba(6, 6, 7, 0.86);
+  backdrop-filter: blur(18px) saturate(1.1);
+}
+
+.showroom-funnel__panel[hidden] {
+  display: none;
+}
+
+.showroom-funnel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  flex: none;
+}
+
+.showroom-funnel__dots {
+  display: flex;
+  gap: 8px;
+}
+
+.showroom-funnel__dots[hidden] {
+  visibility: hidden;
+}
+
+.showroom-funnel__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24);
+  transition: background 0.2s, transform 0.2s;
+}
+
+.showroom-funnel__dot.is-active {
+  background: var(--red);
+  transform: scale(1.3);
+}
+
+.showroom-funnel__dot.is-done {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.showroom-funnel__close {
+  background: none;
+  border: none;
+  color: var(--white);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 6px;
+}
+
+.showroom-funnel__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px 24px 48px;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.showroom-funnel__body h3 {
+  font-size: clamp(24px, 4vw, 34px);
+  margin: 0;
+}
+
+.showroom-funnel__body p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.showroom-funnel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.showroom-funnel__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 18px 20px;
+  border-radius: var(--showroom-radius-md);
+  border: 1px solid var(--showroom-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s, background 0.2s;
+}
+
+.showroom-funnel__card:hover,
+.showroom-funnel__card:focus-visible {
+  border-color: var(--red);
+  transform: translateY(-2px);
+}
+
+.showroom-funnel__card.is-active {
+  border-color: var(--red);
+  background: rgba(200, 16, 46, 0.14);
+}
+
+.showroom-funnel__card strong {
+  font-size: 16px;
+}
+
+.showroom-funnel__card small {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+}
+
+.showroom-funnel__primary {
+  align-self: flex-start;
+  padding: 13px 26px;
+  border-radius: 30px;
+  border: none;
+  background: var(--red);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.showroom-funnel__primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.showroom-funnel__back {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.showroom-funnel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.showroom-funnel__textarea {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: var(--showroom-radius-sm);
+  border: 1px solid var(--showroom-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  font-size: 15px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.showroom-funnel__status {
+  min-height: 20px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.showroom-funnel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 420px;
+}
+
+.showroom-funnel__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.showroom-funnel__form input {
+  padding: 11px 14px;
+  border-radius: var(--showroom-radius-sm);
+  border: 1px solid var(--showroom-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+  font-size: 15px;
+}
+
+.showroom-funnel__form button[type="submit"] {
+  padding: 14px 24px;
+  border-radius: 30px;
+  border: none;
+  background: var(--red);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.showroom-funnel__honeypot {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.showroom-funnel__consent {
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 8px !important;
+}
+
+@media (max-width: 640px) {
+  .showroom-funnel__trigger {
+    left: 12px;
+    bottom: 12px;
+    padding: 13px 18px;
+    font-size: 14px;
+  }
+
+  .showroom-funnel__body {
+    padding: 12px 16px 40px;
+  }
+}

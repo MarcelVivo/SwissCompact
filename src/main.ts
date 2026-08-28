@@ -21,6 +21,7 @@ import { mountSiteNavigation } from "./ui/siteNavigation";
 import { mountSolutionFinderScenes } from "./ui/solutionFinderScenes";
 import { mountShowroomExperience } from "./ui/showroomExperience";
 import { mountSalesAssistant } from "./ui/salesAssistant";
+import { mountShowroomFunnel } from "./ui/showroomFunnel";
 
 const firstSceneVideoUrl = "/media/station1-scroll-scene.mp4";
 const firstSceneReverseVideoUrl = "/media/station1-scroll-scene-reverse.mp4";
@@ -55,6 +56,7 @@ const solutionFinderScenes = mountSolutionFinderScenes();
 const gastronomyShowroom = mountGastronomyShowroom();
 const showroomExperience = mountShowroomExperience();
 const salesAssistant = mountSalesAssistant(gastronomyShowroom);
+const showroomFunnel = mountShowroomFunnel(gastronomyShowroom);
 const journeyScroller = document.querySelector<HTMLElement>("#scroller");
 const secondScene = document.querySelector<HTMLElement>("#scene-two");
 const secondSceneMedia = secondScene?.querySelector<HTMLElement>(".photographic-scene__media");
@@ -722,6 +724,7 @@ if (prefersReducedMotion) {
       scrollJourney.destroy();
       siteNavigation.destroy();
       salesAssistant.destroy();
+      showroomFunnel.destroy();
       scrollReveal.destroy();
       cursorPixelRipple.destroy();
       marketingEntryDissolve.destroy();

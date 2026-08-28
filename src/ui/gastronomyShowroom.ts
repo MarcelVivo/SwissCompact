@@ -89,6 +89,27 @@ export interface RoomConceptStructurePatch {
   color?: string | null;
 }
 
+// Sets displayCount/displaySize on the currently-selected wall's
+// installation — the exact fields the manual "Displaygrösse"/"Anordnung"
+// buttons already write via persistSelectedInstallation(), just invoked
+// directly instead of through a click handler.
+export interface RoomConceptDisplayLayoutPatch {
+  displayCount?: number;
+  displaySize?: DisplaySize;
+}
+
+// Shows the real (already-working) partner-content rendering mechanic on
+// one display — a preview, not a live cross-business connection (see
+// docs/showroom-funnel.md). Reuses the existing NETWORK_MATCHES/
+// NETWORK_PARTNER_PROFILES tables and marks the pair "approved" in the
+// existing per-browser localStorage state, same as the manual network
+// panel's own "Demo-Freigabe bestätigen" action.
+export interface RoomConceptNetworkPreviewPatch {
+  wall: DisplayWall;
+  displayIndex: number;
+  enabled: boolean;
+}
+
 export interface RoomConceptPatch {
   roomSize?: RoomSize;
   light?: LightPreset;
@@ -98,6 +119,8 @@ export interface RoomConceptPatch {
   furnishings?: RoomConceptFurnishingPatch[];
   structures?: RoomConceptStructurePatch[];
   displayContent?: RoomConceptDisplayContentPatch[];
+  displayLayout?: RoomConceptDisplayLayoutPatch;
+  networkPreview?: RoomConceptNetworkPreviewPatch;
 }
 
 export interface RoomConceptResult {
@@ -31081,6 +31104,35 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       const unit = room.installations[wall]?.displays[displayIndex];
       if (unit) unit.customContent = composition;
     });
+
+    if (patch.displayLayout) {
+      const installation = getSelectedInstallation();
+      if (typeof patch.displayLayout.displayCount === "number") {
+        config.displayCount = Math.round(clamp(patch.displayLayout.displayCount, 1, 6));
+      }
+      if (patch.displayLayout.displaySize) {
+        config.displaySize = normalizeDisplaySize(patch.displayLayout.displaySize);
+      }
+      installation.displayCount = config.displayCount;
+      installation.displaySize = config.displaySize;
+      installation.layout = "row";
+    }
+
+    if (patch.networkPreview) {
+      const { wall, displayIndex, enabled } = patch.networkPreview;
+      const unit = room.installations[wall]?.displays[displayIndex];
+      const partner = NETWORK_MATCHES[preset]?.[0];
+      if (unit && partner) {
+        if (enabled) {
+          networkConnectionStatuses.set(networkPairKey(preset, partner), "approved");
+          unit.networkMode = "mix";
+          unit.networkPartner = partner;
+        } else {
+          unit.networkMode = "own";
+        }
+        saveNetworkState();
+      }
+    }
 
     applyConfig(true);
     result.applied = true;
