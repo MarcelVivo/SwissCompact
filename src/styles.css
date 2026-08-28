@@ -15850,8 +15850,17 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
 
 .sales-assistant__start-option-icon {
   flex: none;
-  font-size: 22px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--red);
+}
+
+.sales-assistant__start-option-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .sales-assistant__start-option-text {

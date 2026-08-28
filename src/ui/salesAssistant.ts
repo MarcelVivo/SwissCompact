@@ -145,14 +145,24 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     type Phase = { kind: "topic" } | { kind: "intent"; themeLabel: string };
     let phase: Phase = { kind: "topic" };
 
-    function optionButton(icon: string, label: string, hint: string, action: () => void): HTMLButtonElement {
+    // Thin-stroke line icons, drawn to match — not emoji, which render in
+    // full colour per OS/browser and clash with the site's otherwise
+    // monochrome, currentColor-driven icon language used everywhere else.
+    const ICON_ROOM =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9"/><path d="M10 20v-5h4v5"/></svg>';
+    const ICON_CHAT =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4V5Z"/></svg>';
+    const ICON_COMPASS =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.7 9.3 13 13l-3.7 1.7L11 11l3.7-1.7Z"/></svg>';
+
+    function optionButton(iconSvg: string, label: string, hint: string, action: () => void): HTMLButtonElement {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "sales-assistant__start-option";
 
       const iconEl = document.createElement("span");
       iconEl.className = "sales-assistant__start-option-icon";
-      iconEl.textContent = icon;
+      iconEl.innerHTML = iconSvg;
       iconEl.setAttribute("aria-hidden", "true");
 
       const textWrap = document.createElement("span");
@@ -207,13 +217,13 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
 
         menu.append(
           optionButton(
-            "💬",
+            ICON_CHAT,
             "Direkt eine Frage stellen oder Angebot anfragen",
             "Kein Umweg — kurz Angaben hinterlassen, wir melden uns persönlich.",
             () => renderContactForm(),
           ),
           optionButton(
-            "✨",
+            ICON_COMPASS,
             "Ich schau mich erst um",
             "Der Assistent erklärt kurz, was zu deinem Vorhaben passt.",
             () => void ask("Ich möchte zuerst einen Überblick, was SwissCompact alles anbietet.", "quick_reply"),
@@ -244,13 +254,13 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
 
       menu.append(
         optionButton(
-          "🏠",
+          ICON_ROOM,
           "Meinen Raum mit Displays gestalten",
           "In wenigen Klicks zum eigenen 3D-Konzept — inklusive Bild und Text fürs Display.",
           openShowroomFunnel,
         ),
         optionButton(
-          "💬",
+          ICON_CHAT,
           "Direkt eine Frage stellen oder Angebot anfragen",
           "Kein Umweg — kurz Angaben hinterlassen, wir melden uns persönlich.",
           () => {
@@ -259,7 +269,7 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
           },
         ),
         optionButton(
-          "✨",
+          ICON_COMPASS,
           `Mehr zu "${activePhase.themeLabel}" erfahren`,
           "Der Assistent geht direkt auf diesen Bereich ein.",
           () => void ask(`Ich interessiere mich für den Bereich "${activePhase.themeLabel}". Was empfiehlst du mir?`, "quick_reply"),
