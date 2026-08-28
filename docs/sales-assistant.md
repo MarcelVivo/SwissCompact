@@ -109,10 +109,13 @@ alter default privileges in schema swisscompact grant all on tables to service_r
 | `OPENAI_ASSISTANT_REALTIME_MODEL` | realtime | optional, Default `gpt-realtime-2.1` |
 | `SUPABASE_URL` | lead | 503 — `https://dmqgitvcpxtxjxotlrja.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | lead | 503 — aus Supabase Dashboard kopieren, nie in Chat/Screenshot teilen |
-| `RESEND_API_KEY` | lead | 503 — blockiert bis Resend-Domain-Verifizierung für swisscompact.com erledigt ist |
+| `RESEND_API_KEY` | E-Mail-Benachrichtigung | Optional — ohne Key oder bei einem Mailfehler wird die Anfrage weiterhin im CRM gespeichert und im Frontend bestätigt |
 | `SITE_URL` | alle vier (Origin-Check) | optional |
 
-Solange `RESEND_API_KEY` fehlt, funktioniert die Website weiterhin normal — nur die Lead-Übergabe am Ende des Chats liefert 503, bis Resend eingerichtet ist.
+Die CRM-Übergabe funktioniert unabhängig von Resend. Solange `RESEND_API_KEY`
+fehlt oder die Domain-Verifizierung noch nicht abgeschlossen ist, wird die
+Anfrage im CRM gespeichert und im Frontend bestätigt; lediglich die interne
+Benachrichtigung und die Kundenbestätigung per E-Mail entfallen.
 
 ## Lokal testen
 

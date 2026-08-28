@@ -83,8 +83,8 @@ export async function POST(request: Request): Promise<Response> {
 
     const resendKey = process.env.RESEND_API_KEY;
     const supabase = getAssistantSupabaseClient();
-    if (!supabase || !resendKey) {
-      console.error("assistant/lead: missing Supabase or Resend configuration");
+    if (!supabase) {
+      console.error("assistant/lead: missing Supabase configuration");
       return json({ error: "Kontaktübergabe ist nicht vollständig konfiguriert" }, { status: 503 });
     }
 
@@ -220,13 +220,17 @@ export async function POST(request: Request): Promise<Response> {
       summary: escapeHtml(conversationSummary),
       request: escapeHtml(directRequest),
     };
-    const resend = new Resend(resendKey);
-    const adminMail = await resend.emails.send({
-      from: "SwissCompact Assistent <noreply@swisscompact.com>",
-      to: "kontakt@swisscompact.com",
-      replyTo: email,
-      subject: `Neue Anfrage über den Assistenten · ${company || name}`,
-      html: `
+    let adminEmailDelivered = false;
+    let customerEmailDelivered = false;
+    if (resendKey) {
+      try {
+        const resend = new Resend(resendKey);
+        const adminMail = await resend.emails.send({
+        from: "SwissCompact Assistent <noreply@swisscompact.com>",
+        to: "kontakt@swisscompact.com",
+        replyTo: email,
+        subject: `Neue Anfrage über den Assistenten · ${company || name}`,
+        html: `
         <div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;background:#060607;color:#e9e9ec;border:1px solid #2a2a30">
           <div style="padding:26px 30px;border-bottom:1px solid #2a2a30;background:#0d0d10">
             <p style="margin:0 0 8px;color:#c8102e;font-size:12px;letter-spacing:.14em;font-weight:700">${
@@ -261,24 +265,49 @@ export async function POST(request: Request): Promise<Response> {
           </div>
           <div style="padding:14px 30px;border-top:1px solid #2a2a30;color:#77777e;font-size:11px">Kontakt ${requestRow?.id || ""} · Kunde ${customerId || ""} · Deal ${dealRow?.id || ""}</div>
         </div>`,
-    });
-    if (adminMail.error) throw new Error(`E-Mail: ${adminMail.error.message}`);
+        });
+        if (adminMail.error) {
+          console.error("assistant/lead: admin notification failed", adminMail.error.message);
+        } else {
+          adminEmailDelivered = true;
+        }
 
-    const customerMail = await resend.emails.send({
-      from: "SwissCompact <kontakt@swisscompact.com>",
-      to: email,
-      subject: "Deine Anfrage ist bei uns angekommen.",
-      html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#20231f"><h1>Danke, ${safe.name}.</h1><p>${
-        hasConversationContext
-          ? "Deine Kontaktdaten und der Kontext aus deinem Gespräch mit unserem Assistenten"
-          : "Deine Kontaktdaten und dein Anliegen"
-      } sind bei uns angekommen. Wir prüfen alles persönlich und melden uns innerhalb von zwei Arbeitstagen.</p><p>Freundliche Grüsse<br><strong>SwissCompact</strong></p></div>`,
-    });
-    if (customerMail.error) {
-      console.error("assistant/lead: customer confirmation failed", customerMail.error.message);
+        const customerMail = await resend.emails.send({
+          from: "SwissCompact <kontakt@swisscompact.com>",
+          to: email,
+          subject: "Deine Anfrage ist bei uns angekommen.",
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#20231f"><h1>Danke, ${safe.name}.</h1><p>${
+            hasConversationContext
+              ? "Deine Kontaktdaten und der Kontext aus deinem Gespräch mit unserem Assistenten"
+              : "Deine Kontaktdaten und dein Anliegen"
+          } sind bei uns angekommen. Wir prüfen alles persönlich und melden uns innerhalb von zwei Arbeitstagen.</p><p>Freundliche Grüsse<br><strong>SwissCompact</strong></p></div>`,
+        });
+        if (customerMail.error) {
+          console.error("assistant/lead: customer confirmation failed", customerMail.error.message);
+        } else {
+          customerEmailDelivered = true;
+        }
+      } catch (emailError) {
+        console.error(
+          "assistant/lead: email delivery failed after CRM save",
+          emailError instanceof Error ? emailError.message : "Unknown error",
+        );
+      }
+    } else {
+      console.warn("assistant/lead: Resend is not configured; lead saved without email notifications");
     }
 
-    return json({ ok: true, requestId: requestRow?.id, customerId, dealId: dealRow?.id });
+    return json({
+      ok: true,
+      requestId: requestRow?.id,
+      customerId,
+      dealId: dealRow?.id,
+      delivery: {
+        crm: true,
+        adminEmail: adminEmailDelivered,
+        customerEmail: customerEmailDelivered,
+      },
+    });
   } catch (error) {
     console.error("assistant/lead:", error instanceof Error ? error.message : "Unknown error");
     return json({ error: "Die Kontaktübergabe konnte nicht abgeschlossen werden." }, { status: 500 });
