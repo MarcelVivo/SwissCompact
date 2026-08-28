@@ -16279,6 +16279,13 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   }
 }
 
+/* Reveal, content and network are the "room-visible" steps — the panel
+   itself goes transparent so the 3D room shows through, and the body
+   becomes a single bottom-anchored card instead of the panel's own
+   full-bleed opaque background. Applies to all three so content/network
+   (where the visitor's own generated text/image actually lands on the
+   display) stay consistent with the initial reveal moment rather than
+   reverting to a large opaque panel that hides the room again. */
 .showroom-funnel__panel.is-reveal-step {
   background: transparent;
   backdrop-filter: none;
@@ -16291,28 +16298,16 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
 }
 
 .showroom-funnel__panel.is-reveal-step .showroom-funnel__body {
-  max-width: none;
-  padding: 0;
-  align-items: center;
-}
-
-.showroom-funnel__reveal-badge {
-  margin-top: auto;
+  max-width: 560px;
+  width: calc(100% - 32px);
   margin-bottom: 40px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 16px 14px 22px;
-  border-radius: 44px;
+  padding: 22px 26px 26px;
+  border-radius: 28px;
   background: rgba(6, 6, 7, 0.78);
   backdrop-filter: blur(14px);
   border: 1px solid var(--showroom-border);
+  justify-content: flex-end;
   animation: showroom-funnel-reveal-in 0.5s ease-out;
-}
-
-.showroom-funnel__reveal-badge strong {
-  color: var(--white);
-  font-size: 16px;
 }
 
 @keyframes showroom-funnel-reveal-in {

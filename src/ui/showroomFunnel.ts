@@ -475,17 +475,13 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
   }
 
   function renderReveal() {
-    panel.classList.add("is-reveal-step");
     // Deliberately minimal — the whole point of this step is that the room
-    // itself is the content, not the panel. A small pill at the very
-    // bottom, not a card that competes with the view for attention.
-    const badge = document.createElement("div");
-    badge.className = "showroom-funnel__reveal-badge";
+    // itself is the content, not the panel. Same bottom-anchored card as
+    // the other room-visible steps (content, network), just with less in it.
     const label = document.createElement("strong");
     label.textContent = `${state.presetLabel ?? "Dein Raum"} wird aufgebaut …`;
     const nextButton = primaryButton("Weiter →", next, true);
-    badge.append(label, nextButton);
-    body.append(badge);
+    body.append(label, nextButton);
 
     // The 3D scene needs a moment to actually settle after goToRoom() —
     // gate the "Weiter" button on the showroom's own readiness signal
@@ -708,10 +704,17 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     body.append(heading, hint, closeBtn);
   }
 
+  // The room itself is the point from "reveal" onward — keep the panel
+  // mostly transparent through content/network too, not just the initial
+  // reveal, so the visitor can actually see their generated text/image
+  // land on the display instead of it being hidden behind an opaque card
+  // for the rest of the flow.
+  const ROOM_VISIBLE_STEPS: StepId[] = ["reveal", "content", "network"];
+
   function render() {
     body.replaceChildren();
     renderDots();
-    panel.classList.remove("is-reveal-step");
+    panel.classList.toggle("is-reveal-step", ROOM_VISIBLE_STEPS.includes(currentStep()));
     switch (currentStep()) {
       case "hook":
         renderHook();
