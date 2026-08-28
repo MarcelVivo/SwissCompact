@@ -5121,16 +5121,23 @@ button {
 .media-tile {
   position: relative;
   display: flex;
+  justify-content: space-between;
+  gap: 18px;
   align-items: flex-end;
   padding: 24px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.2);
+  outline: 0;
+  color: #fff;
   background:
     radial-gradient(circle at 72% 24%, rgba(255, 255, 255, 0.55), transparent 4%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(5, 5, 7, 0.76));
   box-shadow: 0 28px 50px rgba(25, 0, 5, 0.24);
   transform: translateZ(0);
   transition: transform 0.35s ease, background-color 0.35s ease;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .media-tile::after {
@@ -5144,17 +5151,61 @@ button {
   content: "";
 }
 
-.media-tile:hover {
+.media-tile:hover,
+.media-tile:focus-visible {
   transform: translateY(-6px) translateZ(22px);
 }
 
-.media-tile span {
+.media-tile:focus-visible {
+  border-color: #fff;
+  box-shadow:
+    0 28px 50px rgba(25, 0, 5, 0.24),
+    inset 0 0 0 2px #fff;
+}
+
+.media-tile__title {
   position: relative;
   z-index: 1;
   font-size: clamp(18px, 2vw, 30px);
   font-weight: 750;
   line-height: 0.98;
   letter-spacing: -0.04em;
+}
+
+.media-tile__action {
+  position: absolute;
+  z-index: 1;
+  top: 18px;
+  right: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.media-tile__action svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  transition: transform 180ms ease;
+}
+
+.media-tile:hover .media-tile__action,
+.media-tile:focus-visible .media-tile__action {
+  color: #fff;
+}
+
+.media-tile:hover .media-tile__action svg,
+.media-tile:focus-visible .media-tile__action svg {
+  transform: translateX(3px);
 }
 
 .media-tile--hero {
@@ -5166,6 +5217,10 @@ button {
 
 .media-tile--wide {
   grid-column: span 2;
+}
+
+.is-media-detail-open {
+  overflow: hidden;
 }
 
 .company-section {

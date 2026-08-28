@@ -62,6 +62,7 @@
     "test:display-content": "node scripts/display-content-library-smoke.mjs",
     "test:display-preview": "node scripts/display-preview-smoke.mjs",
     "test:project-steps": "node scripts/project-steps-smoke.mjs",
+    "test:media-studio": "node scripts/media-studio-details-smoke.mjs",
     "test:content-editor": "node scripts/display-content-editor-smoke.mjs",
     "test:pov": "node scripts/pov-navigation-smoke.mjs"
   },
