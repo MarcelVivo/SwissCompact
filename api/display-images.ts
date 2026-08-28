@@ -9,7 +9,13 @@ import { json, validatePublicPost, cleanText } from "./_lib/assistant/security.j
 // (rate limiting, origin check) even though this route isn't assistant
 // functionality — they're provider-agnostic utilities, not worth
 // duplicating for one more route.
-export const config = { runtime: "nodejs", maxDuration: 45 };
+// gpt-image-1 generation genuinely takes 40-90s for non-square sizes —
+// confirmed in production logs, the original 40s/45s pair was too tight
+// and aborted in-flight requests that OpenAI would otherwise have
+// completed. Vercel Fluid Compute (seen in this project's function logs)
+// supports well beyond 100s; if the plan's actual cap is lower, this will
+// surface as a platform-level timeout rather than our own AbortSignal.
+export const config = { runtime: "nodejs", maxDuration: 120 };
 
 const VALID_ROLES = new Set(["background", "hero"]);
 const VALID_ORIENTATIONS = new Set(["landscape", "portrait"]);
@@ -68,7 +74,7 @@ export async function POST(request: Request): Promise<Response> {
         size,
         n: 1,
       }),
-      signal: AbortSignal.timeout(40_000),
+      signal: AbortSignal.timeout(110_000),
     });
   } catch (error) {
     console.error(`display-images[${requestId}]: request failed`, error);
