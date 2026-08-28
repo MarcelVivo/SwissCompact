@@ -51,7 +51,7 @@ function markFragments(element: HTMLElement): void {
     (child): child is HTMLElement =>
       child instanceof HTMLElement
       && !child.matches(
-        ".industry-card__screen, .industry-card__media, .impact-card__scene",
+        ".industry-card__screen, .industry-card__media, .impact-card__photo, .impact-card__scene",
       ),
   );
 
