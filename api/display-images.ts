@@ -56,9 +56,15 @@ export async function POST(request: Request): Promise<Response> {
 
   const requestId = randomUUID();
   const size = orientation === "portrait" ? "1024x1536" : "1536x1024";
-  const scenePrompt = `Professionelles Werbe-/Ambiente-Bild für ein Digital-Signage-Display in einem Raum vom Typ "${room}" (${
+  // Deliberately asks for the flat poster/campaign graphic itself, not a
+  // photo/mockup of a screen showing it — an earlier version of this
+  // prompt asked for a "digital signage display in a room", which the
+  // model took literally and rendered a framed monitor on a wall instead
+  // of standalone artwork. The generated image is placed onto the real 3D
+  // display programmatically; it must not depict a display itself.
+  const scenePrompt = `Reines Werbeplakat-Motiv für einen Betrieb vom Typ "${room}" (${
     role === "hero" ? "grossflächiges Hauptmotiv" : "dezenter Hintergrund"
-  }). Hochwertig, realistisch, Schweizer Qualitätsanspruch, keine Textelemente oder Logos im Bild. Motiv: ${prompt}`;
+  }), wie eine hochwertige Kampagnengrafik oder ein Plakat. Zeige ausschliesslich die Grafik selbst, randabfüllend über das gesamte Bild. Kein Bildschirm, kein Display, kein Monitor, kein Rahmen, keine Wand, kein Raum, keine Perspektive auf eine Installation und kein Mockup — nur das Motiv selbst, so wie ein Print- oder Kampagnenmotiv aussieht, nicht wie ein Foto einer Anzeigetafel. Zentrierte, ruhige Komposition ohne wichtige Elemente nahe am Rand, damit sie sowohl im Hochformat als auch im Querformat funktioniert. Hochwertig, realistisch, Schweizer Qualitätsanspruch, keine Textelemente oder Logos im Bild. Motiv: ${prompt}`;
 
   let response: Response;
   try {
