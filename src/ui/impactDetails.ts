@@ -91,6 +91,7 @@ export function mountImpactDetails(): ImpactDetails {
 
   const closeButton = dialog.querySelector<HTMLButtonElement>("[data-impact-detail-close]");
   const cta = dialog.querySelector<HTMLButtonElement>("[data-impact-detail-cta]");
+  const surface = dialog.querySelector<HTMLElement>(".project-detail__surface");
   const services = dialog.querySelector<HTMLUListElement>("[data-impact-detail-services]");
   const fields = {
     number: dialog.querySelector<HTMLElement>("[data-impact-detail-number]"),
@@ -128,6 +129,7 @@ export function mountImpactDetails(): ImpactDetails {
       return item;
     }));
     dialog.dataset.impactDetailActive = key;
+    if (surface) surface.scrollTop = 0;
     document.body.classList.add("is-impact-detail-open");
     dialog.showModal();
   };

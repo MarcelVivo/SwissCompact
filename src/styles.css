@@ -5079,6 +5079,93 @@ button {
   background: #ff1747;
 }
 
+.impact-detail {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+}
+
+.impact-detail .project-detail__surface {
+  max-height: calc(100dvh - 32px);
+  padding: clamp(26px, 3vw, 40px);
+}
+
+.impact-detail .project-detail__close {
+  top: 16px;
+  right: 16px;
+  width: 42px;
+  height: 42px;
+}
+
+.impact-detail .project-detail__header {
+  max-width: none;
+  padding-right: 54px;
+}
+
+.impact-detail .project-detail__header h3 {
+  margin-top: 18px;
+  font-size: clamp(36px, 5vw, 62px);
+  line-height: 0.96;
+}
+
+.impact-detail .project-detail__header > strong {
+  max-width: 980px;
+  margin-top: 12px;
+  font-size: clamp(18px, 2vw, 24px);
+  line-height: 1.16;
+}
+
+.impact-detail .project-detail__header > p:last-child {
+  max-width: 920px;
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.impact-detail .project-detail__body {
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: clamp(24px, 4vw, 48px);
+  margin-top: 22px;
+  padding-top: 18px;
+}
+
+.impact-detail .project-detail__body ul {
+  margin-top: 10px;
+}
+
+.impact-detail .project-detail__body li {
+  padding: 8px 0 8px 22px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.impact-detail .project-detail__body li::before {
+  top: 13px;
+}
+
+.impact-detail .project-detail__body aside {
+  padding: 18px;
+}
+
+.impact-detail .project-detail__body aside p {
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.36;
+}
+
+.impact-detail .project-detail__body aside small {
+  margin-top: 14px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.impact-detail footer {
+  margin-top: 18px;
+}
+
+.impact-detail footer button {
+  min-height: 46px;
+}
+
 .is-project-detail-open,
 .is-impact-detail-open {
   overflow: hidden;
@@ -5133,6 +5220,31 @@ button {
 
   .project-detail footer button {
     width: 100%;
+  }
+
+  .impact-detail,
+  .impact-detail .project-detail__surface {
+    max-height: 100dvh;
+  }
+
+  .impact-detail .project-detail__surface {
+    padding: 64px 20px calc(22px + env(safe-area-inset-bottom));
+  }
+
+  .impact-detail .project-detail__header {
+    padding-right: 0;
+  }
+
+  .impact-detail .project-detail__header h3 {
+    margin-top: 18px;
+    font-size: clamp(38px, 12vw, 52px);
+  }
+
+  .impact-detail .project-detail__body {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    margin-top: 26px;
+    padding-top: 20px;
   }
 }
 
