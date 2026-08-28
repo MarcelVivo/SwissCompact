@@ -60,6 +60,7 @@ function journeyMaximum(): number {
 
 export function mountSiteNavigation(): SiteNavigation {
   const header = document.querySelector<HTMLElement>("[data-site-header]");
+  const primaryNav = document.querySelector<HTMLElement>("#primary-nav");
   const menuToggle = document.querySelector<HTMLButtonElement>("[data-menu-toggle]");
   const transition = document.querySelector<HTMLElement>("[data-route-transition]");
   const marketingTargets = [
@@ -76,12 +77,26 @@ export function mountSiteNavigation(): SiteNavigation {
   const cleanupListeners: Array<() => void> = [];
   let menuOpen = false;
   let destroyed = false;
+  const mobileMenu = window.matchMedia("(max-width: 1100px)");
 
-  const setMenuOpen = (open: boolean) => {
+  const syncMenuAccessibility = () => {
+    const hidden = mobileMenu.matches && !menuOpen;
+    primaryNav?.toggleAttribute("inert", hidden);
+    if (hidden) primaryNav?.setAttribute("aria-hidden", "true");
+    else primaryNav?.removeAttribute("aria-hidden");
+  };
+
+  const setMenuOpen = (open: boolean, restoreFocus = false) => {
     menuOpen = open;
     document.body.classList.toggle("is-menu-open", open);
     menuToggle?.setAttribute("aria-expanded", String(open));
     menuToggle?.setAttribute("aria-label", open ? "Menü schliessen" : "Menü öffnen");
+    syncMenuAccessibility();
+    if (open) {
+      window.requestAnimationFrame(() => primaryNav?.querySelector<HTMLElement>("a")?.focus());
+    } else if (restoreFocus) {
+      menuToggle?.focus();
+    }
   };
 
   const updatePageState = () => {
@@ -144,9 +159,13 @@ export function mountSiteNavigation(): SiteNavigation {
     else window.scrollTo({ top: targetTop, behavior: "smooth" });
   };
 
-  const handleMenuToggle = () => setMenuOpen(!menuOpen);
+  const handleMenuToggle = () => setMenuOpen(!menuOpen, menuOpen);
   const handleKeydown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") setMenuOpen(false);
+    if (event.key === "Escape" && menuOpen) setMenuOpen(false, true);
+  };
+  const handleMenuBreakpoint = () => {
+    if (!mobileMenu.matches && menuOpen) setMenuOpen(false);
+    else syncMenuAccessibility();
   };
 
   marketingTargets.forEach((target) => {
@@ -162,10 +181,12 @@ export function mountSiteNavigation(): SiteNavigation {
   window.addEventListener("scroll", updatePageState, { passive: true });
   window.addEventListener("resize", updatePageState, { passive: true });
   window.addEventListener("keydown", handleKeydown);
+  mobileMenu.addEventListener("change", handleMenuBreakpoint);
   cleanupListeners.push(
     () => window.removeEventListener("scroll", updatePageState),
     () => window.removeEventListener("resize", updatePageState),
     () => window.removeEventListener("keydown", handleKeydown),
+    () => mobileMenu.removeEventListener("change", handleMenuBreakpoint),
   );
 
   solutionTabs.forEach((tab) => {
@@ -234,6 +255,7 @@ export function mountSiteNavigation(): SiteNavigation {
     cleanupListeners.push(() => tab.removeEventListener("click", handleSolution));
   });
 
+  syncMenuAccessibility();
   updatePageState();
 
   return {

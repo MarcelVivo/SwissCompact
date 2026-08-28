@@ -344,7 +344,10 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       body.append(contactCta);
     }
 
-    body.scrollTop = body.scrollHeight;
+    const hasConversation = messages.length > 0
+      || quickReplies.length > 0
+      || Boolean(lastRecommendation);
+    body.scrollTop = hasConversation ? body.scrollHeight : 0;
   }
 
   function renderContactForm() {
@@ -839,7 +842,12 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     trigger.setAttribute("aria-expanded", String(value));
     document.body.classList.toggle("is-sales-assistant-open", value);
     if (value && messages.length === 0) renderChat();
-    if (value) input.focus();
+    if (value) {
+      window.requestAnimationFrame(() => {
+        body.scrollTop = 0;
+        closeButton?.focus({ preventScroll: true });
+      });
+    }
   }
 
   const handleTriggerClick = () => setOpen(!open);

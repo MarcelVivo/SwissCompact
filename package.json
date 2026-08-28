@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test:assistant": "node scripts/sales-assistant-smoke.mjs",
     "test:browser": "node scripts/browser-smoke.mjs",
+    "test:mobile": "node scripts/mobile-ux-smoke.mjs",
     "test:contrast": "node scripts/contrast-showroom-smoke.mjs",
     "test:culture": "node scripts/culture-showroom-smoke.mjs",
     "test:sport": "node scripts/sport-showroom-smoke.mjs",
