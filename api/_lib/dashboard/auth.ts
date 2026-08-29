@@ -16,6 +16,7 @@ export interface DashboardProfile {
   role: "owner_admin" | "admin" | "staff" | "advisor" | "client";
   securityAdmin: boolean;
   aal: "aal1" | "aal2" | null;
+  webauthnEnrolled: boolean;
 }
 
 function config() {
@@ -116,6 +117,7 @@ async function ensureProfile(client: SupabaseClient<any, any, any>, user: User):
     role: data.role,
     securityAdmin: Boolean(data.security_admin),
     aal: aal?.currentLevel ?? null,
+    webauthnEnrolled: Boolean(user.factors?.some((factor) => factor.factor_type === "webauthn" && factor.status === "verified")),
   } as DashboardProfile;
 }
 

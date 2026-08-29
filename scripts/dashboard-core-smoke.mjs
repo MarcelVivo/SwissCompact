@@ -19,6 +19,10 @@ assert.match(auth, /kontakt@swisscompact\.com/);
 assert.match(auth, /thomas\.peter@swisscompact\.com/);
 assert.match(auth, /owner_admin/);
 assert.match(auth, /Zwei-Faktor-Authentifizierung erforderlich/);
+assert.match(auth, /webauthnEnrolled/);
+assert.match(ui, /Face ID einrichten/);
+assert.match(ui, /webauthn_enroll_start/);
+assert.match(ui, /webauthn_challenge/);
 
 for (const table of ["dashboard_profiles", "audit_log", "clients", "opportunities", "projects", "approvals", "quotes", "invoices", "journal_entries", "journal_lines", "founder_transactions", "owner_settlements", "subscription_packages", "ai_jobs", "marketing_campaigns"]) {
   assert.match(migration, new RegExp(`create table if not exists swisscompact\\.${table}`), `${table} fehlt`);
