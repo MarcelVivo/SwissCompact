@@ -48,7 +48,9 @@ Firmenname, UID, gemeinsames Bankkonto und QR-IBAN werden bei der Gründung kont
 - Rollenprüfung und unveränderbares Audit-Protokoll
 - responsive Übersicht für Desktop und Mobilgeräte
 - Kunden erfassen
-- Anfragen erfassen und durch alle Phasen verschieben
+- Kunden suchen, filtern und mit Kontaktdaten, Adresse und Notizen bearbeiten
+- Anfragen erfassen, detailliert bearbeiten und durch alle Phasen verschieben
+- neue Website- und KI-Assistent-Anfragen automatisch in Kundenkartei und Auftragstrichter übernehmen
 - Aufgaben erfassen und erledigen
 - Projekte und 50/30/20-Zahlungsstatus anzeigen
 - Gründerbewegungen und Belegstatus anzeigen; Kategorien ergänzen

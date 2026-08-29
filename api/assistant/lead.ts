@@ -175,6 +175,8 @@ export async function POST(request: Request): Promise<Response> {
     let requestId: string | undefined;
     let customerId: string | undefined;
     let dealId: string | undefined;
+    let dashboardClientId: string | undefined;
+    let dashboardOpportunityId: string | undefined;
     let crmDelivered = false;
     if (supabase) {
       try {
@@ -241,6 +243,81 @@ export async function POST(request: Request): Promise<Response> {
           .single();
         if (dealError) throw new Error(`Pipeline-Lead: ${dealError.message}`);
         dealId = dealRow?.id;
+
+        // The public contact flow historically wrote to kunden/deals. Keep
+        // those records for compatibility, but also feed the protected
+        // operations dashboard so a new request is visible immediately.
+        const { data: existingDashboardClient, error: dashboardClientSearchError } = await supabase
+          .from("clients")
+          .select("id,notes")
+          .eq("email", email)
+          .limit(1)
+          .maybeSingle();
+        if (dashboardClientSearchError) throw new Error(`Dashboard-Kundensuche: ${dashboardClientSearchError.message}`);
+
+        dashboardClientId = existingDashboardClient?.id as string | undefined;
+        if (dashboardClientId) {
+          const notes = [existingDashboardClient?.notes, crmNotes]
+            .filter(Boolean)
+            .join("\n\n––––––––––\n\n")
+            .slice(0, 50_000);
+          const { error } = await supabase
+            .from("clients")
+            .update({
+              company_name: company || name,
+              contact_name: name,
+              phone,
+              lifecycle: "lead",
+              notes,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", dashboardClientId);
+          if (error) throw new Error(`Dashboard-Kundenaktualisierung: ${error.message}`);
+        } else {
+          const { data, error } = await supabase
+            .from("clients")
+            .insert({
+              company_name: company || name,
+              contact_name: name,
+              email,
+              phone,
+              lifecycle: "lead",
+              notes: crmNotes,
+            })
+            .select("id")
+            .single();
+          if (error) throw new Error(`Dashboard-Kundenerstellung: ${error.message}`);
+          dashboardClientId = data?.id;
+        }
+
+        const { data: dashboardOpportunity, error: dashboardOpportunityError } = await supabase
+          .from("opportunities")
+          .insert({
+            client_id: dashboardClientId || null,
+            title: `Website-Anfrage · ${company || name}`,
+            stage: "request",
+            owner_area: "shared",
+            probability,
+            next_action: "Persönlich prüfen und innerhalb von zwei Arbeitstagen kontaktieren.",
+            source: "website-assistant",
+          })
+          .select("id")
+          .single();
+        if (dashboardOpportunityError) throw new Error(`Dashboard-Chance: ${dashboardOpportunityError.message}`);
+        dashboardOpportunityId = dashboardOpportunity?.id;
+        const { error: dashboardAuditError } = await supabase.from("audit_log").insert({
+          actor_email: "website-assistant@swisscompact.com",
+          action: "website_lead_created",
+          entity_type: "opportunity",
+          entity_id: dashboardOpportunityId,
+          new_data: {
+            clientId: dashboardClientId,
+            opportunityId: dashboardOpportunityId,
+            source: "website-assistant",
+            leadTemperature,
+          },
+        });
+        if (dashboardAuditError) console.error("assistant/lead: dashboard audit failed", dashboardAuditError.message);
         crmDelivered = true;
       } catch (crmError) {
         console.error(
@@ -348,6 +425,8 @@ export async function POST(request: Request): Promise<Response> {
       requestId,
       customerId,
       dealId,
+      dashboardClientId,
+      dashboardOpportunityId,
       delivery: {
         crm: crmDelivered,
         adminEmail: adminEmailDelivered,

@@ -5,6 +5,8 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const migration = read("supabase/migrations/20260828_dashboard_core.sql");
 const auth = read("api/_lib/dashboard/auth.ts");
 const ui = read("src/dashboard/main.tsx");
+const records = read("api/dashboard/records.ts");
+const lead = read("api/assistant/lead.ts");
 const vercel = JSON.parse(read("vercel.json"));
 
 assert.ok(existsSync(new URL("../dashboard.html", import.meta.url)), "dashboard.html fehlt");
@@ -29,6 +31,14 @@ assert.match(migration, /'2026-08-28'.*'settlement_transfer'.*'thomas'.*'marcel'
 for (const area of ["Auftragstrichter", "Kundenkartei", "Finanzen", "KI-Bots", "Sicherheit & Protokoll"]) {
   assert.ok(ui.includes(area), `UI-Bereich ${area} fehlt`);
 }
+for (const action of ["update_client", "update_opportunity"]) {
+  assert.ok(records.includes(`action === "${action}"`), `CRM-Aktion ${action} fehlt`);
+}
+assert.ok(ui.includes("ClientDrawer"), "Kunden-Detailansicht fehlt");
+assert.ok(ui.includes("OpportunityDrawer"), "Chancen-Detailansicht fehlt");
+assert.match(lead, /\.from\("clients"\)/, "Website-Anfrage wird nicht in Dashboard-Kunden synchronisiert");
+assert.match(lead, /\.from\("opportunities"\)/, "Website-Anfrage wird nicht in Dashboard-Trichter synchronisiert");
+assert.match(lead, /website_lead_created/, "Website-Anfrage wird nicht protokolliert");
 assert.ok(existsSync(new URL("../dist/dashboard.html", import.meta.url)), "Produktions-Build für Dashboard fehlt");
 
 console.log("Dashboard core smoke checks passed.");

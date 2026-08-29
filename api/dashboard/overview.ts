@@ -8,8 +8,8 @@ export async function GET(request: Request): Promise<Response> {
   if (isResponse(authorized)) return authorized;
   const { client, profile } = authorized;
   const [clients, opportunities, projects, tasks, invoices, founderTransactions, aiJobs, settings, audit] = await Promise.all([
-    client.from("clients").select("id,customer_number,company_name,contact_name,email,lifecycle,created_at").order("created_at", { ascending: false }).limit(12),
-    client.from("opportunities").select("id,title,stage,owner_area,value_chf,probability,next_action,next_action_at,client:clients(company_name)").order("updated_at", { ascending: false }).limit(80),
+    client.from("clients").select("id,customer_number,company_name,contact_name,email,phone,address_line,postal_code,city,country_code,lifecycle,marketing_consent,notes,created_at,updated_at").order("updated_at", { ascending: false }).limit(200),
+    client.from("opportunities").select("id,client_id,title,stage,owner_area,value_chf,probability,expected_close,next_action,next_action_at,source,created_at,updated_at,client:clients(company_name)").order("updated_at", { ascending: false }).limit(200),
     client.from("projects").select("id,order_number,title,status,deposit_received,installation_payment_received,final_payment_received,target_completion,client:clients(company_name)").order("updated_at", { ascending: false }).limit(12),
     client.from("tasks").select("id,title,responsibility,status,priority,due_at").neq("status", "done").order("due_at", { ascending: true, nullsFirst: false }).limit(20),
     client.from("invoices").select("id,invoice_number,status,amount,due_on,installment,client:clients(company_name)").order("created_at", { ascending: false }).limit(12),
