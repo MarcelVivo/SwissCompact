@@ -14,7 +14,7 @@ const vercel = JSON.parse(read("vercel.json"));
 assert.ok(existsSync(new URL("../dashboard.html", import.meta.url)), "dashboard.html fehlt");
 assert.ok(existsSync(new URL("../quote.html", import.meta.url)), "Öffentliche Offertenseite fehlt");
 assert.ok(vercel.rewrites.some((rule) => rule.source === "/dashboard" && rule.destination === "/dashboard.html"), "Dashboard-Rewrite fehlt");
-assert.ok(vercel.rewrites.some((rule) => rule.source === "/offerte/:token" && rule.destination.includes("quote.html")), "Sicherer Offertenlink fehlt");
+assert.ok(vercel.rewrites.some((rule) => rule.source === "/offerte/:token" && rule.destination === "/quote"), "Sicherer Offertenlink fehlt");
 assert.match(auth, /kontakt@swisscompact\.com/);
 assert.match(auth, /thomas\.peter@swisscompact\.com/);
 assert.match(auth, /owner_admin/);

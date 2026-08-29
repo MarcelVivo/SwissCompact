@@ -2,7 +2,7 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/dashboard", "destination": "/dashboard.html" },
-    { "source": "/offerte/:token", "destination": "/quote.html?token=:token" }
+    { "source": "/offerte/:token", "destination": "/quote" }
   ],
   "headers": [
     {
