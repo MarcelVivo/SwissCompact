@@ -6,7 +6,7 @@ type Payload = Record<string, unknown>;
 
 function amount(value: unknown): number {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 100) / 100) : 0;
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(Math.min(parsed, 1_000_000_000) * 100) / 100) : 0;
 }
 
 function optionalEmail(value: unknown): string | null | undefined {
@@ -31,6 +31,19 @@ function approvalColumn(email: string): "marcel_approved_at" | "thomas_approved_
   if (email === "kontakt@swisscompact.com") return "marcel_approved_at";
   if (email === "thomas.peter@swisscompact.com") return "thomas_approved_at";
   return null;
+}
+
+function quoteItems(value: unknown): Array<{ description: string; quantity: number; unit: string; unitPriceChf: number; totalChf: number }> | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 50) return null;
+  const parsed = value.map((entry) => {
+    const item = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+    const description = cleanText(item.description, 300);
+    const quantity = Math.min(100_000, Math.max(0.01, Math.round(Number(item.quantity) * 100) / 100));
+    const unit = cleanText(item.unit, 40) || "Stk.";
+    const unitPriceChf = amount(item.unitPriceChf);
+    return { description, quantity, unit, unitPriceChf, totalChf: Math.round(quantity * unitPriceChf * 100) / 100 };
+  });
+  return parsed.every((item) => item.description && Number.isFinite(item.quantity) && item.unitPriceChf >= 0) ? parsed : null;
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -162,6 +175,79 @@ export async function POST(request: Request): Promise<Response> {
     if (result.error) return json({ error: result.error.message }, { status: 400 });
     await writeAudit(client, profile, "update", "opportunity", id, previous.data, result.data);
     return json({ ok: true, record: result.data });
+  }
+
+  if (action === "create_quote" || action === "update_quote") {
+    const items = quoteItems(body.items);
+    const validUntil = typeof body.validUntil === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.validUntil) ? body.validUntil : null;
+    if (!items) return json({ error: "Mindestens eine gültige Offertenposition ist erforderlich" }, { status: 400 });
+    if (!validUntil) return json({ error: "Gültigkeitsdatum fehlt" }, { status: 400 });
+    const subtotal = Math.round(items.reduce((sum, item) => sum + item.totalChf, 0) * 100) / 100;
+    const record = {
+      client_id: typeof body.clientId === "string" && body.clientId ? body.clientId : null,
+      opportunity_id: typeof body.opportunityId === "string" && body.opportunityId ? body.opportunityId : null,
+      status: "draft",
+      currency: "CHF",
+      subtotal,
+      total: subtotal,
+      valid_until: validUntil,
+      items,
+      terms: cleanText(body.terms, 5000) || "Zahlungsplan Projektauftrag: 50 % vor Projektstart, 30 % bei Montagebeginn und 20 % nach unterzeichneter Kundenabnahme. Zahlungsziel 14 Tage. Software-Abonnements werden separat monatlich verrechnet.",
+      updated_at: new Date().toISOString(),
+    };
+    if (!record.client_id) return json({ error: "Kunde fehlt" }, { status: 400 });
+    if (record.opportunity_id) {
+      const opportunity = await client.from("opportunities").select("client_id").eq("id", record.opportunity_id).single();
+      if (opportunity.error || opportunity.data.client_id !== record.client_id) return json({ error: "Chance und Kunde passen nicht zusammen" }, { status: 400 });
+    }
+    if (action === "create_quote") {
+      const result = await client.from("quotes").insert(record).select("*").single();
+      if (result.error) return json({ error: result.error.message }, { status: 400 });
+      if (record.opportunity_id) await client.from("opportunities").update({ stage: "quote", value_chf: subtotal, probability: 60, updated_at: new Date().toISOString() }).eq("id", record.opportunity_id);
+      await writeAudit(client, profile, "create", "quote", result.data.id, undefined, result.data);
+      return json({ ok: true, record: result.data });
+    }
+    const id = cleanText(body.id, 80);
+    const previous = await client.from("quotes").select("*").eq("id", id).single();
+    if (previous.error) return json({ error: "Offerte nicht gefunden" }, { status: 404 });
+    if (["sent", "viewed", "accepted", "declined", "expired"].includes(previous.data.status)) return json({ error: "Eine versendete oder abgeschlossene Offerte kann nicht mehr verändert werden" }, { status: 409 });
+    const result = await client.from("quotes").update(record).eq("id", id).select("*").single();
+    if (result.error) return json({ error: result.error.message }, { status: 400 });
+    await client.from("approvals").update({ invalidated_at: new Date().toISOString() }).eq("entity_id", id).eq("action", "quote_approval").is("invalidated_at", null);
+    if (record.opportunity_id) await client.from("opportunities").update({ value_chf: subtotal, updated_at: new Date().toISOString() }).eq("id", record.opportunity_id);
+    await writeAudit(client, profile, "update", "quote", id, previous.data, result.data);
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "request_quote_approval") {
+    const quoteId = cleanText(body.quoteId, 80);
+    const column = approvalColumn(profile.email);
+    if (!quoteId || !column) return json({ error: "Ungültige Offertenfreigabe" }, { status: 400 });
+    const quote = await client.from("quotes").select("*").eq("id", quoteId).single();
+    if (quote.error) return json({ error: "Offerte nicht gefunden" }, { status: 404 });
+    if (!["draft", "approval"].includes(quote.data.status)) return json({ error: "Diese Offerte kann nicht freigegeben werden" }, { status: 409 });
+    const contentHash = createHash("sha256").update(JSON.stringify({ clientId: quote.data.client_id, opportunityId: quote.data.opportunity_id, items: quote.data.items, total: quote.data.total, validUntil: quote.data.valid_until, terms: quote.data.terms, updatedAt: quote.data.updated_at })).digest("hex");
+    const existing = await client.from("approvals").select("*").eq("entity_id", quoteId).eq("action", "quote_approval").is("invalidated_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (existing.error) return json({ error: existing.error.message }, { status: 400 });
+    let current = existing.data;
+    if (current && current.content_hash !== contentHash) {
+      await client.from("approvals").update({ invalidated_at: new Date().toISOString() }).eq("id", current.id);
+      current = null;
+    }
+    if (!current) {
+      const created = await client.from("approvals").insert({ entity_type: "quote", entity_id: quoteId, action: "quote_approval", content_hash: contentHash, requested_by: profile.userId, [column]: new Date().toISOString() }).select("*").single();
+      if (created.error) return json({ error: created.error.message }, { status: 400 });
+      current = created.data;
+      await client.from("quotes").update({ status: "approval" }).eq("id", quoteId);
+    } else if (!current[column]) {
+      const approved = await client.from("approvals").update({ [column]: new Date().toISOString() }).eq("id", current.id).select("*").single();
+      if (approved.error) return json({ error: approved.error.message }, { status: 400 });
+      current = approved.data;
+    }
+    const fullyApproved = Boolean(current.marcel_approved_at && current.thomas_approved_at);
+    if (fullyApproved && !current.executed_at) await client.from("approvals").update({ executed_at: new Date().toISOString() }).eq("id", current.id);
+    await writeAudit(client, profile, fullyApproved ? "dual_approval_executed" : "approval_recorded", "quote", quoteId, undefined, { approvalId: current.id, total: quote.data.total, fullyApproved });
+    return json({ ok: true, approval: current, approved: fullyApproved });
   }
 
   if (action === "create_project_from_opportunity") {

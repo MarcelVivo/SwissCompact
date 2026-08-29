@@ -56,6 +56,8 @@ Firmenname, UID, gemeinsames Bankkonto und QR-IBAN werden bei der Gründung kont
 - Software-/UX-Verantwortung Marcel und Hardware-/Montageverantwortung Thomas zuweisen
 - Aufgaben direkt Projekten zuordnen und ihren Arbeitsstatus führen
 - 50/30/20-Zahlungsstatus mit Reihenfolge, Projektstart-Sperre und echter Vier-Augen-Freigabe führen
+- Offerten mit nummerierten Entwürfen, Leistungspositionen, automatischer CHF-Kalkulation und Gültigkeit erstellen
+- Offerten erst nach getrennter Zustimmung von Marcel und Thomas verbindlich freigeben; Bearbeitungen invalidieren offene Freigaben
 - Gründerbewegungen und Belegstatus anzeigen; Kategorien ergänzen
 - KI-Bot- und Budgetübersicht
 - vorbereitete Datenmodelle für Buchhaltung, Offerten, Rechnungen, Abos und Marketing
