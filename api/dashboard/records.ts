@@ -424,6 +424,7 @@ export async function POST(request: Request): Promise<Response> {
       const executed = await client.from("projects").update(projectUpdate).eq("id", projectId).select("*").single();
       if (executed.error) return json({ error: executed.error.message }, { status: 400 });
       await client.from("approvals").update({ executed_at: new Date().toISOString() }).eq("id", current.id);
+      await client.from("invoices").update({ status: "paid", paid_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("project_id", projectId).eq("installment", payment).in("status", ["draft", "approval", "sent", "partially_paid", "overdue"]);
       if (project.data.opportunity_id) await client.from("opportunities").update({ stage: config.nextStage, updated_at: new Date().toISOString() }).eq("id", project.data.opportunity_id);
       if (payment === "deposit_50") await client.from("tasks").insert([
         { project_id: projectId, title: "Projekt-Kickoff und Detailplanung durchführen", responsibility: "marcel", priority: "high", status: "open" },
@@ -436,6 +437,17 @@ export async function POST(request: Request): Promise<Response> {
       await writeAudit(client, profile, "approval_recorded", "project_payment", projectId, undefined, { payment, approvalId: current.id, fullyApproved });
     }
     return json({ ok: true, approval: current, executed: fullyApproved });
+  }
+
+  if (action === "invoice_document_url") {
+    const invoiceId = cleanText(body.invoiceId, 80);
+    if (!invoiceId) return json({ error: "Rechnung fehlt" }, { status: 400 });
+    const invoice = await client.from("invoices").select("id,invoice_number,immutable_pdf_path").eq("id", invoiceId).single();
+    if (invoice.error || !invoice.data?.immutable_pdf_path) return json({ error: "Für diese Rechnung ist noch kein PDF verfügbar" }, { status: 404 });
+    const signed = await client.storage.from("swisscompact-documents").createSignedUrl(invoice.data.immutable_pdf_path, 10 * 60);
+    if (signed.error || !signed.data?.signedUrl) return json({ error: "Rechnungsdokument konnte nicht geöffnet werden" }, { status: 503 });
+    await writeAudit(client, profile, "document_opened", "invoice", invoiceId, undefined, { invoiceNumber: invoice.data.invoice_number });
+    return json({ ok: true, url: signed.data.signedUrl, expiresIn: 600 });
   }
 
   if (action === "create_task") {

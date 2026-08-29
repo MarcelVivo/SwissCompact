@@ -32,10 +32,10 @@ assert.match(migration, /"legalStatus":"pre_founding"/);
 assert.match(migration, /'2026-08-05'.*'company_expense'.*'marcel'.*600/s);
 assert.match(migration, /'2026-08-28'.*'settlement_transfer'.*'thomas'.*'marcel'.*300/s);
 
-for (const area of ["Auftragstrichter", "Kundenkartei", "Finanzen", "KI-Bots", "Sicherheit & Protokoll"]) {
+for (const area of ["Auftragstrichter", "Kundenkartei", "Rechnungen", "Finanzen", "KI-Bots", "Sicherheit & Protokoll"]) {
   assert.ok(ui.includes(area), `UI-Bereich ${area} fehlt`);
 }
-for (const action of ["update_client", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "publish_quote", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "update_task_status"]) {
+for (const action of ["update_client", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "publish_quote", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "invoice_document_url", "update_task_status"]) {
   assert.ok(records.includes(`action === "${action}"`), `CRM-Aktion ${action} fehlt`);
 }
 assert.ok(ui.includes("ClientDrawer"), "Kunden-Detailansicht fehlt");
@@ -43,6 +43,7 @@ assert.ok(ui.includes("OpportunityDrawer"), "Chancen-Detailansicht fehlt");
 assert.ok(ui.includes("ProjectDrawer"), "Projekt-Detailansicht fehlt");
 assert.ok(ui.includes("PaymentApproval"), "Vier-Augen-Zahlungsfreigabe fehlt");
 assert.ok(ui.includes("QuoteDrawer"), "Offerten-Kalkulationseditor fehlt");
+assert.ok(ui.includes("InvoiceDrawer"), "Rechnungs-Detailansicht fehlt");
 assert.match(records, /Eine versendete oder abgeschlossene Offerte kann nicht mehr verändert werden/);
 assert.match(records, /quote_approval/);
 assert.match(records, /50 % vor Projektstart, 30 % bei Montagebeginn und 20 % nach unterzeichneter Kundenabnahme/);
@@ -51,6 +52,8 @@ assert.match(records, /Schlusszahlung erst nach Montagezahlung und Kundenabnahme
 assert.match(records, /marcel_approved_at.*thomas_approved_at/s);
 assert.match(records, /randomBytes\(32\).*token_hash/s, "Persönlicher Link verwendet kein starkes gehashtes Token");
 assert.match(records, /createQuotePdf.*immutable_pdf_path.*document_hash/s, "Unveränderbare Offertenversion fehlt");
+assert.match(records, /from\("invoices"\)\.update\(\{ status: "paid".*\.eq\("installment", payment\)/s, "Zahlungsfreigabe verbucht Rechnung nicht");
+assert.match(records, /createSignedUrl\(invoice\.data\.immutable_pdf_path, 10 \* 60\)/, "Geschützter Rechnungsdownload fehlt");
 assert.match(acceptanceMigration, /quote_access_tokens/);
 assert.match(acceptanceMigration, /invoices_quote_installment_unique/);
 assert.match(publicQuote, /\.in\("status", \["sent", "viewed"\]\)/, "Atomare Einmalannahme fehlt");
