@@ -1,6 +1,9 @@
 import { authorizeDashboard, isResponse, writeAudit } from "../_lib/dashboard/auth.js";
 import { cleanText, json, validEmail, validatePublicPost } from "../_lib/assistant/security.js";
-import { createHash } from "node:crypto";
+import { escapeHtml } from "../_lib/assistant/spamGuard.js";
+import { createQuotePdf } from "../_lib/dashboard/documents.js";
+import { createHash, randomBytes } from "node:crypto";
+import { Resend } from "resend";
 
 type Payload = Record<string, unknown>;
 
@@ -248,6 +251,58 @@ export async function POST(request: Request): Promise<Response> {
     if (fullyApproved && !current.executed_at) await client.from("approvals").update({ executed_at: new Date().toISOString() }).eq("id", current.id);
     await writeAudit(client, profile, fullyApproved ? "dual_approval_executed" : "approval_recorded", "quote", quoteId, undefined, { approvalId: current.id, total: quote.data.total, fullyApproved });
     return json({ ok: true, approval: current, approved: fullyApproved });
+  }
+
+  if (action === "publish_quote") {
+    const quoteId = cleanText(body.quoteId, 80);
+    if (!quoteId) return json({ error: "Offerte fehlt" }, { status: 400 });
+    const quote = await client.from("quotes").select("*").eq("id", quoteId).single();
+    if (quote.error) return json({ error: "Offerte nicht gefunden" }, { status: 404 });
+    if (["accepted", "declined", "expired"].includes(quote.data.status)) return json({ error: "Diese Offerte ist bereits abgeschlossen" }, { status: 409 });
+    const approval = await client.from("approvals").select("*").eq("entity_id", quoteId).eq("action", "quote_approval").is("invalidated_at", null).not("executed_at", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (approval.error || !approval.data?.marcel_approved_at || !approval.data?.thomas_approved_at) return json({ error: "Vor dem Versand müssen Marcel und Thomas freigeben" }, { status: 409 });
+    const customer = await client.from("clients").select("*").eq("id", quote.data.client_id).single();
+    if (customer.error || !customer.data?.email || !validEmail(customer.data.email)) return json({ error: "Beim Kunden ist keine gültige E-Mail-Adresse hinterlegt" }, { status: 409 });
+
+    const pdf = await createQuotePdf(quote.data, customer.data);
+    const documentHash = createHash("sha256").update(pdf).digest("hex");
+    const pdfPath = `quotes/${quote.data.quote_number}/${documentHash}.pdf`;
+    const upload = await client.storage.from("swisscompact-documents").upload(pdfPath, pdf, { contentType: "application/pdf", upsert: false });
+    if (upload.error && !/already exists/i.test(upload.error.message)) return json({ error: `PDF konnte nicht gespeichert werden: ${upload.error.message}` }, { status: 503 });
+
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const validUntilEnd = new Date(`${quote.data.valid_until}T23:59:59.999+02:00`);
+    const maximum = new Date(Date.now() + 30 * 24 * 60 * 60_000);
+    const expiresAt = new Date(Math.min(validUntilEnd.getTime(), maximum.getTime()));
+    if (expiresAt.getTime() <= Date.now()) return json({ error: "Das Gültigkeitsdatum der Offerte ist bereits abgelaufen" }, { status: 409 });
+    await client.from("quote_access_tokens").update({ revoked_at: new Date().toISOString() }).eq("quote_id", quoteId).is("revoked_at", null).is("accepted_at", null);
+    const access = await client.from("quote_access_tokens").insert({ quote_id: quoteId, token_hash: tokenHash, recipient_email: customer.data.email.toLowerCase(), expires_at: expiresAt.toISOString(), created_by: profile.userId }).select("id").single();
+    if (access.error) return json({ error: access.error.message }, { status: 400 });
+
+    const origin = new URL(request.url).origin;
+    const acceptanceUrl = `${origin}/offerte/${token}`;
+    const resendKey = process.env.RESEND_API_KEY;
+    if (!resendKey) {
+      await client.from("quote_access_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", access.data.id);
+      return json({ error: "RESEND_API_KEY fehlt. Die Offerte wurde sicher erstellt, aber noch nicht versendet." }, { status: 503 });
+    }
+    const mail = await new Resend(resendKey).emails.send({
+      from: "SwissCompact <kontakt@swisscompact.com>",
+      to: customer.data.email,
+      replyTo: "kontakt@swisscompact.com",
+      subject: `Ihre Offerte ${quote.data.quote_number} von SwissCompact`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#18181b"><p style="color:#c8102e;font-weight:800;letter-spacing:.12em">SWISSCOMPACT</p><h1 style="font-size:30px">Ihre Offerte ist bereit.</h1><p>Guten Tag ${escapeHtml(customer.data.contact_name || customer.data.company_name)},</p><p>Sie können die Offerte <strong>${escapeHtml(quote.data.quote_number)}</strong> über den sicheren Link ansehen und digital annehmen.</p><p style="margin:30px 0"><a href="${acceptanceUrl}" style="display:inline-block;padding:15px 22px;background:#d70b31;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Offerte sicher öffnen</a></p><p style="font-size:13px;color:#666">Der Link ist persönlich, nicht übertragbar und bis ${escapeHtml(expiresAt.toLocaleDateString("de-CH"))} gültig.</p><p>Freundliche Grüsse<br>Marcel Spahr und Thomas Peter<br>SwissCompact</p></div>`,
+      attachments: [{ filename: `${quote.data.quote_number}.pdf`, content: Buffer.from(pdf).toString("base64") }],
+    });
+    if (mail.error) {
+      await client.from("quote_access_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", access.data.id);
+      return json({ error: `E-Mail-Versand fehlgeschlagen: ${mail.error.message}` }, { status: 503 });
+    }
+    const updated = await client.from("quotes").update({ status: "sent", immutable_pdf_path: pdfPath, document_hash: documentHash, updated_at: new Date().toISOString() }).eq("id", quoteId).select("*").single();
+    if (updated.error) return json({ error: updated.error.message }, { status: 400 });
+    await writeAudit(client, profile, "quote_published", "quote", quoteId, quote.data, { status: "sent", documentHash, recipient: customer.data.email, accessId: access.data.id });
+    return json({ ok: true, record: updated.data, acceptanceUrl, expiresAt: expiresAt.toISOString() });
   }
 
   if (action === "create_project_from_opportunity") {

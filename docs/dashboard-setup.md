@@ -30,6 +30,20 @@ Diese Variablen müssen für Production, Preview und Development gesetzt sein:
 
 Den Service-Role-Key niemals als `VITE_…` Variable anlegen oder im Browser verwenden. Nach dem Deployment `/dashboard` aufrufen, anmelden und 2FA einrichten.
 
+## Offertenannahme und Anzahlungsrechnung
+
+Vor dem ersten Versand zusätzlich `supabase/migrations/20260829_quote_acceptance.sql` im Supabase SQL Editor ausführen. Die Migration ergänzt persönliche, gehashte Zugriffstoken sowie die eindeutige Verknüpfung von Offerte, Auftrag und Rechnung.
+
+Nach der Freigabe durch Marcel und Thomas kann das Dashboard:
+
+- die freigegebene Offerte als echtes PDF erzeugen, mit SHA-256 dokumentieren und privat speichern,
+- einen persönlichen, zeitlich begrenzten Kundenlink per Resend versenden,
+- die digitale Annahme mit Name, E-Mail, Zeitpunkt, IP und Dokumentversion protokollieren,
+- genau ein Projekt und genau eine 50-%-Anzahlungsrechnung erzeugen,
+- die Rechnung mit 14 Tagen Zahlungsziel per E-Mail zustellen und den Trichter auf `deposit_50` setzen.
+
+Der öffentliche Link enthält ein starkes Zufallstoken. In Supabase wird ausschliesslich dessen Hash gespeichert. Wiederholte Annahmen und doppelte Anzahlungsrechnungen werden technisch verhindert.
+
 ## 4. Vorgründungsphase
 
 Die Kollektivgesellschaft ist noch nicht gegründet und für 2027 vorgesehen. Das System führt deshalb:

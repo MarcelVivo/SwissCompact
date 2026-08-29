@@ -3,14 +3,18 @@ import { readFileSync, existsSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260828_dashboard_core.sql");
+const acceptanceMigration = read("supabase/migrations/20260829_quote_acceptance.sql");
 const auth = read("api/_lib/dashboard/auth.ts");
 const ui = read("src/dashboard/main.tsx");
 const records = read("api/dashboard/records.ts");
+const publicQuote = read("api/quote.ts");
 const lead = read("api/assistant/lead.ts");
 const vercel = JSON.parse(read("vercel.json"));
 
 assert.ok(existsSync(new URL("../dashboard.html", import.meta.url)), "dashboard.html fehlt");
+assert.ok(existsSync(new URL("../quote.html", import.meta.url)), "Öffentliche Offertenseite fehlt");
 assert.ok(vercel.rewrites.some((rule) => rule.source === "/dashboard" && rule.destination === "/dashboard.html"), "Dashboard-Rewrite fehlt");
+assert.ok(vercel.rewrites.some((rule) => rule.source === "/offerte/:token" && rule.destination.includes("quote.html")), "Sicherer Offertenlink fehlt");
 assert.match(auth, /kontakt@swisscompact\.com/);
 assert.match(auth, /thomas\.peter@swisscompact\.com/);
 assert.match(auth, /owner_admin/);
@@ -31,7 +35,7 @@ assert.match(migration, /'2026-08-28'.*'settlement_transfer'.*'thomas'.*'marcel'
 for (const area of ["Auftragstrichter", "Kundenkartei", "Finanzen", "KI-Bots", "Sicherheit & Protokoll"]) {
   assert.ok(ui.includes(area), `UI-Bereich ${area} fehlt`);
 }
-for (const action of ["update_client", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "update_task_status"]) {
+for (const action of ["update_client", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "publish_quote", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "update_task_status"]) {
   assert.ok(records.includes(`action === "${action}"`), `CRM-Aktion ${action} fehlt`);
 }
 assert.ok(ui.includes("ClientDrawer"), "Kunden-Detailansicht fehlt");
@@ -45,9 +49,19 @@ assert.match(records, /50 % vor Projektstart, 30 % bei Montagebeginn und 20 % na
 assert.match(records, /Projektstart ist erst nach bestätigter 50-%-Anzahlung möglich/);
 assert.match(records, /Schlusszahlung erst nach Montagezahlung und Kundenabnahme bestätigen/);
 assert.match(records, /marcel_approved_at.*thomas_approved_at/s);
+assert.match(records, /randomBytes\(32\).*token_hash/s, "Persönlicher Link verwendet kein starkes gehashtes Token");
+assert.match(records, /createQuotePdf.*immutable_pdf_path.*document_hash/s, "Unveränderbare Offertenversion fehlt");
+assert.match(acceptanceMigration, /quote_access_tokens/);
+assert.match(acceptanceMigration, /invoices_quote_installment_unique/);
+assert.match(publicQuote, /\.in\("status", \["sent", "viewed"\]\)/, "Atomare Einmalannahme fehlt");
+assert.match(publicQuote, /installment: "deposit_50"/);
+assert.match(publicQuote, /Math\.round\(Number\(quote\.total\) \* 50\) \/ 100/);
+assert.match(publicQuote, /stage: "deposit_50"/);
+assert.match(publicQuote, /createDepositInvoicePdf/);
 assert.match(lead, /\.from\("clients"\)/, "Website-Anfrage wird nicht in Dashboard-Kunden synchronisiert");
 assert.match(lead, /\.from\("opportunities"\)/, "Website-Anfrage wird nicht in Dashboard-Trichter synchronisiert");
 assert.match(lead, /website_lead_created/, "Website-Anfrage wird nicht protokolliert");
 assert.ok(existsSync(new URL("../dist/dashboard.html", import.meta.url)), "Produktions-Build für Dashboard fehlt");
+assert.ok(existsSync(new URL("../dist/quote.html", import.meta.url)), "Produktions-Build für Offertenseite fehlt");
 
 console.log("Dashboard core smoke checks passed.");

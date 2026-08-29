@@ -15,6 +15,7 @@ export default defineConfig({
       input: {
         website: fileURLToPath(new URL("index.html", import.meta.url)),
         dashboard: fileURLToPath(new URL("dashboard.html", import.meta.url)),
+        quote: fileURLToPath(new URL("quote.html", import.meta.url)),
       },
     },
   },
