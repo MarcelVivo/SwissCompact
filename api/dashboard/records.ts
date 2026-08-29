@@ -1,5 +1,6 @@
 import { authorizeDashboard, isResponse, writeAudit } from "../_lib/dashboard/auth.js";
 import { cleanText, json, validEmail, validatePublicPost } from "../_lib/assistant/security.js";
+import { createHash } from "node:crypto";
 
 type Payload = Record<string, unknown>;
 
@@ -18,6 +19,18 @@ function optionalDate(value: unknown): string | null {
   if (typeof value !== "string" || !value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+const paymentActions = {
+  deposit_50: { field: "deposit_received", nextStage: "planning", label: "50-%-Anzahlung" },
+  installation_30: { field: "installation_payment_received", nextStage: "configuration", label: "30-%-Montagezahlung" },
+  acceptance_20: { field: "final_payment_received", nextStage: "completed", label: "20-%-Schlusszahlung" },
+} as const;
+
+function approvalColumn(email: string): "marcel_approved_at" | "thomas_approved_at" | null {
+  if (email === "kontakt@swisscompact.com") return "marcel_approved_at";
+  if (email === "thomas.peter@swisscompact.com") return "thomas_approved_at";
+  return null;
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -151,6 +164,139 @@ export async function POST(request: Request): Promise<Response> {
     return json({ ok: true, record: result.data });
   }
 
+  if (action === "create_project_from_opportunity") {
+    const opportunityId = cleanText(body.opportunityId, 80);
+    const allowedStages = ["confirmed", "deposit_50", "planning", "hardware_concept", "software_development", "procurement", "installation", "installation_30", "configuration", "acceptance", "final_invoice_20"];
+    const opportunity = await client.from("opportunities").select("*").eq("id", opportunityId).single();
+    if (opportunity.error) return json({ error: "Auftrag nicht gefunden" }, { status: 404 });
+    if (!opportunity.data.client_id) return json({ error: "Vor der Projektanlage muss ein Kunde zugeordnet sein" }, { status: 400 });
+    if (!allowedStages.includes(opportunity.data.stage)) return json({ error: "Ein Projekt kann erst nach bestätigtem Auftrag angelegt werden" }, { status: 409 });
+    const existing = await client.from("projects").select("id,order_number").eq("opportunity_id", opportunityId).maybeSingle();
+    if (existing.data) return json({ error: `Projekt ${existing.data.order_number} existiert bereits` }, { status: 409 });
+    const profiles = await client.from("dashboard_profiles").select("user_id,email").eq("active", true);
+    if (profiles.error) return json({ error: profiles.error.message }, { status: 400 });
+    const marcel = profiles.data?.find((entry) => entry.email === "kontakt@swisscompact.com")?.user_id ?? null;
+    const thomas = profiles.data?.find((entry) => entry.email === "thomas.peter@swisscompact.com")?.user_id ?? null;
+    const project = await client.from("projects").insert({
+      opportunity_id: opportunityId,
+      client_id: opportunity.data.client_id,
+      title: opportunity.data.title,
+      status: "planning",
+      software_owner: marcel,
+      hardware_owner: thomas,
+      starts_on: typeof body.startsOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.startsOn) ? body.startsOn : null,
+      target_completion: typeof body.targetCompletion === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.targetCompletion) ? body.targetCompletion : null,
+    }).select("*").single();
+    if (project.error) return json({ error: project.error.message }, { status: 400 });
+    await Promise.all([
+      client.from("opportunities").update({ stage: "deposit_50", updated_at: new Date().toISOString() }).eq("id", opportunityId),
+      client.from("clients").update({ lifecycle: "customer", updated_at: new Date().toISOString() }).eq("id", opportunity.data.client_id),
+      client.from("tasks").insert({ project_id: project.data.id, title: "50-%-Anzahlung prüfen und gemeinsam bestätigen", responsibility: "shared", priority: "urgent", status: "open" }),
+    ]);
+    await writeAudit(client, profile, "create_from_order", "project", project.data.id, opportunity.data, project.data);
+    return json({ ok: true, record: project.data });
+  }
+
+  if (action === "update_project") {
+    const id = cleanText(body.id, 80);
+    const status = cleanText(body.status, 40);
+    if (!id || !["planning", "active", "blocked", "acceptance", "completed", "cancelled"].includes(status)) {
+      return json({ error: "Ungültiger Projektstatus" }, { status: 400 });
+    }
+    const previous = await client.from("projects").select("*").eq("id", id).single();
+    if (previous.error) return json({ error: previous.error.message }, { status: 404 });
+    if (status === "active" && !previous.data.deposit_received) return json({ error: "Projektstart ist erst nach bestätigter 50-%-Anzahlung möglich" }, { status: 409 });
+    if (status === "acceptance" && !previous.data.installation_payment_received) return json({ error: "Abnahme ist erst nach bestätigter Montagezahlung möglich" }, { status: 409 });
+    if (status === "completed" && !previous.data.final_payment_received) return json({ error: "Abschluss ist erst nach bestätigter Schlusszahlung möglich" }, { status: 409 });
+    const allowedOwners = await client.from("dashboard_profiles").select("user_id").eq("active", true);
+    const ownerIds = new Set((allowedOwners.data ?? []).map((entry) => entry.user_id));
+    const softwareOwner = typeof body.softwareOwner === "string" && ownerIds.has(body.softwareOwner) ? body.softwareOwner : null;
+    const hardwareOwner = typeof body.hardwareOwner === "string" && ownerIds.has(body.hardwareOwner) ? body.hardwareOwner : null;
+    const update = {
+      title: cleanText(body.title, 240),
+      status,
+      software_owner: softwareOwner,
+      hardware_owner: hardwareOwner,
+      starts_on: typeof body.startsOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.startsOn) ? body.startsOn : null,
+      target_completion: typeof body.targetCompletion === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.targetCompletion) ? body.targetCompletion : null,
+      updated_at: new Date().toISOString(),
+    };
+    if (!update.title) return json({ error: "Projekttitel fehlt" }, { status: 400 });
+    const result = await client.from("projects").update(update).eq("id", id).select("*").single();
+    if (result.error) return json({ error: result.error.message }, { status: 400 });
+    await client.from("approvals").update({ invalidated_at: new Date().toISOString() }).eq("entity_id", id).is("executed_at", null).is("invalidated_at", null);
+    await writeAudit(client, profile, "update", "project", id, previous.data, result.data);
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "request_project_payment_approval" || action === "approve_project_payment") {
+    const projectId = cleanText(body.projectId, 80);
+    const payment = cleanText(body.payment, 40) as keyof typeof paymentActions;
+    const config = paymentActions[payment];
+    const column = approvalColumn(profile.email);
+    if (!projectId || !config || !column) return json({ error: "Ungültige Zahlungsfreigabe" }, { status: 400 });
+    const project = await client.from("projects").select("*").eq("id", projectId).single();
+    if (project.error) return json({ error: "Projekt nicht gefunden" }, { status: 404 });
+    if (project.data[config.field]) return json({ ok: true, alreadyExecuted: true });
+    if (payment === "installation_30" && !project.data.deposit_received) return json({ error: "Zuerst muss die 50-%-Anzahlung bestätigt werden" }, { status: 409 });
+    if (payment === "installation_30" && project.data.opportunity_id) {
+      const opportunity = await client.from("opportunities").select("stage").eq("id", project.data.opportunity_id).single();
+      const montageStages = ["installation", "installation_30", "configuration", "acceptance", "final_invoice_20", "completed", "maintenance"];
+      if (opportunity.error || !montageStages.includes(opportunity.data.stage)) {
+        return json({ error: "Die 30-%-Zahlung wird erst zum Beginn der Montage freigeschaltet" }, { status: 409 });
+      }
+    }
+    if (payment === "acceptance_20" && (!project.data.installation_payment_received || project.data.status !== "acceptance")) {
+      return json({ error: "Schlusszahlung erst nach Montagezahlung und Kundenabnahme bestätigen" }, { status: 409 });
+    }
+    const contentHash = createHash("sha256").update(`${projectId}:${payment}:${project.data.updated_at}`).digest("hex");
+    let approval;
+    if (action === "approve_project_payment") {
+      const approvalId = cleanText(body.approvalId, 80);
+      approval = await client.from("approvals").select("*").eq("id", approvalId).eq("entity_id", projectId).eq("action", payment).is("invalidated_at", null).single();
+      if (approval.error) return json({ error: "Freigabe nicht gefunden oder nicht mehr gültig" }, { status: 404 });
+      if (approval.data.content_hash !== contentHash) {
+        await client.from("approvals").update({ invalidated_at: new Date().toISOString() }).eq("id", approval.data.id);
+        return json({ error: "Das Projekt wurde seit der ersten Freigabe geändert. Bitte neu freigeben." }, { status: 409 });
+      }
+    } else {
+      const existing = await client.from("approvals").select("*").eq("entity_id", projectId).eq("action", payment).is("invalidated_at", null).is("executed_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (existing.error) return json({ error: existing.error.message }, { status: 400 });
+      if (existing.data?.content_hash === contentHash) approval = existing;
+      else {
+        if (existing.data) await client.from("approvals").update({ invalidated_at: new Date().toISOString() }).eq("id", existing.data.id);
+        approval = await client.from("approvals").insert({ entity_type: "project", entity_id: projectId, action: payment, content_hash: contentHash, requested_by: profile.userId, [column]: new Date().toISOString() }).select("*").single();
+      }
+    }
+    if (approval.error || !approval.data) return json({ error: approval.error?.message || "Freigabe konnte nicht erstellt werden" }, { status: 400 });
+    let current = approval.data;
+    if (!current[column]) {
+      const updated = await client.from("approvals").update({ [column]: new Date().toISOString() }).eq("id", current.id).select("*").single();
+      if (updated.error) return json({ error: updated.error.message }, { status: 400 });
+      current = updated.data;
+    }
+    const fullyApproved = Boolean(current.marcel_approved_at && current.thomas_approved_at);
+    if (fullyApproved && !current.executed_at) {
+      const projectUpdate: Record<string, unknown> = { [config.field]: true, updated_at: new Date().toISOString() };
+      if (payment === "deposit_50") projectUpdate.status = "active";
+      if (payment === "acceptance_20") projectUpdate.status = "completed";
+      const executed = await client.from("projects").update(projectUpdate).eq("id", projectId).select("*").single();
+      if (executed.error) return json({ error: executed.error.message }, { status: 400 });
+      await client.from("approvals").update({ executed_at: new Date().toISOString() }).eq("id", current.id);
+      if (project.data.opportunity_id) await client.from("opportunities").update({ stage: config.nextStage, updated_at: new Date().toISOString() }).eq("id", project.data.opportunity_id);
+      if (payment === "deposit_50") await client.from("tasks").insert([
+        { project_id: projectId, title: "Projekt-Kickoff und Detailplanung durchführen", responsibility: "marcel", priority: "high", status: "open" },
+        { project_id: projectId, title: "Hardware- und Montagekonzept ausarbeiten", responsibility: "thomas", priority: "high", status: "open" },
+        { project_id: projectId, title: "Software-, UX- und Inhaltskonzept ausarbeiten", responsibility: "marcel", priority: "high", status: "open" },
+      ]);
+      if (payment === "deposit_50") await client.from("tasks").update({ status: "done", completed_at: new Date().toISOString() }).eq("project_id", projectId).eq("title", "50-%-Anzahlung prüfen und gemeinsam bestätigen");
+      await writeAudit(client, profile, "dual_approval_executed", "project_payment", projectId, project.data, { payment, label: config.label });
+    } else {
+      await writeAudit(client, profile, "approval_recorded", "project_payment", projectId, undefined, { payment, approvalId: current.id, fullyApproved });
+    }
+    return json({ ok: true, approval: current, executed: fullyApproved });
+  }
+
   if (action === "create_task") {
     const record = {
       title: cleanText(body.title, 240),
@@ -159,6 +305,8 @@ export async function POST(request: Request): Promise<Response> {
       status: "open",
       priority: ["low", "normal", "high", "urgent"].includes(String(body.priority)) ? body.priority : "normal",
       due_at: optionalDate(body.dueAt),
+      project_id: typeof body.projectId === "string" && body.projectId ? body.projectId : null,
+      opportunity_id: typeof body.opportunityId === "string" && body.opportunityId ? body.opportunityId : null,
     };
     if (!record.title) return json({ error: "Aufgabentitel fehlt" }, { status: 400 });
     const result = await client.from("tasks").insert(record).select("*").single();
@@ -174,6 +322,18 @@ export async function POST(request: Request): Promise<Response> {
     const result = await client.from("tasks").update({ status: "done", completed_at: new Date().toISOString() }).eq("id", id).select("*").single();
     if (result.error) return json({ error: result.error.message }, { status: 400 });
     await writeAudit(client, profile, "complete", "task", id, previous.data, result.data);
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "update_task_status") {
+    const id = cleanText(body.id, 80);
+    const status = cleanText(body.status, 40);
+    if (!id || !["open", "in_progress", "waiting", "done", "cancelled"].includes(status)) return json({ error: "Ungültiger Aufgabenstatus" }, { status: 400 });
+    const previous = await client.from("tasks").select("*").eq("id", id).single();
+    if (previous.error) return json({ error: previous.error.message }, { status: 404 });
+    const result = await client.from("tasks").update({ status, completed_at: status === "done" ? new Date().toISOString() : null }).eq("id", id).select("*").single();
+    if (result.error) return json({ error: result.error.message }, { status: 400 });
+    await writeAudit(client, profile, "status_change", "task", id, previous.data, result.data);
     return json({ ok: true, record: result.data });
   }
 

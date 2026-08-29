@@ -31,11 +31,16 @@ assert.match(migration, /'2026-08-28'.*'settlement_transfer'.*'thomas'.*'marcel'
 for (const area of ["Auftragstrichter", "Kundenkartei", "Finanzen", "KI-Bots", "Sicherheit & Protokoll"]) {
   assert.ok(ui.includes(area), `UI-Bereich ${area} fehlt`);
 }
-for (const action of ["update_client", "update_opportunity"]) {
+for (const action of ["update_client", "update_opportunity", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "update_task_status"]) {
   assert.ok(records.includes(`action === "${action}"`), `CRM-Aktion ${action} fehlt`);
 }
 assert.ok(ui.includes("ClientDrawer"), "Kunden-Detailansicht fehlt");
 assert.ok(ui.includes("OpportunityDrawer"), "Chancen-Detailansicht fehlt");
+assert.ok(ui.includes("ProjectDrawer"), "Projekt-Detailansicht fehlt");
+assert.ok(ui.includes("PaymentApproval"), "Vier-Augen-Zahlungsfreigabe fehlt");
+assert.match(records, /Projektstart ist erst nach bestätigter 50-%-Anzahlung möglich/);
+assert.match(records, /Schlusszahlung erst nach Montagezahlung und Kundenabnahme bestätigen/);
+assert.match(records, /marcel_approved_at.*thomas_approved_at/s);
 assert.match(lead, /\.from\("clients"\)/, "Website-Anfrage wird nicht in Dashboard-Kunden synchronisiert");
 assert.match(lead, /\.from\("opportunities"\)/, "Website-Anfrage wird nicht in Dashboard-Trichter synchronisiert");
 assert.match(lead, /website_lead_created/, "Website-Anfrage wird nicht protokolliert");
