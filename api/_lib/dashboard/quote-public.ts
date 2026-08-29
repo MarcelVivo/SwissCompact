@@ -1,11 +1,9 @@
 import { createHash } from "node:crypto";
 import { Resend } from "resend";
-import { dashboardSupabase } from "./_lib/dashboard/auth.js";
-import { createDepositInvoicePdf } from "./_lib/dashboard/documents.js";
-import { cleanText, clientAddress, json, rateLimit, validEmail, validatePublicPost } from "./_lib/assistant/security.js";
-import { escapeHtml } from "./_lib/assistant/spamGuard.js";
-
-export const config = { runtime: "nodejs", maxDuration: 30 };
+import { dashboardSupabase } from "./auth.js";
+import { createDepositInvoicePdf } from "./documents.js";
+import { cleanText, clientAddress, json, rateLimit, validEmail, validatePublicPost } from "../assistant/security.js";
+import { escapeHtml } from "../assistant/spamGuard.js";
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 const tokenFrom = (request: Request) => cleanText(new URL(request.url).searchParams.get("token"), 100);
@@ -22,7 +20,7 @@ async function accessFor(request: Request) {
   return { client, access: access.data };
 }
 
-export async function GET(request: Request): Promise<Response> {
+export async function getPublicQuote(request: Request): Promise<Response> {
   const limited = rateLimit(request, { key: "quote-view", limit: 60, windowMs: 10 * 60_000 });
   if (limited) return limited;
   const resolved = await accessFor(request);
@@ -60,7 +58,7 @@ export async function GET(request: Request): Promise<Response> {
   });
 }
 
-export async function POST(request: Request): Promise<Response> {
+export async function postPublicQuote(request: Request): Promise<Response> {
   const guarded = validatePublicPost(request, { key: "quote-accept", limit: 8, windowMs: 30 * 60_000, contentTypes: ["application/json"], maxBytes: 8_000 });
   if (guarded) return guarded;
   const resolved = await accessFor(request);

@@ -8,7 +8,7 @@ const date = (value: unknown) => value ? new Intl.DateTimeFormat("de-CH", { day:
 const token = location.pathname.startsWith("/offerte/") ? location.pathname.split("/").filter(Boolean).pop() || "" : new URLSearchParams(location.search).get("token") || "";
 
 async function request(method = "GET", body?: unknown) {
-  const response = await fetch(`/api/quote?token=${encodeURIComponent(token)}`, { method, credentials: "same-origin", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+  const response = await fetch(`/api/dashboard/records?public=quote&token=${encodeURIComponent(token)}`, { method, credentials: "same-origin", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "Die Offerte konnte nicht geladen werden.");
   return data;

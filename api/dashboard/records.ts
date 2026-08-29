@@ -4,6 +4,7 @@ import { escapeHtml } from "../_lib/assistant/spamGuard.js";
 import { createQuotePdf } from "../_lib/dashboard/documents.js";
 import { createHash, randomBytes } from "node:crypto";
 import { Resend } from "resend";
+import { getPublicQuote, postPublicQuote } from "../_lib/dashboard/quote-public.js";
 
 type Payload = Record<string, unknown>;
 
@@ -50,6 +51,7 @@ function quoteItems(value: unknown): Array<{ description: string; quantity: numb
 }
 
 export async function POST(request: Request): Promise<Response> {
+  if (new URL(request.url).searchParams.get("public") === "quote") return postPublicQuote(request);
   const guard = validatePublicPost(request, {
     key: "dashboard-records",
     limit: 80,
@@ -502,4 +504,9 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   return json({ error: "Unbekannte Aktion" }, { status: 400 });
+}
+
+export async function GET(request: Request): Promise<Response> {
+  if (new URL(request.url).searchParams.get("public") === "quote") return getPublicQuote(request);
+  return json({ error: "Nicht gefunden" }, { status: 404 });
 }

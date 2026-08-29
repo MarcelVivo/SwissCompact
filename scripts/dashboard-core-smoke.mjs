@@ -7,7 +7,7 @@ const acceptanceMigration = read("supabase/migrations/20260829_quote_acceptance.
 const auth = read("api/_lib/dashboard/auth.ts");
 const ui = read("src/dashboard/main.tsx");
 const records = read("api/dashboard/records.ts");
-const publicQuote = read("api/quote.ts");
+const publicQuote = read("api/_lib/dashboard/quote-public.ts");
 const lead = read("api/assistant/lead.ts");
 const vercel = JSON.parse(read("vercel.json"));
 
@@ -52,6 +52,8 @@ assert.match(records, /Schlusszahlung erst nach Montagezahlung und Kundenabnahme
 assert.match(records, /marcel_approved_at.*thomas_approved_at/s);
 assert.match(records, /randomBytes\(32\).*token_hash/s, "Persönlicher Link verwendet kein starkes gehashtes Token");
 assert.match(records, /createQuotePdf.*immutable_pdf_path.*document_hash/s, "Unveränderbare Offertenversion fehlt");
+assert.match(records, /searchParams\.get\("public"\) === "quote".*postPublicQuote/s, "Öffentliche Offerten-POST-Route wurde nicht konsolidiert");
+assert.match(records, /searchParams\.get\("public"\) === "quote".*getPublicQuote/s, "Öffentliche Offerten-GET-Route wurde nicht konsolidiert");
 assert.match(records, /from\("invoices"\)\.update\(\{ status: "paid".*\.eq\("installment", payment\)/s, "Zahlungsfreigabe verbucht Rechnung nicht");
 assert.match(records, /createSignedUrl\(invoice\.data\.immutable_pdf_path, 10 \* 60\)/, "Geschützter Rechnungsdownload fehlt");
 assert.match(acceptanceMigration, /quote_access_tokens/);
