@@ -1,7 +1,9 @@
 import React, { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { DetailedError, Upload } from "tus-js-client";
 import "./portal.css";
 import "./portal-media.css";
+import "./portal-ai.css";
 import "./portal-campaign.css";
 import "./portal-devices.css";
 
@@ -13,8 +15,75 @@ type Campaign = { id: string; name: string; status: string; starts_at?: string; 
 type Subscription = { package_code: string; status: string; starts_on: string; minimum_ends_on?: string; monthly_amount_chf?: number; included_ai_credits?: number } | null;
 type Member = { id: string; role: string; display_name?: string; active: boolean };
 type PairingInfo = { displayId: string; code: string; expiresAt: string; displayName?: string };
-type PortalData = { profile: PortalProfile; sites: Site[]; displays: Display[]; content: Content[]; campaigns: Campaign[]; subscription: Subscription; members: Member[] };
+type AiCredits = {
+  enabled: boolean;
+  stripeEnabled: boolean;
+  balance: { included_remaining: number; purchased_balance: number; available: number; period_end: string } | null;
+  qualities: Array<{ id: string; label: string; credits: number; description: string }>;
+  formats: Array<{ id: string; label: string; size: string }>;
+  packages: Array<{ id: string; label: string; credits: number; amountMinor: number; currency: string }>;
+};
+type PortalData = { profile: PortalProfile; sites: Site[]; displays: Display[]; content: Content[]; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits };
 type View = "overview" | "content" | "campaigns" | "displays" | "settings";
+
+type PreparedMediaUpload = {
+  record: { id: string };
+  upload: { signedUrl: string; token: string; path: string; resumableUrl: string };
+};
+
+const MEDIA_MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+  mp4: "video/mp4", webm: "video/webm",
+};
+
+function mediaMimeType(file: File): string {
+  const declared = file.type.toLowerCase().split(";", 1)[0];
+  if (declared && declared !== "application/octet-stream") return declared;
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  return MEDIA_MIME_BY_EXTENSION[extension] || declared;
+}
+
+function storageUploadMessage(reason: unknown): string {
+  let detail = reason instanceof Error ? reason.message : "";
+  if (reason instanceof DetailedError) {
+    const body = reason.originalResponse?.getBody();
+    if (body) {
+      try {
+        const parsed = JSON.parse(body) as { message?: string; error?: string };
+        detail = parsed.message || parsed.error || detail;
+      } catch { detail = body; }
+    }
+  }
+  if (/maximum.*size|file.*size|too large|payload.*large|413/i.test(detail)) {
+    return "Das Video überschreitet das Upload-Limit von Supabase Storage. Bitte verkleinern Sie die Datei oder erhöhen Sie dort das globale Dateilimit.";
+  }
+  if (/mime|content.?type/i.test(detail)) return "Dieses Videoformat wird nicht unterstützt. Bitte verwenden Sie MP4 (H.264) oder WebM.";
+  if (!navigator.onLine) return "Die Internetverbindung wurde unterbrochen. Bitte starten Sie den Upload erneut.";
+  return detail ? `Die Datei konnte nicht übertragen werden: ${detail.slice(0, 240)}` : "Die Datei konnte nicht übertragen werden.";
+}
+
+function uploadVideo(file: File, prepared: PreparedMediaUpload, mimeType: string, onProgress: (percent: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const upload = new Upload(file, {
+      endpoint: prepared.upload.resumableUrl,
+      headers: { "x-signature": prepared.upload.token },
+      metadata: {
+        bucketName: "swisscompact-media",
+        objectName: prepared.upload.path,
+        contentType: mimeType,
+        cacheControl: "3600",
+      },
+      chunkSize: 6 * 1024 * 1024,
+      retryDelays: [0, 1_000, 3_000, 5_000, 10_000],
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      onProgress: (uploaded, total) => onProgress(total ? Math.round((uploaded / total) * 100) : 0),
+      onError: reject,
+      onSuccess: () => resolve(),
+    });
+    upload.start();
+  });
+}
 
 const labels: Record<string, string> = {
   draft: "Entwurf", review: "Prüfung", approved: "Freigegeben", published: "Veröffentlicht", archived: "Archiviert",
@@ -101,6 +170,7 @@ function Portal() {
   const [view, setView] = useState<View>("overview");
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"content" | "campaign" | null>(null);
+  const [aiDialog, setAiDialog] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [displaySetup, setDisplaySetup] = useState(false);
   const [pairing, setPairing] = useState<PairingInfo | null>(null);
@@ -160,12 +230,13 @@ function Portal() {
         <div className="split"><section className="card"><div className="card-head"><div><span>Aktuelle Kampagnen</span><h3>Planung & Ausspielung</h3></div><button onClick={() => setView("campaigns")}>Alle ansehen</button></div>{data.campaigns.length ? data.campaigns.slice(0,4).map((item) => <div className="row" key={item.id}><div><strong>{item.name}</strong><small>Aktualisiert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small></div><Status value={item.status}/></div>) : <Empty>Noch keine Kampagnen vorhanden.</Empty>}</section>
           <section className="card"><div className="card-head"><div><span>Display-Status</span><h3>Ihre Flächen</h3></div><button onClick={() => setView("displays")}>Alle ansehen</button></div>{data.displays.length ? data.displays.slice(0,4).map((item) => <div className="row" key={item.id}><div><strong>{item.name}</strong><small>{item.site?.name || "Ohne Standort"}</small></div><Status value={item.status}/></div>) : <Empty>Noch keine Displays verbunden.</Empty>}</section></div>
       </section>}
-      {view === "content" && <section className="view"><div className="section-title"><div><h2>Content-Bibliothek</h2><p>Medien und Inhalte für Ihre digitalen Flächen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("content")}><Icon name="plus"/>Inhalt erstellen</button>}</div><div className="content-grid">{data.content.map((item) => <article className="content-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : item.preview_url && item.content_type === "video" ? <video src={item.preview_url} muted playsInline preload="metadata"/> : null}<span>{item.payload?.uploadState === "uploading" ? "UPLOAD LÄUFT" : item.content_type.toUpperCase()}</span></div><div><Status value={item.status}/><h3>{item.title}</h3><p>{item.payload?.text || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Noch keine Beschreibung")}</p><small>Geändert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small>{canEdit && item.payload?.uploadState !== "uploading" && <button className="content-status-action" onClick={() => void setContentStatus(item.id, ["approved", "published"].includes(item.status) ? "draft" : "approved")}>{["approved", "published"].includes(item.status) ? "Freigabe zurückziehen" : "Für Displays freigeben"}</button>}</div></article>)}{!data.content.length && <Empty>Erstellen Sie Ihren ersten Inhalt.</Empty>}</div></section>}
+      {view === "content" && <section className="view"><div className="section-title"><div><h2>Content-Bibliothek</h2><p>Medien und Inhalte für Ihre digitalen Flächen.</p></div>{canEdit && <div className="content-create-actions"><button className="secondary compact ai-create" onClick={() => setAiDialog(true)}><span>✦</span>KI-Bild <b>{data.aiCredits?.balance?.available ?? "–"}</b></button><button className="primary compact" onClick={() => setDialog("content")}><Icon name="plus"/>Inhalt erstellen</button></div>}</div><div className="content-grid">{data.content.map((item) => <article className="content-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : item.preview_url && item.content_type === "video" ? <video src={item.preview_url} muted playsInline preload="metadata"/> : null}<span>{item.payload?.uploadState === "uploading" ? "UPLOAD LÄUFT" : item.content_type.toUpperCase()}</span></div><div><Status value={item.status}/><h3>{item.title}</h3><p>{item.payload?.text || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Noch keine Beschreibung")}</p><small>Geändert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small>{canEdit && item.payload?.uploadState !== "uploading" && <button className="content-status-action" onClick={() => void setContentStatus(item.id, ["approved", "published"].includes(item.status) ? "draft" : "approved")}>{["approved", "published"].includes(item.status) ? "Freigabe zurückziehen" : "Für Displays freigeben"}</button>}</div></article>)}{!data.content.length && <Empty>Erstellen Sie Ihren ersten Inhalt.</Empty>}</div></section>}
       {view === "campaigns" && <section className="view"><div className="section-title"><div><h2>Kampagnen</h2><p>Inhalte zeitlich planen und gezielt ausspielen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("campaign")}><Icon name="plus"/>Kampagne planen</button>}</div><div className="table-card"><div className="table-head campaign-table"><span>Name</span><span>Zeitraum</span><span>Status</span><span></span></div>{data.campaigns.map((item) => <div className="table-row campaign-table" key={item.id}><strong>{item.name}</strong><span>{item.starts_at ? new Date(item.starts_at).toLocaleDateString("de-CH") : "Offen"} – {item.ends_at ? new Date(item.ends_at).toLocaleDateString("de-CH") : "Offen"}</span><Status value={item.status}/><button className="row-action" onClick={() => setEditingCampaign(item)}>{canEdit ? "Bearbeiten" : "Ansehen"}</button></div>)}{!data.campaigns.length && <Empty>Planen Sie Ihre erste Kampagne.</Empty>}</div></section>}
       {view === "displays" && <section className="view"><div className="section-title"><div><h2>Display-Netzwerk</h2><p>Status, Kampagne und aktuell ausgespielter Inhalt pro Fläche.</p></div>{canManageDevices && <button className="primary compact" onClick={() => setDisplaySetup(true)}><Icon name="plus"/>Display einrichten</button>}</div><div className="display-grid">{data.displays.map((item) => <article className="display-card" key={item.id}><DisplayPreview display={item} campaigns={data.campaigns} content={data.content}/><div><Status value={item.status}/><h3>{item.name}</h3><p>{item.site?.name || "Standort noch nicht zugewiesen"}</p><small>{item.resolution?.width ? `${item.resolution.width} × ${item.resolution.height}` : "Auflösung nicht erfasst"}</small>{canManageDevices && <button type="button" className="device-link" disabled={Boolean(pairingBusyId)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void createPairing(item); }}>{pairingBusyId === item.id ? "Code wird erstellt …" : item.status === "provisioning" ? "Aktivierungscode erstellen" : "Display neu verbinden"}</button>}</div></article>)}{!data.displays.length && <Empty>Richten Sie Ihr erstes Display ein.</Empty>}</div></section>}
       {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang und das aktive SwissCompact-Paket.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
     </main>
     {dialog && <CreateDialog type={dialog} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
+    {aiDialog && <AiImageDialog credits={data.aiCredits} canBuy={canManageDevices} onClose={() => setAiDialog(false)} onCreated={() => { setAiDialog(false); void load(); }} />}
     {editingCampaign && <CampaignEditor campaign={editingCampaign} content={data.content} displays={data.displays} canEdit={canEdit} onClose={() => setEditingCampaign(null)} onSaved={() => { setEditingCampaign(null); void load(); }} />}
     {displaySetup && <DisplaySetupDialog sites={data.sites} onClose={() => setDisplaySetup(false)} onCreated={(next) => { setDisplaySetup(false); setPairing(next); void load(); }} />}
     {pairing && <PairingDialog pairing={pairing} onClose={() => setPairing(null)} />}
@@ -250,11 +321,79 @@ function CampaignEditor({ campaign, content, displays, canEdit, onClose, onSaved
   </section></div>;
 }
 
+function AiImageDialog({ credits, canBuy, onClose, onCreated }: { credits: AiCredits; canBuy: boolean; onClose: () => void; onCreated: () => void }) {
+  const [quality, setQuality] = useState("medium");
+  const [format, setFormat] = useState("landscape");
+  const [headlineEnabled, setHeadlineEnabled] = useState(false);
+  const [headline, setHeadline] = useState("");
+  const [headlinePosition, setHeadlinePosition] = useState("bottom");
+  const [headlineAlign, setHeadlineAlign] = useState("center");
+  const [headlineColor, setHeadlineColor] = useState("#ffffff");
+  const [headlineBackdrop, setHeadlineBackdrop] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [buying, setBuying] = useState("");
+  const [error, setError] = useState("");
+  const [generationKey, setGenerationKey] = useState(() => crypto.randomUUID());
+  const selectedQuality = credits.qualities.find((entry) => entry.id === quality) || credits.qualities[0];
+  const available = Number(credits.balance?.available || 0);
+  const canGenerate = credits.enabled && credits.balance && selectedQuality && available >= selectedQuality.credits;
+
+  async function generate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch("/api/portal/ai-image", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idempotencyKey: generationKey,
+          title: form.get("title"),
+          prompt: form.get("prompt"),
+          quality,
+          format,
+          headline: { enabled: headlineEnabled, text: headline, position: headlinePosition, align: headlineAlign, color: headlineColor, backdrop: headlineBackdrop },
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) {
+        if (response.status !== 409) setGenerationKey(crypto.randomUUID());
+        throw new Error(result.error || "Das Bild konnte nicht erstellt werden");
+      }
+      onCreated();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Das Bild konnte nicht erstellt werden");
+    } finally { setBusy(false); }
+  }
+
+  async function buy(packageCode: string) {
+    setBuying(packageCode); setError("");
+    try {
+      const result = await api<{ checkoutUrl: string }>("/api/portal/ai-credits", { method: "POST", body: JSON.stringify({ packageCode }) });
+      location.assign(result.checkoutUrl);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Stripe Checkout konnte nicht geöffnet werden");
+      setBuying("");
+    }
+  }
+
+  return <div className="dialog-backdrop ai-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog ai-dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button>
+    <header className="ai-dialog-head"><div><div className="eyebrow">SwissCompact Bildstudio</div><h2>KI-Bild erstellen</h2><p>Ein displayfertiges Motiv – wahlweise mit präziser Überschrift.</p></div><div className="credit-balance"><span>Guthaben</span><strong>{credits.balance?.available ?? "–"}</strong><small>KI-Credits</small></div></header>
+    <div className="ai-dialog-grid"><form onSubmit={generate}><label>Inhaltstitel<input name="title" required autoFocus maxLength={180} placeholder="z. B. Herbstaktion"/></label><label>Bildbeschreibung<textarea name="prompt" required rows={5} maxLength={1200} placeholder="Beschreiben Sie Motiv, Stimmung, Farben und gewünschte Bildwirkung …"/></label>
+      <fieldset><legend>Displayformat</legend><div className="ai-options formats">{credits.formats.map((entry) => <label className={format === entry.id ? "selected" : ""} key={entry.id}><input type="radio" name="format" value={entry.id} checked={format === entry.id} onChange={() => setFormat(entry.id)}/><strong>{entry.label}</strong><small>{entry.size}</small></label>)}</div></fieldset>
+      <fieldset><legend>Qualität</legend><div className="ai-options qualities">{credits.qualities.map((entry) => <label className={quality === entry.id ? "selected" : ""} key={entry.id}><input type="radio" name="quality" value={entry.id} checked={quality === entry.id} onChange={() => setQuality(entry.id)}/><strong>{entry.label}</strong><small>{entry.description}</small><b>{entry.credits} {entry.credits === 1 ? "Credit" : "Credits"}</b></label>)}</div></fieldset>
+      <section className="headline-config"><label className="toggle-line"><span><strong>Überschrift einblenden</strong><small>Wird nach der KI-Erzeugung fehlerfrei gesetzt.</small></span><input type="checkbox" checked={headlineEnabled} onChange={(event) => setHeadlineEnabled(event.target.checked)}/></label>{headlineEnabled && <div className="headline-fields"><label>Überschrift<input value={headline} required maxLength={120} onChange={(event) => setHeadline(event.target.value)} placeholder="Ihre Botschaft"/></label><div className="headline-row"><label>Position<select value={headlinePosition} onChange={(event) => setHeadlinePosition(event.target.value)}><option value="top">Oben</option><option value="center">Mitte</option><option value="bottom">Unten</option></select></label><label>Ausrichtung<select value={headlineAlign} onChange={(event) => setHeadlineAlign(event.target.value)}><option value="left">Links</option><option value="center">Zentriert</option><option value="right">Rechts</option></select></label><label className="color-field">Farbe<input type="color" value={headlineColor} onChange={(event) => setHeadlineColor(event.target.value)}/></label></div><label className="check-line"><input type="checkbox" checked={headlineBackdrop} onChange={(event) => setHeadlineBackdrop(event.target.checked)}/>Dunkle Hintergrundfläche für bessere Lesbarkeit</label></div>}</section>
+      {!credits.enabled && <div className="form-error">Die OpenAI-Verbindung ist noch nicht konfiguriert.</div>}{credits.enabled && !credits.balance && <div className="form-error">Das Credit-System muss noch in Supabase eingerichtet werden.</div>}{selectedQuality && credits.balance && available < selectedQuality.credits && <div className="form-error">Für diese Qualität fehlen {selectedQuality.credits - available} KI-Credits.</div>}{error && <div className="form-error">{error}</div>}<button className="primary ai-generate" disabled={busy || !canGenerate}>{busy ? "Motiv wird erstellt …" : `Für ${selectedQuality?.credits || 0} Credits erstellen`}</button><small className="generation-note">Die Erstellung kann bis zu zwei Minuten dauern. Bei einem technischen Fehler werden die Credits automatisch zurückerstattet.</small></form>
+      <div className="ai-preview-column"><div className={`ai-preview ${format}`}><div className="ai-preview-art"><span>✦</span></div>{headlineEnabled && headline && <div className={`ai-preview-headline pos-${headlinePosition} align-${headlineAlign} ${headlineBackdrop ? "backdrop" : ""}`} style={{ color: headlineColor }}>{headline}</div>}</div><div className="ai-safety"><strong>Displayfertig gespeichert</strong><p>Das Ergebnis erscheint als Entwurf direkt in Ihrer Content-Bibliothek.</p></div>{canBuy && <section className="credit-shop"><div><span>Zusätzliche Credits</span><h3>Guthaben aufladen</h3></div>{credits.packages.map((entry) => <button type="button" disabled={!credits.stripeEnabled || Boolean(buying)} onClick={() => void buy(entry.id)} key={entry.id}><span><strong>{entry.credits} Credits</strong><small>{entry.label}</small></span><b>{new Intl.NumberFormat("de-CH", { style: "currency", currency: entry.currency.toUpperCase() }).format(entry.amountMinor / 100)}</b></button>)}{!credits.stripeEnabled && <small>Stripe Checkout ist noch nicht konfiguriert.</small>}</section>}</div></div>
+  </section></div>;
+}
+
 function CreateDialog({ type, onClose, onCreated }: { type: "content" | "campaign"; onClose: () => void; onCreated: () => void }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [contentType, setContentType] = useState("composition");
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(""); const form = new FormData(event.currentTarget);
+    event.preventDefault(); setBusy(true); setError(""); setUploadProgress(0); const form = new FormData(event.currentTarget);
     const title = String(form.get("title") || "");
     const body = type === "content" ? { action: "create_content", title, contentType: form.get("contentType"), text: form.get("text") } : { action: "create_campaign", name: title, startsAt: form.get("startsAt") || null, endsAt: form.get("endsAt") || null };
     let preparedId = "";
@@ -262,16 +401,25 @@ function CreateDialog({ type, onClose, onCreated }: { type: "content" | "campaig
       const file = form.get("file");
       if (type === "content" && (contentType === "image" || contentType === "video")) {
         if (!(file instanceof File) || !file.size) throw new Error("Bitte wählen Sie eine Datei aus.");
-        const prepared = await api<{ record: { id: string }; upload: { signedUrl: string } }>("/api/dashboard/records?audience=portal", {
+        const mimeType = mediaMimeType(file);
+        const prepared = await api<PreparedMediaUpload>("/api/dashboard/records?audience=portal", {
           method: "POST",
-          body: JSON.stringify({ action: "prepare_media_upload", title, mimeType: file.type, sizeBytes: file.size }),
+          body: JSON.stringify({ action: "prepare_media_upload", title, mimeType, sizeBytes: file.size }),
         });
         preparedId = prepared.record.id;
-        const uploadBody = new FormData();
-        uploadBody.append("cacheControl", "3600");
-        uploadBody.append("", file);
-        const uploaded = await fetch(prepared.upload.signedUrl, { method: "PUT", body: uploadBody, headers: { "x-upsert": "false" } });
-        if (!uploaded.ok) throw new Error("Die Datei konnte nicht übertragen werden.");
+        if (contentType === "video") {
+          await uploadVideo(file, prepared, mimeType, setUploadProgress);
+        } else {
+          const uploadBody = new FormData();
+          uploadBody.append("cacheControl", "3600");
+          uploadBody.append("", file);
+          const uploaded = await fetch(prepared.upload.signedUrl, { method: "PUT", body: uploadBody, headers: { "x-upsert": "false" } });
+          if (!uploaded.ok) {
+            const detail = await uploaded.text().catch(() => "");
+            throw new Error(detail || `${uploaded.status} ${uploaded.statusText}`);
+          }
+          setUploadProgress(100);
+        }
         await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "finalize_media_upload", id: prepared.record.id }) });
       } else {
         await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify(body) });
@@ -280,11 +428,11 @@ function CreateDialog({ type, onClose, onCreated }: { type: "content" | "campaig
     }
     catch (reason) {
       if (preparedId) await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "cancel_media_upload", id: preparedId }) }).catch(() => undefined);
-      setError(reason instanceof Error ? reason.message : "Speichern fehlgeschlagen");
+      setError(preparedId ? storageUploadMessage(reason) : reason instanceof Error ? reason.message : "Speichern fehlgeschlagen");
     } finally { setBusy(false); }
   }
   const isMedia = contentType === "image" || contentType === "video";
-  return <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Content-Bibliothek" : "Kampagnenplanung"}</div><h2>{type === "content" ? "Neuen Inhalt erstellen" : "Neue Kampagne planen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Kampagnenname"}<input name="title" required autoFocus /></label>{type === "content" ? <><label>Inhaltstyp<select name="contentType" value={contentType} onChange={(event) => setContentType(event.target.value)}><option value="composition">Komposition</option><option value="text">Text</option><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="web">Web-Inhalt</option></select></label>{isMedia ? <label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm"}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4 oder WebM · maximal 250 MB"}</small></label> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy}>{busy ? (isMedia ? "Datei wird übertragen …" : "Wird gespeichert …") : "Als Entwurf speichern"}</button></form></section></div>;
+  return <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Content-Bibliothek" : "Kampagnenplanung"}</div><h2>{type === "content" ? "Neuen Inhalt erstellen" : "Neue Kampagne planen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Kampagnenname"}<input name="title" required autoFocus /></label>{type === "content" ? <><label>Inhaltstyp<select name="contentType" value={contentType} onChange={(event) => setContentType(event.target.value)}><option value="composition">Komposition</option><option value="text">Text</option><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="web">Web-Inhalt</option></select></label>{isMedia ? <label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm,.mp4,.webm"}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4 (H.264) oder WebM · maximal 250 MB"}</small></label> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{busy && isMedia && <div className="upload-progress" role="status"><span style={{ width: `${uploadProgress}%` }}/><small>{uploadProgress > 0 ? `${uploadProgress} % übertragen` : "Upload wird vorbereitet …"}</small></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy}>{busy ? (isMedia ? `Datei wird übertragen${uploadProgress ? ` · ${uploadProgress} %` : " …"}` : "Wird gespeichert …") : "Als Entwurf speichern"}</button></form></section></div>;
 }
 
 createRoot(document.getElementById("portal-root")!).render(<Portal />);

@@ -69,6 +69,7 @@
     "test:pov": "node scripts/pov-navigation-smoke.mjs",
     "test:dashboard": "node scripts/dashboard-core-smoke.mjs",
     "test:portal": "node scripts/portal-foundation-smoke.mjs",
+    "test:portal-ai": "node scripts/portal-ai-billing-smoke.mjs",
     "test:player": "node scripts/display-player-smoke.mjs",
     "test:einsatzbereiche": "node scripts/einsatzbereiche-smoke.mjs"
   },
@@ -82,7 +83,10 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "resend": "^6.12.4",
-    "three": "0.185.1"
+    "sharp": "^0.35.4",
+    "stripe": "^22.6.0",
+    "three": "0.185.1",
+    "tus-js-client": "^4.3.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",

@@ -9,7 +9,7 @@ import { json, validatePublicPost, cleanText } from "./_lib/assistant/security.j
 // (rate limiting, origin check) even though this route isn't assistant
 // functionality — they're provider-agnostic utilities, not worth
 // duplicating for one more route.
-// gpt-image-1 generation genuinely takes 40-90s for non-square sizes —
+// GPT Image generation can take 40-90s for non-square sizes —
 // confirmed in production logs, the original 40s/45s pair was too tight
 // and aborted in-flight requests that OpenAI would otherwise have
 // completed. Vercel Fluid Compute (seen in this project's function logs)
@@ -75,7 +75,7 @@ export async function POST(request: Request): Promise<Response> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
+        model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
         prompt: scenePrompt,
         size,
         // Was previously unset (defaults to OpenAI's most expensive tier at

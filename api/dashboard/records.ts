@@ -17,6 +17,17 @@ const PORTAL_MEDIA_TYPES: Record<string, { type: "image" | "video"; extension: s
   "video/webm": { type: "video", extension: "webm", maxBytes: 250 * 1024 * 1024 },
 };
 
+function resumableStorageUrl(signedUploadUrl: string): string {
+  const url = new URL(signedUploadUrl);
+  if (url.hostname.endsWith(".supabase.co") && !url.hostname.endsWith(".storage.supabase.co")) {
+    url.hostname = url.hostname.replace(/\.supabase\.co$/, ".storage.supabase.co");
+  }
+  url.pathname = "/storage/v1/upload/resumable";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
 function deviceToken(request: Request): string {
   const authorization = request.headers.get("authorization") || "";
   return authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
@@ -145,7 +156,16 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     }).select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
     if (result.error) return json({ error: result.error.message }, { status: 400 });
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "upload_prepared", entity_type: "content", entity_id: result.data.id, metadata: { mimeType, sizeBytes } });
-    return json({ ok: true, record: result.data, upload: { signedUrl: signed.data.signedUrl } });
+    return json({
+      ok: true,
+      record: result.data,
+      upload: {
+        signedUrl: signed.data.signedUrl,
+        token: signed.data.token,
+        path: signed.data.path,
+        resumableUrl: resumableStorageUrl(signed.data.signedUrl),
+      },
+    });
   }
 
   if (action === "finalize_media_upload") {
