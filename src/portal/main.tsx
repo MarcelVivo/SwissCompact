@@ -2,12 +2,13 @@ import React, { FormEvent, useCallback, useEffect, useMemo, useState } from "rea
 import { createRoot } from "react-dom/client";
 import "./portal.css";
 import "./portal-media.css";
+import "./portal-campaign.css";
 
 type PortalProfile = { displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
 type Site = { id: string; name: string; active: boolean; address?: Record<string, string> };
 type Display = { id: string; name: string; kind: string; status: string; orientation?: string; resolution?: { width?: number; height?: number }; last_seen_at?: string; site?: { name?: string } };
 type Content = { id: string; title: string; content_type: string; status: string; payload?: { text?: string; uploadState?: string }; preview_url?: string | null; updated_at: string };
-type Campaign = { id: string; name: string; status: string; starts_at?: string; ends_at?: string; updated_at: string };
+type Campaign = { id: string; name: string; status: string; starts_at?: string; ends_at?: string; updated_at: string; content_links?: Array<{ position: number; duration_seconds: number; content: { id: string; title: string; content_type: string; status: string } | null }>; display_links?: Array<{ display_id: string; display: { id: string; name: string; status: string; site?: { name?: string } } | null }> };
 type Subscription = { package_code: string; status: string; starts_on: string; minimum_ends_on?: string; monthly_amount_chf?: number; included_ai_credits?: number } | null;
 type Member = { id: string; role: string; display_name?: string; active: boolean };
 type PortalData = { profile: PortalProfile; sites: Site[]; displays: Display[]; content: Content[]; campaigns: Campaign[]; subscription: Subscription; members: Member[] };
@@ -75,6 +76,7 @@ function Portal() {
   const [view, setView] = useState<View>("overview");
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"content" | "campaign" | null>(null);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const load = useCallback(async () => {
     setSession("loading"); setError("");
     try {
@@ -107,12 +109,63 @@ function Portal() {
           <section className="card"><div className="card-head"><div><span>Display-Status</span><h3>Ihre Flächen</h3></div><button onClick={() => setView("displays")}>Alle ansehen</button></div>{data.displays.length ? data.displays.slice(0,4).map((item) => <div className="row" key={item.id}><div><strong>{item.name}</strong><small>{item.site?.name || "Ohne Standort"}</small></div><Status value={item.status}/></div>) : <Empty>Noch keine Displays verbunden.</Empty>}</section></div>
       </section>}
       {view === "content" && <section className="view"><div className="section-title"><div><h2>Content-Bibliothek</h2><p>Medien und Inhalte für Ihre digitalen Flächen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("content")}><Icon name="plus"/>Inhalt erstellen</button>}</div><div className="content-grid">{data.content.map((item) => <article className="content-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : item.preview_url && item.content_type === "video" ? <video src={item.preview_url} muted playsInline preload="metadata"/> : null}<span>{item.payload?.uploadState === "uploading" ? "UPLOAD LÄUFT" : item.content_type.toUpperCase()}</span></div><div><Status value={item.status}/><h3>{item.title}</h3><p>{item.payload?.text || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Noch keine Beschreibung")}</p><small>Geändert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small></div></article>)}{!data.content.length && <Empty>Erstellen Sie Ihren ersten Inhalt.</Empty>}</div></section>}
-      {view === "campaigns" && <section className="view"><div className="section-title"><div><h2>Kampagnen</h2><p>Inhalte zeitlich planen und gezielt ausspielen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("campaign")}><Icon name="plus"/>Kampagne planen</button>}</div><div className="table-card"><div className="table-head"><span>Name</span><span>Zeitraum</span><span>Status</span></div>{data.campaigns.map((item) => <div className="table-row" key={item.id}><strong>{item.name}</strong><span>{item.starts_at ? new Date(item.starts_at).toLocaleDateString("de-CH") : "Offen"} – {item.ends_at ? new Date(item.ends_at).toLocaleDateString("de-CH") : "Offen"}</span><Status value={item.status}/></div>)}{!data.campaigns.length && <Empty>Planen Sie Ihre erste Kampagne.</Empty>}</div></section>}
+      {view === "campaigns" && <section className="view"><div className="section-title"><div><h2>Kampagnen</h2><p>Inhalte zeitlich planen und gezielt ausspielen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("campaign")}><Icon name="plus"/>Kampagne planen</button>}</div><div className="table-card"><div className="table-head campaign-table"><span>Name</span><span>Zeitraum</span><span>Status</span><span></span></div>{data.campaigns.map((item) => <div className="table-row campaign-table" key={item.id}><strong>{item.name}</strong><span>{item.starts_at ? new Date(item.starts_at).toLocaleDateString("de-CH") : "Offen"} – {item.ends_at ? new Date(item.ends_at).toLocaleDateString("de-CH") : "Offen"}</span><Status value={item.status}/><button className="row-action" onClick={() => setEditingCampaign(item)}>{canEdit ? "Bearbeiten" : "Ansehen"}</button></div>)}{!data.campaigns.length && <Empty>Planen Sie Ihre erste Kampagne.</Empty>}</div></section>}
       {view === "displays" && <section className="view"><div className="section-title"><div><h2>Display-Netzwerk</h2><p>Status und Standorte aller verbundenen Flächen.</p></div></div><div className="display-grid">{data.displays.map((item) => <article className="display-card" key={item.id}><div className={`screen ${item.orientation === "portrait" ? "portrait" : ""}`}><div>Swiss<span>Compact</span></div></div><div><Status value={item.status}/><h3>{item.name}</h3><p>{item.site?.name || "Standort noch nicht zugewiesen"}</p><small>{item.resolution?.width ? `${item.resolution.width} × ${item.resolution.height}` : "Auflösung nicht erfasst"}</small></div></article>)}{!data.displays.length && <Empty>Displays werden durch SwissCompact eingerichtet und erscheinen danach hier.</Empty>}</div></section>}
       {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang und das aktive SwissCompact-Paket.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
     </main>
     {dialog && <CreateDialog type={dialog} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
+    {editingCampaign && <CampaignEditor campaign={editingCampaign} content={data.content} displays={data.displays} canEdit={canEdit} onClose={() => setEditingCampaign(null)} onSaved={() => { setEditingCampaign(null); void load(); }} />}
   </div>;
+}
+
+function localDateTime(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function CampaignEditor({ campaign, content, displays, canEdit, onClose, onSaved }: { campaign: Campaign; content: Content[]; displays: Display[]; canEdit: boolean; onClose: () => void; onSaved: () => void }) {
+  const initialContent = [...(campaign.content_links || [])].sort((a,b) => a.position - b.position).flatMap((link) => link.content ? [{ contentId: link.content.id, durationSeconds: link.duration_seconds || 10 }] : []);
+  const [playlist, setPlaylist] = useState(initialContent);
+  const [selectedDisplays, setSelectedDisplays] = useState(() => new Set((campaign.display_links || []).map((link) => link.display_id)));
+  const [name, setName] = useState(campaign.name);
+  const [startsAt, setStartsAt] = useState(localDateTime(campaign.starts_at));
+  const [endsAt, setEndsAt] = useState(localDateTime(campaign.ends_at));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const locked = ["active", "completed", "archived"].includes(campaign.status);
+
+  function toggleContent(contentId: string) {
+    setPlaylist((current) => current.some((item) => item.contentId === contentId) ? current.filter((item) => item.contentId !== contentId) : [...current, { contentId, durationSeconds: 10 }]);
+  }
+  function move(index: number, direction: -1 | 1) {
+    setPlaylist((current) => { const next = [...current]; const target = index + direction; if (target < 0 || target >= next.length) return current; [next[index], next[target]] = [next[target], next[index]]; return next; });
+  }
+  function toggleDisplay(displayId: string) {
+    setSelectedDisplays((current) => { const next = new Set(current); if (next.has(displayId)) next.delete(displayId); else next.add(displayId); return next; });
+  }
+  async function save(activate = false) {
+    setBusy(true); setError("");
+    try {
+      await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "configure_campaign", id: campaign.id, name, startsAt: startsAt ? new Date(startsAt).toISOString() : null, endsAt: endsAt ? new Date(endsAt).toISOString() : null, contentItems: playlist, displayIds: [...selectedDisplays] }) });
+      if (activate) await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "activate_campaign", id: campaign.id }) });
+      onSaved();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Kampagne konnte nicht gespeichert werden"); }
+    finally { setBusy(false); }
+  }
+  async function pause() {
+    setBusy(true); setError("");
+    try { await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "pause_campaign", id: campaign.id }) }); onSaved(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Kampagne konnte nicht pausiert werden"); } finally { setBusy(false); }
+  }
+  return <div className="dialog-backdrop campaign-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="dialog campaign-editor" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} aria-label="Schließen">×</button><div className="campaign-editor-head"><div><div className="eyebrow">Kampagnensteuerung</div><h2>{campaign.name}</h2></div><Status value={campaign.status}/></div>
+    {locked && <div className="editor-notice">Diese Kampagne läuft bereits. Pausieren Sie sie, bevor Inhalte oder Displays geändert werden.</div>}
+    <div className="editor-grid"><section><h3>1 · Kampagnendaten</h3><label>Name<input value={name} onChange={(event) => setName(event.target.value)} disabled={!canEdit || locked}/></label><div className="date-pair"><label>Start<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} disabled={!canEdit || locked}/></label><label>Ende<input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} disabled={!canEdit || locked}/></label></div></section>
+      <section><h3>2 · Inhalte & Reihenfolge</h3><div className="selection-list">{content.filter((item) => item.payload?.uploadState !== "uploading").map((item) => { const index = playlist.findIndex((entry) => entry.contentId === item.id); const selected = index >= 0; return <div className={`selection-row ${selected ? "selected" : ""}`} key={item.id}><label><input type="checkbox" checked={selected} onChange={() => toggleContent(item.id)} disabled={!canEdit || locked}/><span><strong>{item.title}</strong><small>{item.content_type.toUpperCase()} · {labels[item.status] || item.status}</small></span></label>{selected && <div className="playlist-controls"><button onClick={() => move(index,-1)} disabled={index === 0 || locked}>↑</button><button onClick={() => move(index,1)} disabled={index === playlist.length-1 || locked}>↓</button><label><input type="number" min="5" max="3600" value={playlist[index].durationSeconds} onChange={(event) => setPlaylist((current) => current.map((entry,i) => i === index ? {...entry,durationSeconds:Number(event.target.value)} : entry))} disabled={!canEdit || locked}/><span>Sek.</span></label></div>}</div>})}{!content.length && <p className="muted">Laden Sie zuerst Inhalte in die Mediathek.</p>}</div></section>
+      <section><h3>3 · Ziel-Displays</h3><div className="selection-list display-selection">{displays.map((display) => <label className={selectedDisplays.has(display.id) ? "selected" : ""} key={display.id}><input type="checkbox" checked={selectedDisplays.has(display.id)} onChange={() => toggleDisplay(display.id)} disabled={!canEdit || locked}/><span><strong>{display.name}</strong><small>{display.site?.name || "Ohne Standort"} · {labels[display.status] || display.status}</small></span></label>)}{!displays.length && <p className="muted">Noch keine Displays eingerichtet.</p>}</div></section></div>
+    {error && <div className="form-error">{error}</div>}<footer className="editor-actions"><button className="secondary" onClick={onClose}>Schließen</button>{canEdit && (campaign.status === "active" || campaign.status === "scheduled") && <button className="secondary danger" onClick={() => void pause()} disabled={busy}>Kampagne pausieren</button>}{canEdit && !locked && <><button className="secondary" onClick={() => void save(false)} disabled={busy}>Entwurf speichern</button><button className="primary" onClick={() => void save(true)} disabled={busy || !playlist.length || !selectedDisplays.size}>{busy ? "Wird gespeichert …" : startsAt && new Date(startsAt) > new Date() ? "Kampagne planen" : "Jetzt aktivieren"}</button></>}</footer>
+  </section></div>;
 }
 
 function CreateDialog({ type, onClose, onCreated }: { type: "content" | "campaign"; onClose: () => void; onCreated: () => void }) {
