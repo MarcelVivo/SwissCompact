@@ -3,11 +3,13 @@ import { createRoot } from "react-dom/client";
 import "./dashboard.css";
 import { registerServiceWorker } from "../pwa/registerServiceWorker";
 import { mountInstallPrompt } from "../pwa/installPrompt";
+import { friendlyPasskeyError, getPasskeyClient, passkeyPlatformAvailable } from "./passkeyClient";
 
 registerServiceWorker({ scope: "/dashboard" });
 
 type View = "overview" | "pipeline" | "clients" | "quotes" | "projects" | "tasks" | "invoices" | "finance" | "ai" | "marketing" | "systems" | "security";
-type Profile = { userId: string; email: string; displayName: string; role: string; securityAdmin: boolean; aal: string | null; webauthnEnrolled: boolean };
+type Profile = { userId: string; email: string; displayName: string; role: string; securityAdmin: boolean; aal: string | null; passkeyVerified: boolean };
+type PasskeyItem = { id: string; friendly_name?: string; created_at: string; last_used_at?: string };
 type Row = Record<string, any>;
 type Data = { profile: Profile; clients: Row[]; opportunities: Row[]; projects: Row[]; tasks: Row[]; quotes: Row[]; invoices: Row[]; founderTransactions: Row[]; aiJobs: Row[]; settings: Record<string, any>; audit: Row[]; approvals: Row[]; profiles: Row[]; generatedAt: string };
 
@@ -62,63 +64,6 @@ function normalizeOverview(raw: any): Data {
   return normalized as Data;
 }
 
-function decodeBase64Url(value: string): ArrayBuffer {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
-  return bytes.buffer;
-}
-
-function encodeBase64Url(value: ArrayBuffer): string {
-  const bytes = new Uint8Array(value);
-  let binary = "";
-  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function credentialOptions(payload: any, mode: "create" | "request") {
-  const source = payload?.challenge?.webauthn?.credential_options?.publicKey;
-  if (!source?.challenge) throw new Error("Face-ID-Anfrage ist unvollständig");
-  if (mode === "create") {
-    return {
-      ...source,
-      challenge: decodeBase64Url(source.challenge),
-      user: { ...source.user, id: decodeBase64Url(source.user.id) },
-      excludeCredentials: source.excludeCredentials?.map((item: any) => ({ ...item, id: decodeBase64Url(item.id) })),
-    } as PublicKeyCredentialCreationOptions;
-  }
-  return {
-    ...source,
-    challenge: decodeBase64Url(source.challenge),
-    allowCredentials: source.allowCredentials?.map((item: any) => ({ ...item, id: decodeBase64Url(item.id) })),
-  } as PublicKeyCredentialRequestOptions;
-}
-
-function serializeCredential(credential: PublicKeyCredential, mode: "create" | "request") {
-  const nativeJson = (credential as PublicKeyCredential & { toJSON?: () => unknown }).toJSON;
-  if (typeof nativeJson === "function") return nativeJson.call(credential);
-  if (mode === "create") {
-    const response = credential.response as AuthenticatorAttestationResponse;
-    return { id: credential.id, rawId: credential.id, type: "public-key", authenticatorAttachment: credential.authenticatorAttachment ?? undefined, clientExtensionResults: credential.getClientExtensionResults(), response: { attestationObject: encodeBase64Url(response.attestationObject), clientDataJSON: encodeBase64Url(response.clientDataJSON) } };
-  }
-  const response = credential.response as AuthenticatorAssertionResponse;
-  return { id: credential.id, rawId: credential.id, type: "public-key", authenticatorAttachment: credential.authenticatorAttachment ?? undefined, clientExtensionResults: credential.getClientExtensionResults(), response: { authenticatorData: encodeBase64Url(response.authenticatorData), clientDataJSON: encodeBase64Url(response.clientDataJSON), signature: encodeBase64Url(response.signature), userHandle: response.userHandle ? encodeBase64Url(response.userHandle) : undefined } };
-}
-
-async function completeWebauthn(payload: any) {
-  if (!("PublicKeyCredential" in window) || !navigator.credentials) throw new Error("Face ID wird von diesem Browser nicht unterstützt");
-  const mode: "create" | "request" = payload.mode === "create" ? "create" : "request";
-  try {
-    const credential = mode === "create"
-      ? await navigator.credentials.create({ publicKey: credentialOptions(payload, mode) as PublicKeyCredentialCreationOptions })
-      : await navigator.credentials.get({ publicKey: credentialOptions(payload, mode) as PublicKeyCredentialRequestOptions });
-    if (!(credential instanceof PublicKeyCredential)) throw new Error("Face ID wurde nicht bestätigt");
-    return api("mfa", { method: "POST", body: JSON.stringify({ action: "webauthn_verify", factorId: payload.factorId, challengeId: payload.challenge.id, mode, credential: serializeCredential(credential, mode) }) });
-  } catch (reason) {
-    if (reason instanceof DOMException && ["NotAllowedError", "AbortError"].includes(reason.name)) throw new Error("Face ID wurde abgebrochen oder nicht bestätigt");
-    throw reason;
-  }
-}
-
 const money = (value: unknown) => new Intl.NumberFormat("de-CH", { style: "currency", currency: "CHF" }).format(Number(value || 0));
 const shortDate = (value: unknown) => value ? new Intl.DateTimeFormat("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(String(value))) : "–";
 const company = (row: Row) => Array.isArray(row.client) ? row.client[0]?.company_name : row.client?.company_name;
@@ -137,19 +82,33 @@ const invoiceStatusLabels: Record<string, string> = { draft: "Entwurf", approval
 const installmentLabels: Record<string, string> = { deposit_50: "50 % Anzahlung", installation_30: "30 % Montage", acceptance_20: "20 % Schlusszahlung", subscription: "Software-Abo", other: "Weitere Leistung" };
 
 function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
-  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [passkeyAvailable, setPasskeyAvailable] = useState<boolean | null>(null); const [showPassword, setShowPassword] = useState(false);
+  useEffect(() => { passkeyPlatformAvailable().then(setPasskeyAvailable); }, []);
   async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(""); try { await api("login", { method: "POST", body: JSON.stringify({ email, password }) }); onLoggedIn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
-  return <main className="auth-shell"><section className="auth-brand"><div className="brand"><span>Swiss</span><b>Compact</b></div><p>Operations Dashboard</p><h1>Alles im Blick.<br/>Vom Lead bis zur Wartung.</h1><p className="auth-copy">Der geschützte Arbeitsbereich für Projekte, Kunden, Finanzen und automatisierte Abläufe.</p></section><section className="auth-card"><div className="auth-lock"><Icon name="lock" size={24}/></div><p className="eyebrow">Sicherer Zugang</p><h2>Anmelden</h2><p className="muted">Nur für autorisierte SwissCompact-Administratoren.</p><form onSubmit={submit}><label>E-Mail<input type="email" autoComplete="username webauthn" value={email} onChange={e => setEmail(e.target.value)} required autoFocus/></label><label>Passwort<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required/></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary full" disabled={busy}>{busy ? "Wird geprüft …" : "Sicher anmelden"}<Icon name="arrow"/></button></form><p className="auth-foot">Danach bestätigst du die Anmeldung auf dem iPhone bequem mit Face ID.</p></section></main>;
+  async function passkeyLogin() {
+    setBusy(true); setError("");
+    try {
+      const supabase = getPasskeyClient();
+      if (!supabase) throw new Error("Face ID ist auf diesem Gerät nicht verfügbar");
+      const { data, error: signInError } = await supabase.auth.signInWithPasskey();
+      if (signInError || !data?.session) throw signInError || new Error("Face ID konnte nicht bestätigt werden");
+      await api("passkey", { method: "POST", body: JSON.stringify({ action: "login", accessToken: data.session.access_token, refreshToken: data.session.refresh_token }) });
+      onLoggedIn();
+    } catch (e) {
+      setError(friendlyPasskeyError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <main className="auth-shell"><section className="auth-brand"><div className="brand"><span>Swiss</span><b>Compact</b></div><p>Operations Dashboard</p><h1>Alles im Blick.<br/>Vom Lead bis zur Wartung.</h1><p className="auth-copy">Der geschützte Arbeitsbereich für Projekte, Kunden, Finanzen und automatisierte Abläufe.</p></section><section className="auth-card"><div className="auth-lock"><Icon name="lock" size={24}/></div><p className="eyebrow">Sicherer Zugang</p><h2>Anmelden</h2><p className="muted">Nur für autorisierte SwissCompact-Administratoren.</p>{error && <p className="form-error" role="alert">{error}</p>}{passkeyAvailable && !showPassword && <><button type="button" className="primary full faceid-button" onClick={passkeyLogin} disabled={busy}><Icon name="faceid" size={20}/>{busy ? "Face ID wird geöffnet …" : "Mit Face ID anmelden"}</button><button type="button" className="auth-fallback" onClick={() => setShowPassword(true)}>Stattdessen mit Passwort anmelden</button></>}{(passkeyAvailable === false || showPassword) && <form onSubmit={submit}><label>E-Mail<input type="email" autoComplete="username webauthn" value={email} onChange={e => setEmail(e.target.value)} required autoFocus/></label><label>Passwort<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required/></label><button className="primary full" disabled={busy}>{busy ? "Wird geprüft …" : "Sicher anmelden"}<Icon name="arrow"/></button></form>}{passkeyAvailable && showPassword && <button type="button" className="auth-fallback" onClick={() => setShowPassword(false)}>Zurück zu Face ID</button>}</section></main>;
 }
 
 function Mfa({ state, onVerified }: { state: any; onVerified: () => void }) {
-  const [enrollment, setEnrollment] = useState<any>(null); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [showTotp, setShowTotp] = useState(!state.webauthnFactorId);
+  const [enrollment, setEnrollment] = useState<any>(null); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   useEffect(() => { if (state.mfaEnrollmentRequired && !enrollment) api("mfa", { method: "POST", body: JSON.stringify({ action: "enroll" }) }).then(setEnrollment).catch(e => setError(e.message)); }, [state.mfaEnrollmentRequired, enrollment]);
   const factorId = enrollment?.factorId || state.totpFactorId || state.factorId;
   async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(""); try { await api("mfa", { method: "POST", body: JSON.stringify({ action: "verify", factorId, code }) }); onVerified(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
-  async function faceId() { setBusy(true); setError(""); try { const challenge = await api("mfa", { method: "POST", body: JSON.stringify({ action: "webauthn_challenge", factorId: state.webauthnFactorId }) }); await completeWebauthn(challenge); onVerified(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
-  if (state.webauthnFactorId && !showTotp) return <main className="mfa-shell"><section className="mfa-card faceid-card"><div className="auth-lock"><Icon name="faceid" size={28}/></div><p className="eyebrow">Sicherer Zugang</p><h1>Mit Face ID bestätigen</h1><p>Entsperre deinen persönlichen Passkey mit Face ID. Deine Gesichtsdaten bleiben auf deinem iPhone.</p>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary full faceid-button" onClick={faceId} disabled={busy}><Icon name="faceid" size={23}/>{busy ? "Face ID wird geöffnet …" : "Mit Face ID fortfahren"}</button>{state.totpFactorId && <button className="auth-fallback" onClick={() => { setShowTotp(true); setError(""); }}>Stattdessen Authenticator-Code verwenden</button>}</section></main>;
-  return <main className="mfa-shell"><section className="mfa-card"><div className="auth-lock"><Icon name="shield" size={26}/></div><p className="eyebrow">Sicherer Zugang</p><h1>{state.mfaEnrollmentRequired ? "Authenticator verbinden" : "Identität bestätigen"}</h1>{state.mfaEnrollmentRequired ? <><p>Scanne den QR-Code mit deiner Authenticator-App. Bewahre den Schlüssel sicher auf.</p>{enrollment?.qrCode ? <img className="qr" src={enrollment.qrCode} alt="QR-Code für Authenticator"/> : <div className="qr-loading">QR-Code wird erstellt …</div>}{enrollment?.secret && <code className="secret">{enrollment.secret}</code>}</> : <p>Gib den sechsstelligen Code aus deiner Authenticator-App ein.</p>}<form onSubmit={submit}><label>Sicherheitscode<input className="code-input" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ""))} required autoFocus/></label>{error && <p className="form-error">{error}</p>}<button className="primary full" disabled={busy || !factorId || code.length !== 6}>{busy ? "Wird bestätigt …" : "Code bestätigen"}</button></form>{state.webauthnFactorId && <button className="auth-fallback" onClick={() => { setShowTotp(false); setError(""); }}>Zurück zu Face ID</button>}</section></main>;
+  return <main className="mfa-shell"><section className="mfa-card"><div className="auth-lock"><Icon name="shield" size={26}/></div><p className="eyebrow">Sicherer Zugang</p><h1>{state.mfaEnrollmentRequired ? "Authenticator verbinden" : "Identität bestätigen"}</h1>{state.mfaEnrollmentRequired ? <><p>Scanne den QR-Code mit deiner Authenticator-App. Bewahre den Schlüssel sicher auf.</p>{enrollment?.qrCode ? <img className="qr" src={enrollment.qrCode} alt="QR-Code für Authenticator"/> : <div className="qr-loading">QR-Code wird erstellt …</div>}{enrollment?.secret && <code className="secret">{enrollment.secret}</code>}</> : <p>Gib den sechsstelligen Code aus deiner Authenticator-App ein.</p>}<form onSubmit={submit}><label>Sicherheitscode<input className="code-input" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ""))} required autoFocus/></label>{error && <p className="form-error">{error}</p>}<button className="primary full" disabled={busy || !factorId || code.length !== 6}>{busy ? "Wird bestätigt …" : "Code bestätigen"}</button></form></section></main>;
 }
 
 function Stat({ label, value, note, tone }: { label: string; value: string | number; note: string; tone?: string }) { return <article className={`stat ${tone || ""}`}><span>{label}</span><strong>{value}</strong><small>{note}</small></article>; }
@@ -276,13 +235,43 @@ function AiBots({ data }: { data: Data }) { const spent = data.aiJobs.reduce((s,
 
 function Marketing() { return <Generic title="Marketing" eyebrow="Wachstum" intro="Website, Newsletter, LinkedIn, Instagram, Facebook und Google Ads in einem genehmigten Monatsplan."><div className="channel-grid">{["Website", "Newsletter", "LinkedIn", "Instagram & Facebook", "Google Ads"].map(x => <article key={x}><Icon name="megaphone"/><h3>{x}</h3><span className="tag warning">Integration ausstehend</span></article>)}</div><section className="notice"><Icon name="shield"/><div><b>Publikationsregel</b><span>Der Marketing-Bot darf innerhalb eines von beiden Admins freigegebenen Monatsplans selbstständig publizieren. Neue Kampagnen und Budgets benötigen erneut beide Freigaben.</span></div></section></Generic> }
 function Systems() { return <Generic title="Systeme & Displaysteuerung" eyebrow="Technik" intro="Geräte, Inhalte, Standorte und Software-Abonnements werden als getrenntes Modul aufgebaut."><div className="card-grid"><InfoCard title="Display-Flotte" text="Heartbeat, Gerätestatus, Fernwartung und Offline-Cache."/><InfoCard title="Inhaltssteuerung" text="Playlists, Zeitpläne, Freigaben und sichere Auslieferung."/><InfoCard title="Software-Abos" text="Essential, Business und Enterprise – kombiniert pro Standort und Display."/></div><section className="notice"><Icon name="screen"/><div><b>Getrenntes Kundenportal</b><span>Kunden erhalten unter /portal ausschliesslich Zugriff auf ihre eigenen Projekte, Dokumente und später ihre Displaysteuerung.</span></div></section></Generic> }
-function PasskeyCard({ profile, refresh }: { profile: Profile; refresh: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [done, setDone] = useState(false);
-  async function enroll() { setBusy(true); setError(""); try { const challenge = await api("mfa", { method: "POST", body: JSON.stringify({ action: "webauthn_enroll_start" }) }); await completeWebauthn(challenge); setDone(true); await refresh(); } catch (reason) { setError((reason as Error).message); } finally { setBusy(false); } }
-  const active = profile.webauthnEnrolled || done;
-  return <article className={`info-card passkey-card ${active ? "passkey-active" : ""}`}><div className="passkey-head"><div className="passkey-icon"><Icon name="faceid" size={25}/></div><span className={`tag ${active ? "success" : "warning"}`}>{active ? "Aktiv" : "Einrichtung nötig"}</span></div><h2>Face ID</h2><p>{active ? "Dein iPhone kann Dashboard-Anmeldungen jetzt mit Face ID bestätigen." : "Richte auf deinem iPhone einen persönlichen Passkey ein. Der Authenticator bleibt als Notfallzugang erhalten."}</p>{!active && <button className="primary full" onClick={enroll} disabled={busy}><Icon name="faceid" size={20}/>{busy ? "Face ID wird geöffnet …" : "Face ID einrichten"}</button>}{error && <p className="form-error" role="alert">{error}</p>}</article>;
+function PasskeyCard({ refresh }: { refresh: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [passkeys, setPasskeys] = useState<PasskeyItem[] | null>(null); const [supported, setSupported] = useState<boolean | null>(null);
+  const loadPasskeys = useCallback(async () => { try { const result = await api("passkey", { method: "POST", body: JSON.stringify({ action: "list" }) }); setPasskeys(result.passkeys || []); } catch (reason) { setError((reason as Error).message); } }, []);
+  useEffect(() => { passkeyPlatformAvailable().then(setSupported); loadPasskeys(); }, [loadPasskeys]);
+  async function enroll() {
+    setBusy(true); setError("");
+    try {
+      const tokens = await api("passkey", { method: "POST", body: JSON.stringify({ action: "bridge_tokens" }) });
+      const supabase = getPasskeyClient();
+      if (!supabase) throw new Error("Face ID ist auf diesem Gerät nicht verfügbar");
+      const { error: sessionError } = await supabase.auth.setSession({ access_token: tokens.accessToken, refresh_token: tokens.refreshToken });
+      if (sessionError) throw sessionError;
+      const { error: registerError } = await supabase.auth.registerPasskey();
+      if (registerError) throw registerError;
+      await loadPasskeys();
+      await refresh();
+    } catch (reason) {
+      setError(friendlyPasskeyError(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(passkeyId: string) {
+    setBusy(true); setError("");
+    try {
+      await api("passkey", { method: "POST", body: JSON.stringify({ action: "delete", passkeyId }) });
+      await loadPasskeys();
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const active = Boolean(passkeys?.length);
+  return <article className={`info-card passkey-card ${active ? "passkey-active" : ""}`}><div className="passkey-head"><div className="passkey-icon"><Icon name="faceid" size={25}/></div><span className={`tag ${active ? "success" : "warning"}`}>{active ? "Aktiv" : "Einrichtung nötig"}</span></div><h2>Face ID</h2>{supported === false ? <p>Auf diesem Gerät nicht verfügbar. Face ID/Passkeys benötigen ein iPhone mit Face ID oder Touch ID.</p> : <p>{active ? "Dein iPhone kann Dashboard-Anmeldungen jetzt mit Face ID bestätigen." : "Richte auf deinem iPhone einen persönlichen Passkey ein. Der Authenticator bleibt als Notfallzugang erhalten."}</p>}{passkeys && passkeys.length > 0 && <ul className="passkey-list">{passkeys.map(passkey => <li key={passkey.id}><span>{passkey.friendly_name || "Passkey"}</span><small>seit {shortDate(passkey.created_at)}</small><button type="button" className="icon-button" onClick={() => remove(passkey.id)} disabled={busy} aria-label="Passkey löschen"><Icon name="close" size={16}/></button></li>)}</ul>}{supported !== false && <button className="primary full" onClick={enroll} disabled={busy}><Icon name="faceid" size={20}/>{busy ? "Face ID wird geöffnet …" : active ? "Weiteren Passkey einrichten" : "Face ID einrichten"}</button>}{error && <p className="form-error" role="alert">{error}</p>}</article>;
 }
-function Security({ data, refresh }: { data: Data; refresh: () => Promise<void> }) { return <Generic title="Sicherheit & Protokoll" eyebrow="Administration" intro="Face ID, sichere Wiederherstellung und unveränderbare Nachvollziehbarkeit."><section className="security-grid"><PasskeyCard profile={data.profile} refresh={refresh}/><InfoCard title="Sicherheitsstufe" text={`Geschützt für ${data.profile.displayName} · ${data.profile.aal || "AAL1"} · Authenticator als Rückfalloption.`}/><InfoCard title="Rolle" text={data.profile.securityAdmin ? "Hauptadmin: Benutzer, Backups und Integrationen verwalten." : "Admin: volle operative Lese- und Schreibrechte."}/><InfoCard title="Backups" text="Tägliche Datenbanksicherung, Dokumentexport und getesteter Wiederherstellungsplan vorgesehen."/></section><section className="panel table-panel"><PanelHead title="Letzte Änderungen"/><table><thead><tr><th>Zeitpunkt</th><th>Benutzer</th><th>Aktion</th><th>Objekt</th></tr></thead><tbody>{data.audit.map(a => <tr key={a.id}><td>{shortDate(a.created_at)}</td><td>{a.actor_email}</td><td>{a.action}</td><td>{a.entity_type}</td></tr>)}</tbody></table>{!data.audit.length && <Empty/>}</section></Generic> }
+function Security({ data, refresh }: { data: Data; refresh: () => Promise<void> }) { return <Generic title="Sicherheit & Protokoll" eyebrow="Administration" intro="Face ID, sichere Wiederherstellung und unveränderbare Nachvollziehbarkeit."><section className="security-grid"><PasskeyCard refresh={refresh}/><InfoCard title="Sicherheitsstufe" text={`Geschützt für ${data.profile.displayName} · ${data.profile.aal || "AAL1"} · Authenticator als Rückfalloption.`}/><InfoCard title="Rolle" text={data.profile.securityAdmin ? "Hauptadmin: Benutzer, Backups und Integrationen verwalten." : "Admin: volle operative Lese- und Schreibrechte."}/><InfoCard title="Backups" text="Tägliche Datenbanksicherung, Dokumentexport und getesteter Wiederherstellungsplan vorgesehen."/></section><section className="panel table-panel"><PanelHead title="Letzte Änderungen"/><table><thead><tr><th>Zeitpunkt</th><th>Benutzer</th><th>Aktion</th><th>Objekt</th></tr></thead><tbody>{data.audit.map(a => <tr key={a.id}><td>{shortDate(a.created_at)}</td><td>{a.actor_email}</td><td>{a.action}</td><td>{a.entity_type}</td></tr>)}</tbody></table>{!data.audit.length && <Empty/>}</section></Generic> }
 function Generic({ title, eyebrow, intro, children }: { title: string; eyebrow: string; intro: string; children: React.ReactNode }) { return <><header className="page-head"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{intro}</p></div></header>{children}</> }
 function InfoCard({ title, text }: { title: string; text: string }) { return <article className="info-card"><div className="info-mark"/><h2>{title}</h2><p>{text}</p></article>; }
 

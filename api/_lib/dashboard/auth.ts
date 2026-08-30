@@ -16,7 +16,7 @@ export interface DashboardProfile {
   role: "owner_admin" | "admin" | "staff" | "advisor" | "client";
   securityAdmin: boolean;
   aal: "aal1" | "aal2" | null;
-  webauthnEnrolled: boolean;
+  passkeyVerified: boolean;
 }
 
 export interface PortalProfile {
@@ -43,7 +43,7 @@ export function dashboardSupabase(): SupabaseClient<any, any, any> | null {
   const values = config();
   if (!values) return null;
   return createClient(values.url, values.key, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, experimental: { passkey: true } },
     db: { schema: "swisscompact" },
   });
 }
@@ -89,7 +89,7 @@ export async function sessionClient(request: Request): Promise<{
   const refreshToken = cookies[REFRESH_COOKIE];
   if (!accessToken || !refreshToken) return null;
   const client = createClient(values.url, values.key, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, experimental: { passkey: true } },
     db: { schema: "swisscompact" },
   });
   const { data, error } = await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
@@ -130,8 +130,25 @@ async function ensureProfile(client: SupabaseClient<any, any, any>, user: User):
     role: data.role,
     securityAdmin: Boolean(data.security_admin),
     aal: aal?.currentLevel ?? null,
-    webauthnEnrolled: Boolean(user.factors?.some((factor) => factor.factor_type === "webauthn" && factor.status === "verified")),
+    passkeyVerified: usedPasskeyAuthentication(aal?.currentAuthenticationMethods),
   } as DashboardProfile;
+}
+
+// Supabase's native Passkey feature (auth.signInWithPasskey/registerPasskey)
+// authenticates with a single, inherently strong credential (device
+// possession + biometric) rather than going through the classic
+// password-then-mfa.challenge/verify flow — so a passkey-only session may
+// still come back as "aal1" from Supabase's own AAL model even though it's
+// already equivalent to (or stronger than) our password+TOTP baseline. We
+// treat either as satisfying the dashboard's 2FA requirement. The exact
+// AMR method string Supabase emits for this isn't pinned down in the SDK's
+// own type reference list, so match loosely rather than on an exact value.
+function usedPasskeyAuthentication(methods: Array<{ method: string } | string> | undefined | null): boolean {
+  if (!methods) return false;
+  return methods.some((entry) => {
+    const method = typeof entry === "string" ? entry : entry.method;
+    return /passkey|webauthn/i.test(method);
+  });
 }
 
 function requestHostname(request: Request): string {
@@ -199,7 +216,8 @@ export async function authorizeDashboard(request: Request, requireMfa = true): P
     return json({ error: "Kein Dashboard-Zugriff" }, { status: 403 });
   }
   const verifiedFactors = session.user.factors?.filter((factor) => factor.status === "verified") ?? [];
-  if (requireMfa && (verifiedFactors.length === 0 || profile.aal !== "aal2")) {
+  const strongAuth = profile.aal === "aal2" || profile.passkeyVerified;
+  if (requireMfa && !strongAuth) {
     return json(
       { error: "Zwei-Faktor-Authentifizierung erforderlich", code: verifiedFactors.length ? "mfa_required" : "mfa_enrollment_required" },
       { status: 403 },

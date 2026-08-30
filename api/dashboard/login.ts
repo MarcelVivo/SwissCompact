@@ -37,7 +37,6 @@ export async function POST(request: Request): Promise<Response> {
     const profile = profileClient ? await ensureProfile(profileClient, data.user) : null;
     if (!profile) return json({ error: "Adminprofil fehlt. Bitte zuerst die Datenbankmigration ausführen." }, { status: 503 });
     const verifiedFactors = data.user.factors?.filter((factor) => factor.status === "verified") ?? [];
-    const webauthnFactor = verifiedFactors.find((factor) => factor.factor_type === "webauthn");
     const totpFactor = verifiedFactors.find((factor) => factor.factor_type === "totp");
     return json({
       ok: true,
@@ -47,7 +46,6 @@ export async function POST(request: Request): Promise<Response> {
       mfaEnrollmentRequired: verifiedFactors.length === 0,
       factorId: totpFactor?.id ?? verifiedFactors[0]?.id,
       totpFactorId: totpFactor?.id,
-      webauthnFactorId: webauthnFactor?.id,
     }, { headers: sessionCookieHeaders(data.session.access_token, data.session.refresh_token, data.session.expires_in) });
   } catch {
     return json({ error: "Anmeldung konnte nicht verarbeitet werden" }, { status: 400 });

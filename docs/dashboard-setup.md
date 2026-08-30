@@ -21,11 +21,24 @@ Temporäre starke Passwörter setzen und sicher getrennt übermitteln. Beim erst
 
 Marcel und Thomas besitzen dieselben operativen Lese- und Schreibrechte. Sicherheitsverwaltung, künftige Benutzerkonten, Backups und Integrationen bleiben Marcel als Hauptadmin vorbehalten.
 
+### Face ID / Passkey-Login (optional, zusätzlich zur Authenticator-App)
+
+Beide Admins können sich zusätzlich mit Face ID (Passkey) anmelden — ganz ohne Passwort und ohne TOTP-Code. Voraussetzung in Supabase, einmalig:
+
+1. **Authentication → Passkeys** öffnen (aktuell mit „BETA"-Label markiert — nicht zu verwechseln mit **Authentication → Multi-Factor**, das eine andere, hier nicht genutzte Funktion ist).
+2. „Enable Passkey authentication" einschalten.
+3. Relying Party ID auf `swisscompact.com` setzen, Relying Party Origins auf `https://www.swisscompact.com,https://swisscompact.com` (kommasepariert, beide Domains).
+4. Speichern.
+
+Danach richtet jeder Admin Face ID selbst im Dashboard unter **Sicherheit → Face ID einrichten** ein (erfordert einmalig einen bereits abgeschlossenen Login mit Passwort + Authenticator-Code). Die Authenticator-App bleibt danach als Notfallzugang bestehen, falls das iPhone einmal nicht verfügbar ist.
+
 ## 3. Vercel
 
 Diese Variablen müssen für Production, Preview und Development gesetzt sein:
 
 - `SUPABASE_URL`
+- `VITE_SUPABASE_URL` (identisch mit `SUPABASE_URL` — der Browser-Client für Face ID/Passkeys braucht ein eigenes, Vite-sichtbares Präfix)
+- `VITE_SUPABASE_ANON_KEY` (der öffentliche **anon**-Key aus den Supabase-Projekteinstellungen — niemals der Service-Role-Key)
 - `SUPABASE_SERVICE_ROLE_KEY`
 
 Den Service-Role-Key niemals als `VITE_…` Variable anlegen oder im Browser verwenden. Nach dem Deployment `/dashboard` aufrufen, anmelden und 2FA einrichten.
