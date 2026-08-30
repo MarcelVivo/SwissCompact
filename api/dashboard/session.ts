@@ -1,7 +1,12 @@
-import { authorizeDashboard, isResponse } from "../_lib/dashboard/auth.js";
+import { authorizeDashboard, authorizePortal, isResponse } from "../_lib/dashboard/auth.js";
 import { json } from "../_lib/assistant/security.js";
 
 export async function GET(request: Request): Promise<Response> {
+  if (new URL(request.url).searchParams.get("audience") === "portal") {
+    const portal = await authorizePortal(request);
+    if (isResponse(portal)) return portal;
+    return json({ authenticated: true, audience: "portal", profile: portal.profile });
+  }
   const authorized = await authorizeDashboard(request, false);
   if (isResponse(authorized)) return authorized;
   const verifiedFactors = authorized.user.factors?.filter((factor) => factor.status === "verified") ?? [];

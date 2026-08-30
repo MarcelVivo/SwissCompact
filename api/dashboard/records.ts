@@ -1,4 +1,4 @@
-import { authorizeDashboard, isResponse, writeAudit } from "../_lib/dashboard/auth.js";
+import { authorizeDashboard, authorizePortal, isResponse, writeAudit } from "../_lib/dashboard/auth.js";
 import { cleanText, json, validEmail, validatePublicPost } from "../_lib/assistant/security.js";
 import { escapeHtml } from "../_lib/assistant/spamGuard.js";
 import { createQuotePdf } from "../_lib/dashboard/documents.js";
@@ -7,6 +7,87 @@ import { Resend } from "resend";
 import { getPublicQuote, postPublicQuote } from "../_lib/dashboard/quote-public.js";
 
 type Payload = Record<string, unknown>;
+
+async function handlePortalRecords(request: Request): Promise<Response> {
+  const authorized = await authorizePortal(request);
+  if (isResponse(authorized)) return authorized;
+  const { client, profile } = authorized;
+  if (profile.role === "viewer") return json({ error: "Nur Lesezugriff" }, { status: 403 });
+  const body = await request.json() as Payload;
+  const action = cleanText(body.action, 80);
+  const now = new Date().toISOString();
+
+  if (action === "create_content") {
+    const title = cleanText(body.title, 180);
+    const contentType = cleanText(body.contentType, 30);
+    const text = cleanText(body.text, 10_000);
+    if (!title) return json({ error: "Titel fehlt" }, { status: 400 });
+    if (!["image", "video", "text", "composition", "template", "web"].includes(contentType)) {
+      return json({ error: "Ungültiger Inhaltstyp" }, { status: 400 });
+    }
+    const result = await client.from("tenant_content").insert({
+      tenant_id: profile.tenantId,
+      title,
+      content_type: contentType,
+      status: "draft",
+      payload: text ? { text } : {},
+      created_by: profile.userId,
+      updated_by: profile.userId,
+    }).select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
+    if (result.error) return json({ error: result.error.message }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "create", entity_type: "content", entity_id: result.data.id });
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "update_content_status") {
+    const id = cleanText(body.id, 80);
+    const status = cleanText(body.status, 30);
+    if (!id || !["draft", "review", "approved", "published", "archived"].includes(status)) {
+      return json({ error: "Ungültige Statusänderung" }, { status: 400 });
+    }
+    const result = await client.from("tenant_content").update({ status, updated_by: profile.userId, updated_at: now })
+      .eq("id", id).eq("tenant_id", profile.tenantId)
+      .select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
+    if (result.error) return json({ error: "Inhalt nicht gefunden oder Zugriff verweigert" }, { status: 404 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "status_change", entity_type: "content", entity_id: result.data.id, metadata: { status } });
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "create_campaign") {
+    const name = cleanText(body.name, 180);
+    const startsAt = optionalDate(body.startsAt);
+    const endsAt = optionalDate(body.endsAt);
+    if (!name) return json({ error: "Kampagnenname fehlt" }, { status: 400 });
+    if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) return json({ error: "Das Enddatum muss nach dem Start liegen" }, { status: 400 });
+    const result = await client.from("tenant_campaigns").insert({
+      tenant_id: profile.tenantId,
+      name,
+      status: "draft",
+      starts_at: startsAt,
+      ends_at: endsAt,
+      created_by: profile.userId,
+    }).select("id,name,status,starts_at,ends_at,schedule,created_at,updated_at").single();
+    if (result.error) return json({ error: result.error.message }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "create", entity_type: "campaign", entity_id: result.data.id });
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "update_campaign_status") {
+    const id = cleanText(body.id, 80);
+    const status = cleanText(body.status, 30);
+    if (!id || !["draft", "review", "scheduled", "active", "paused", "completed", "archived"].includes(status)) {
+      return json({ error: "Ungültige Statusänderung" }, { status: 400 });
+    }
+    const result = await client.from("tenant_campaigns").update({ status, updated_at: now })
+      .eq("id", id).eq("tenant_id", profile.tenantId)
+      .select("id,name,status,starts_at,ends_at,schedule,created_at,updated_at").single();
+    if (result.error) return json({ error: "Kampagne nicht gefunden oder Zugriff verweigert" }, { status: 404 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "status_change", entity_type: "campaign", entity_id: result.data.id, metadata: { status } });
+    return json({ ok: true, record: result.data });
+  }
+
+  return json({ error: "Unbekannte Portal-Aktion" }, { status: 400 });
+}
 
 function amount(value: unknown): number {
   const parsed = Number(value);
@@ -60,6 +141,7 @@ export async function POST(request: Request): Promise<Response> {
     maxBytes: 32_000,
   });
   if (guard) return guard;
+  if (new URL(request.url).searchParams.get("audience") === "portal") return handlePortalRecords(request);
   const authorized = await authorizeDashboard(request);
   if (isResponse(authorized)) return authorized;
   const { client, profile } = authorized;

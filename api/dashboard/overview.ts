@@ -1,9 +1,38 @@
-import { authorizeDashboard, isResponse } from "../_lib/dashboard/auth.js";
+import { authorizeDashboard, authorizePortal, isResponse } from "../_lib/dashboard/auth.js";
 import { json } from "../_lib/assistant/security.js";
 
 export const config = { runtime: "nodejs", maxDuration: 15 };
 
 export async function GET(request: Request): Promise<Response> {
+  if (new URL(request.url).searchParams.get("audience") === "portal") {
+    const authorized = await authorizePortal(request);
+    if (isResponse(authorized)) return authorized;
+    const { client, profile } = authorized;
+    const tenantId = profile.tenantId;
+    const [sites, displays, content, campaigns, subscription, members] = await Promise.all([
+      client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
+      client.from("tenant_displays").select("id,site_id,name,kind,status,orientation,resolution,last_seen_at,created_at,updated_at,site:tenant_sites(name)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
+      client.from("tenant_content").select("id,title,content_type,status,payload,asset_path,created_at,updated_at").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
+      client.from("tenant_campaigns").select("id,name,status,starts_at,ends_at,schedule,created_at,updated_at").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
+      client.from("tenant_subscriptions").select("package_code,status,starts_on,minimum_ends_on,monthly_amount_chf,included_ai_credits").eq("tenant_id", tenantId).in("status", ["trial","active","past_due","paused"]).maybeSingle(),
+      client.from("tenant_memberships").select("id,role,display_name,user_id,active").eq("tenant_id", tenantId).eq("active", true),
+    ]);
+    const firstError = [sites, displays, content, campaigns, subscription, members].find((result) => result.error)?.error;
+    if (firstError) {
+      console.error("portal overview:", firstError.message);
+      return json({ error: "Das Kundenportal-Datenmodell ist noch nicht eingerichtet" }, { status: 503 });
+    }
+    return json({
+      profile,
+      sites: sites.data ?? [],
+      displays: displays.data ?? [],
+      content: content.data ?? [],
+      campaigns: campaigns.data ?? [],
+      subscription: subscription.data ?? null,
+      members: members.data ?? [],
+      generatedAt: new Date().toISOString(),
+    });
+  }
   const authorized = await authorizeDashboard(request);
   if (isResponse(authorized)) return authorized;
   const { client, profile } = authorized;

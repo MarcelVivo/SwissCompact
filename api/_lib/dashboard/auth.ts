@@ -19,6 +19,19 @@ export interface DashboardProfile {
   webauthnEnrolled: boolean;
 }
 
+export interface PortalProfile {
+  userId: string;
+  email: string;
+  displayName: string;
+  membershipId: string;
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  role: "owner" | "admin" | "editor" | "viewer";
+  branding: Record<string, unknown>;
+  enabledModules: string[];
+}
+
 function config() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -121,6 +134,59 @@ async function ensureProfile(client: SupabaseClient<any, any, any>, user: User):
   } as DashboardProfile;
 }
 
+function requestHostname(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwarded || request.headers.get("host") || new URL(request.url).host;
+  return host.toLowerCase().replace(/:\d+$/, "");
+}
+
+export async function ensurePortalProfile(
+  client: SupabaseClient<any, any, any>,
+  user: User,
+  request: Request,
+): Promise<PortalProfile | null> {
+  const email = user.email?.toLowerCase();
+  if (!email) return null;
+  const requestedSlug = new URL(request.url).searchParams.get("tenant")?.trim().toLowerCase() || "";
+  const hostname = requestHostname(request);
+  let tenantId = "";
+  if (requestedSlug) {
+    const tenant = await client.from("tenants").select("id").eq("slug", requestedSlug).eq("status", "active").maybeSingle();
+    tenantId = tenant.data?.id || "";
+  } else if (!hostname.endsWith("swisscompact.com") && hostname !== "localhost" && hostname !== "127.0.0.1") {
+    const domain = await client.from("tenant_domains").select("tenant_id").eq("hostname", hostname).eq("purpose", "portal").eq("verified", true).maybeSingle();
+    tenantId = domain.data?.tenant_id || "";
+  }
+  let query = client
+    .from("tenant_memberships")
+    .select("id,tenant_id,user_id,role,display_name,active")
+    .eq("user_id", user.id)
+    .eq("active", true);
+  if (tenantId) query = query.eq("tenant_id", tenantId);
+  const memberships = await query.order("created_at", { ascending: true }).limit(1);
+  const membership = memberships.data?.[0];
+  if (!membership) return null;
+  const tenant = await client
+    .from("tenants")
+    .select("id,name,slug,status,branding,enabled_modules")
+    .eq("id", membership.tenant_id)
+    .eq("status", "active")
+    .maybeSingle();
+  if (!tenant.data) return null;
+  return {
+    userId: user.id,
+    email,
+    displayName: membership.display_name || user.user_metadata?.full_name || email.split("@")[0],
+    membershipId: membership.id,
+    tenantId: tenant.data.id,
+    tenantName: tenant.data.name,
+    tenantSlug: tenant.data.slug,
+    role: membership.role,
+    branding: tenant.data.branding || {},
+    enabledModules: Array.isArray(tenant.data.enabled_modules) ? tenant.data.enabled_modules : [],
+  } as PortalProfile;
+}
+
 export async function authorizeDashboard(request: Request, requireMfa = true): Promise<{
   client: SupabaseClient<any, any, any>;
   user: User;
@@ -139,6 +205,18 @@ export async function authorizeDashboard(request: Request, requireMfa = true): P
       { status: 403 },
     );
   }
+  return { client: session.client, user: session.user, profile };
+}
+
+export async function authorizePortal(request: Request): Promise<{
+  client: SupabaseClient<any, any, any>;
+  user: User;
+  profile: PortalProfile;
+} | Response> {
+  const session = await sessionClient(request);
+  if (!session) return json({ error: "Nicht angemeldet" }, { status: 401 });
+  const profile = await ensurePortalProfile(session.client, session.user, request);
+  if (!profile) return json({ error: "Kein Portal-Zugriff" }, { status: 403 });
   return { client: session.client, user: session.user, profile };
 }
 

@@ -2,11 +2,21 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/portal", "destination": "/portal.html" },
     { "source": "/offerte/:token", "destination": "/quote" }
   ],
   "headers": [
     {
       "source": "/dashboard",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "same-origin" }
+      ]
+    },
+    {
+      "source": "/portal",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" },
         { "key": "X-Frame-Options", "value": "DENY" },

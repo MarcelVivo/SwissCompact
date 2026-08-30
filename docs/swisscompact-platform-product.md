@@ -2,6 +2,10 @@
 
 Stand: 30. August 2026. Dieses Dokument trennt die Produkte technisch und kaufmännisch, damit Website, internes Dashboard und Kundensoftware nicht miteinander vermischt werden.
 
+## Umsetzungsstand
+
+Die erste Portalgrundlage ist umgesetzt: mandantenfähiges Datenmodell, serverseitige Kundentrennung, Rollen, zentraler Portalzugang, Content-Bibliothek, Kampagnen, Display-Status, Standorte und Abonnementübersicht. Geräteanbindung, Medien-Upload, Freigabeworkflows, Playlists und KI-Erstellung folgen auf dieser gesicherten Grundlage.
+
 ## Produktversprechen
 
 SwissCompact verbindet Website, Unternehmenssoftware, Marketing, Displays und LED-Technologie zu einem intelligent gesteuerten Gesamtsystem. Strategie, UX, Entwicklung, Inhalte, Hardware, Montage, Betrieb und Support kommen aus einer Hand.
@@ -120,4 +124,3 @@ Vor der Preisveröffentlichung werden kalkuliert:
 5. Speicher- und Traffic-Limiten
 6. Supportzeiten und SLA je Paket
 7. einmalige Einrichtungs-, Website- und White-Label-Gebühren
-
