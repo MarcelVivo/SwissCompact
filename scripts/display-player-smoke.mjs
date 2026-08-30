@@ -17,6 +17,7 @@ assert.match(migration, /configuration_version/);
 assert.match(records, /createHash\("sha256"\).*device_token_hash/s, "Gerätetoken wird nicht gehasht gespeichert");
 assert.match(records, /mode === "pair"/);
 assert.match(records, /mode === "heartbeat"/);
+assert.match(records, /action === "renew_display_pairing"[\s\S]*device_token_hash: null[\s\S]*status: "provisioning"/, "Ein neuer Aktivierungscode muss die alte Player-Verbindung beenden");
 assert.match(records, /search\.get\("device"\) === "config"/);
 assert.match(records, /\["approved", "published"\]/, "Nicht freigegebene Inhalte dürfen nicht auf Displays erscheinen");
 assert.match(records, /Geben Sie alle gewählten Inhalte vor der Aktivierung frei/);

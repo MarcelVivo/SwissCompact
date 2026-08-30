@@ -278,9 +278,17 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const code = newPairingCode();
     const codeHash = createHash("sha256").update(`${id}:${code}`).digest("hex");
     const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
-    const result = await client.from("tenant_displays").update({ pairing_code_hash: codeHash, pairing_expires_at: expiresAt, updated_at: now }).eq("id", id);
+    const result = await client.from("tenant_displays").update({
+      pairing_code_hash: codeHash,
+      pairing_expires_at: expiresAt,
+      device_token_hash: null,
+      paired_at: null,
+      status: "provisioning",
+      last_error: null,
+      updated_at: now,
+    }).eq("id", id);
     if (result.error) return json({ error: "Aktivierungscode konnte nicht erneuert werden" }, { status: 400 });
-    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "pairing_renewed", entity_type: "display", entity_id: id });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "pairing_renewed", entity_type: "display", entity_id: id, metadata: { previousDeviceRevoked: true } });
     return json({ ok: true, pairing: { displayId: id, code, expiresAt }, record: display.data });
   }
 
