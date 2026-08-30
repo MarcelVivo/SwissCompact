@@ -22,11 +22,16 @@ export async function GET(request: Request): Promise<Response> {
       console.error("portal overview:", firstError.message);
       return json({ error: "Das Kundenportal-Datenmodell ist noch nicht eingerichtet" }, { status: 503 });
     }
+    const contentWithPreviews = await Promise.all((content.data ?? []).map(async (item) => {
+      if (!item.asset_path || item.payload?.uploadState !== "ready") return { ...item, preview_url: null };
+      const preview = await client.storage.from("swisscompact-media").createSignedUrl(item.asset_path, 60 * 60);
+      return { ...item, preview_url: preview.data?.signedUrl ?? null };
+    }));
     return json({
       profile,
       sites: sites.data ?? [],
       displays: displays.data ?? [],
-      content: content.data ?? [],
+      content: contentWithPreviews,
       campaigns: campaigns.data ?? [],
       subscription: subscription.data ?? null,
       members: members.data ?? [],

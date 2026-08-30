@@ -8,6 +8,15 @@ import { getPublicQuote, postPublicQuote } from "../_lib/dashboard/quote-public.
 
 type Payload = Record<string, unknown>;
 
+const PORTAL_MEDIA_BUCKET = "swisscompact-media";
+const PORTAL_MEDIA_TYPES: Record<string, { type: "image" | "video"; extension: string; maxBytes: number }> = {
+  "image/jpeg": { type: "image", extension: "jpg", maxBytes: 20 * 1024 * 1024 },
+  "image/png": { type: "image", extension: "png", maxBytes: 20 * 1024 * 1024 },
+  "image/webp": { type: "image", extension: "webp", maxBytes: 20 * 1024 * 1024 },
+  "video/mp4": { type: "video", extension: "mp4", maxBytes: 250 * 1024 * 1024 },
+  "video/webm": { type: "video", extension: "webm", maxBytes: 250 * 1024 * 1024 },
+};
+
 async function handlePortalRecords(request: Request): Promise<Response> {
   const authorized = await authorizePortal(request);
   if (isResponse(authorized)) return authorized;
@@ -16,6 +25,68 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   const body = await request.json() as Payload;
   const action = cleanText(body.action, 80);
   const now = new Date().toISOString();
+
+  if (action === "prepare_media_upload") {
+    const title = cleanText(body.title, 180);
+    const mimeType = cleanText(body.mimeType, 80).toLowerCase();
+    const sizeBytes = Math.max(0, Math.floor(Number(body.sizeBytes) || 0));
+    const media = PORTAL_MEDIA_TYPES[mimeType];
+    if (!title) return json({ error: "Titel fehlt" }, { status: 400 });
+    if (!media || sizeBytes < 1 || sizeBytes > media.maxBytes) {
+      return json({ error: "Dateityp oder Dateigrösse wird nicht unterstützt" }, { status: 400 });
+    }
+    const month = now.slice(0, 7);
+    const assetPath = `${profile.tenantId}/${month}/${randomBytes(16).toString("hex")}.${media.extension}`;
+    const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUploadUrl(assetPath);
+    if (signed.error) return json({ error: `Upload konnte nicht vorbereitet werden: ${signed.error.message}` }, { status: 503 });
+    const result = await client.from("tenant_content").insert({
+      tenant_id: profile.tenantId,
+      title,
+      content_type: media.type,
+      status: "draft",
+      asset_path: assetPath,
+      payload: { mimeType, sizeBytes, uploadState: "uploading" },
+      created_by: profile.userId,
+      updated_by: profile.userId,
+    }).select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
+    if (result.error) return json({ error: result.error.message }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "upload_prepared", entity_type: "content", entity_id: result.data.id, metadata: { mimeType, sizeBytes } });
+    return json({ ok: true, record: result.data, upload: { signedUrl: signed.data.signedUrl } });
+  }
+
+  if (action === "finalize_media_upload") {
+    const id = cleanText(body.id, 80);
+    if (!id) return json({ error: "Inhalt fehlt" }, { status: 400 });
+    const existing = await client.from("tenant_content").select("id,asset_path,payload").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (existing.error || !existing.data?.asset_path) return json({ error: "Inhalt nicht gefunden" }, { status: 404 });
+    const parts = existing.data.asset_path.split("/");
+    const filename = parts.pop() || "";
+    const directory = parts.join("/");
+    const stored = await client.storage.from(PORTAL_MEDIA_BUCKET).list(directory, { limit: 10, search: filename });
+    if (stored.error || !stored.data?.some((entry) => entry.name === filename)) return json({ error: "Die Datei wurde noch nicht vollständig übertragen" }, { status: 409 });
+    const result = await client.from("tenant_content").update({
+      payload: { ...(existing.data.payload || {}), uploadState: "ready" },
+      updated_by: profile.userId,
+      updated_at: now,
+    }).eq("id", id).eq("tenant_id", profile.tenantId).select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
+    if (result.error) return json({ error: result.error.message }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "upload_completed", entity_type: "content", entity_id: result.data.id });
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "cancel_media_upload") {
+    const id = cleanText(body.id, 80);
+    if (!id) return json({ error: "Inhalt fehlt" }, { status: 400 });
+    const existing = await client.from("tenant_content").select("id,asset_path,payload").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (existing.error || !existing.data || existing.data.payload?.uploadState !== "uploading") {
+      return json({ error: "Upload nicht gefunden" }, { status: 404 });
+    }
+    if (existing.data.asset_path) await client.storage.from(PORTAL_MEDIA_BUCKET).remove([existing.data.asset_path]);
+    const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
+    if (removed.error) return json({ error: removed.error.message }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "upload_cancelled", entity_type: "content", entity_id: id });
+    return json({ ok: true });
+  }
 
   if (action === "create_content") {
     const title = cleanText(body.title, 180);

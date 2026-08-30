@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260830_customer_platform.sql");
+const mediaMigration = read("supabase/migrations/20260831_portal_media.sql");
 const auth = read("api/_lib/dashboard/auth.ts");
 const records = read("api/dashboard/records.ts");
 const portal = read("src/portal/main.tsx");
@@ -16,6 +17,8 @@ const checks = {
   customerUi: portal.includes("Content-Bibliothek") && portal.includes("Display-Netzwerk") && portal.includes("Kampagnen") && portal.includes("Konto & Service"),
   portalBuild: vite.includes("portal.html") && vercel.rewrites.some((item) => item.source === "/portal" && item.destination === "/portal.html"),
   noHardcodedTenant: !portal.includes("swisscompact-demo"),
+  privateMedia: mediaMigration.includes("'swisscompact-media'") && mediaMigration.includes("public = false") && mediaMigration.includes("can_edit_tenant"),
+  signedUploads: records.includes("createSignedUploadUrl") && records.includes("finalize_media_upload") && records.includes("cancel_media_upload") && portal.includes("prepared.upload.signedUrl"),
 };
 
 console.log(JSON.stringify(checks, null, 2));
