@@ -30,6 +30,8 @@ for (const { slug, title } of pages) {
   assert.ok(html.includes('class="station__details"') === false, `${slug}: Seite darf keine Journey-Overlay-Markup enthalten`);
   assert.ok(html.includes('href="/"'), `${slug}: Rücklink zur Startseite fehlt`);
   assert.ok(html.includes('href="/#branchen"'), `${slug}: Link zum Virtual Showroom fehlt`);
+  assert.ok(html.includes('href="/?open-consultation=1#projekt-starten"'), `${slug}: "Projekt besprechen" muss zum KI-CTA-Funnel führen, nicht zu mailto`);
+  assert.ok(!html.includes('mailto:kontakt@swisscompact.com">Projekt besprechen'), `${slug}: "Projekt besprechen" darf nicht mehr auf mailto zeigen`);
 }
 
 const stationFiles = [

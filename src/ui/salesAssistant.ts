@@ -931,6 +931,16 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
   root.dataset.salesAssistantReady = "true";
   setState("idle");
 
+  // The static Einsatzbereiche detail pages link "Projekt besprechen" here
+  // via `/?open-consultation=1#projekt-starten` since they can't dispatch
+  // the swisscompact:open-consultation event directly (separate documents).
+  const requestedUrl = new URL(window.location.href);
+  if (requestedUrl.searchParams.get("open-consultation") === "1") {
+    setOpen(true);
+    requestedUrl.searchParams.delete("open-consultation");
+    window.history.replaceState(null, "", `${requestedUrl.pathname}${requestedUrl.search}${requestedUrl.hash}`);
+  }
+
   return {
     destroy() {
       cleanupListeners.forEach((cleanup) => cleanup());

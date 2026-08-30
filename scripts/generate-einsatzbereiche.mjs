@@ -188,7 +188,7 @@ function renderPage(page) {
         <p>Sprich mit uns über dein Projekt oder entdecke den interaktiven Virtual Showroom.</p>
         <div class="eb-cta__actions">
           <a class="primary" href="/#branchen">Virtual Showroom entdecken</a>
-          <a class="secondary" href="mailto:kontakt@swisscompact.com">Projekt besprechen</a>
+          <a class="secondary" href="/?open-consultation=1#projekt-starten">Projekt besprechen</a>
         </div>
       </section>
     </main>
