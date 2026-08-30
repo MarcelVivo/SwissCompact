@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./portal.css";
 import "./portal-media.css";
 import "./portal-campaign.css";
+import "./portal-devices.css";
 
 type PortalProfile = { displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
 type Site = { id: string; name: string; active: boolean; address?: Record<string, string> };
@@ -11,6 +12,7 @@ type Content = { id: string; title: string; content_type: string; status: string
 type Campaign = { id: string; name: string; status: string; starts_at?: string; ends_at?: string; updated_at: string; content_links?: Array<{ position: number; duration_seconds: number; content: { id: string; title: string; content_type: string; status: string } | null }>; display_links?: Array<{ display_id: string; display: { id: string; name: string; status: string; site?: { name?: string } } | null }> };
 type Subscription = { package_code: string; status: string; starts_on: string; minimum_ends_on?: string; monthly_amount_chf?: number; included_ai_credits?: number } | null;
 type Member = { id: string; role: string; display_name?: string; active: boolean };
+type PairingInfo = { displayId: string; code: string; expiresAt: string; displayName?: string };
 type PortalData = { profile: PortalProfile; sites: Site[]; displays: Display[]; content: Content[]; campaigns: Campaign[]; subscription: Subscription; members: Member[] };
 type View = "overview" | "content" | "campaigns" | "displays" | "settings";
 
@@ -77,6 +79,8 @@ function Portal() {
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"content" | "campaign" | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
+  const [displaySetup, setDisplaySetup] = useState(false);
+  const [pairing, setPairing] = useState<PairingInfo | null>(null);
   const load = useCallback(async () => {
     setSession("loading"); setError("");
     try {
@@ -95,8 +99,15 @@ function Portal() {
   if (session === "loading") return <div className="boot"><div className="boot-mark">SC</div><span>Portal wird geladen</span></div>;
   if (session === "guest" || !data) return <><Login onDone={() => void load()} />{error && <div className="global-message">{error}</div>}</>;
   const canEdit = data.profile.role !== "viewer";
+  const canManageDevices = data.profile.role === "owner" || data.profile.role === "admin";
   const nav: Array<[View,string]> = [["overview","Übersicht"],["content","Inhalte"],["campaigns","Kampagnen"],["displays","Displays"],["settings","Einstellungen"]];
   async function logout() { await api("/api/dashboard/logout", { method: "POST", body: "{}" }).catch(() => undefined); setData(null); setSession("guest"); }
+  async function setContentStatus(id: string, status: "approved" | "draft") {
+    try {
+      await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id, status }) });
+      await load();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Status konnte nicht geändert werden"); }
+  }
   return <div className="portal" style={{ "--accent": data.profile.branding?.accent || "#d90d32" } as React.CSSProperties}>
     <aside><a className="wordmark" href="/">Swiss<span>Compact</span></a><div className="tenant"><span>Arbeitsbereich</span><strong>{data.profile.tenantName}</strong></div>
       <nav>{nav.map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}><Icon name={id}/>{label}</button>)}</nav>
@@ -108,14 +119,43 @@ function Portal() {
         <div className="split"><section className="card"><div className="card-head"><div><span>Aktuelle Kampagnen</span><h3>Planung & Ausspielung</h3></div><button onClick={() => setView("campaigns")}>Alle ansehen</button></div>{data.campaigns.length ? data.campaigns.slice(0,4).map((item) => <div className="row" key={item.id}><div><strong>{item.name}</strong><small>Aktualisiert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small></div><Status value={item.status}/></div>) : <Empty>Noch keine Kampagnen vorhanden.</Empty>}</section>
           <section className="card"><div className="card-head"><div><span>Display-Status</span><h3>Ihre Flächen</h3></div><button onClick={() => setView("displays")}>Alle ansehen</button></div>{data.displays.length ? data.displays.slice(0,4).map((item) => <div className="row" key={item.id}><div><strong>{item.name}</strong><small>{item.site?.name || "Ohne Standort"}</small></div><Status value={item.status}/></div>) : <Empty>Noch keine Displays verbunden.</Empty>}</section></div>
       </section>}
-      {view === "content" && <section className="view"><div className="section-title"><div><h2>Content-Bibliothek</h2><p>Medien und Inhalte für Ihre digitalen Flächen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("content")}><Icon name="plus"/>Inhalt erstellen</button>}</div><div className="content-grid">{data.content.map((item) => <article className="content-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : item.preview_url && item.content_type === "video" ? <video src={item.preview_url} muted playsInline preload="metadata"/> : null}<span>{item.payload?.uploadState === "uploading" ? "UPLOAD LÄUFT" : item.content_type.toUpperCase()}</span></div><div><Status value={item.status}/><h3>{item.title}</h3><p>{item.payload?.text || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Noch keine Beschreibung")}</p><small>Geändert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small></div></article>)}{!data.content.length && <Empty>Erstellen Sie Ihren ersten Inhalt.</Empty>}</div></section>}
+      {view === "content" && <section className="view"><div className="section-title"><div><h2>Content-Bibliothek</h2><p>Medien und Inhalte für Ihre digitalen Flächen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("content")}><Icon name="plus"/>Inhalt erstellen</button>}</div><div className="content-grid">{data.content.map((item) => <article className="content-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : item.preview_url && item.content_type === "video" ? <video src={item.preview_url} muted playsInline preload="metadata"/> : null}<span>{item.payload?.uploadState === "uploading" ? "UPLOAD LÄUFT" : item.content_type.toUpperCase()}</span></div><div><Status value={item.status}/><h3>{item.title}</h3><p>{item.payload?.text || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Noch keine Beschreibung")}</p><small>Geändert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small>{canEdit && item.payload?.uploadState !== "uploading" && <button className="content-status-action" onClick={() => void setContentStatus(item.id, ["approved", "published"].includes(item.status) ? "draft" : "approved")}>{["approved", "published"].includes(item.status) ? "Freigabe zurückziehen" : "Für Displays freigeben"}</button>}</div></article>)}{!data.content.length && <Empty>Erstellen Sie Ihren ersten Inhalt.</Empty>}</div></section>}
       {view === "campaigns" && <section className="view"><div className="section-title"><div><h2>Kampagnen</h2><p>Inhalte zeitlich planen und gezielt ausspielen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("campaign")}><Icon name="plus"/>Kampagne planen</button>}</div><div className="table-card"><div className="table-head campaign-table"><span>Name</span><span>Zeitraum</span><span>Status</span><span></span></div>{data.campaigns.map((item) => <div className="table-row campaign-table" key={item.id}><strong>{item.name}</strong><span>{item.starts_at ? new Date(item.starts_at).toLocaleDateString("de-CH") : "Offen"} – {item.ends_at ? new Date(item.ends_at).toLocaleDateString("de-CH") : "Offen"}</span><Status value={item.status}/><button className="row-action" onClick={() => setEditingCampaign(item)}>{canEdit ? "Bearbeiten" : "Ansehen"}</button></div>)}{!data.campaigns.length && <Empty>Planen Sie Ihre erste Kampagne.</Empty>}</div></section>}
-      {view === "displays" && <section className="view"><div className="section-title"><div><h2>Display-Netzwerk</h2><p>Status und Standorte aller verbundenen Flächen.</p></div></div><div className="display-grid">{data.displays.map((item) => <article className="display-card" key={item.id}><div className={`screen ${item.orientation === "portrait" ? "portrait" : ""}`}><div>Swiss<span>Compact</span></div></div><div><Status value={item.status}/><h3>{item.name}</h3><p>{item.site?.name || "Standort noch nicht zugewiesen"}</p><small>{item.resolution?.width ? `${item.resolution.width} × ${item.resolution.height}` : "Auflösung nicht erfasst"}</small></div></article>)}{!data.displays.length && <Empty>Displays werden durch SwissCompact eingerichtet und erscheinen danach hier.</Empty>}</div></section>}
+      {view === "displays" && <section className="view"><div className="section-title"><div><h2>Display-Netzwerk</h2><p>Status und Standorte aller verbundenen Flächen.</p></div>{canManageDevices && <button className="primary compact" onClick={() => setDisplaySetup(true)}><Icon name="plus"/>Display einrichten</button>}</div><div className="display-grid">{data.displays.map((item) => <article className="display-card" key={item.id}><div className={`screen ${item.orientation === "portrait" ? "portrait" : ""}`}><div>Swiss<span>Compact</span></div></div><div><Status value={item.status}/><h3>{item.name}</h3><p>{item.site?.name || "Standort noch nicht zugewiesen"}</p><small>{item.resolution?.width ? `${item.resolution.width} × ${item.resolution.height}` : "Auflösung nicht erfasst"}</small>{canManageDevices && <button className="device-link" onClick={async () => { try { const result = await api<{ pairing: PairingInfo }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "renew_display_pairing", id: item.id }) }); setPairing({ ...result.pairing, displayName: item.name }); } catch (reason) { setError(reason instanceof Error ? reason.message : "Code konnte nicht erstellt werden"); } }}>Aktivierungscode erstellen</button>}</div></article>)}{!data.displays.length && <Empty>Richten Sie Ihr erstes Display ein.</Empty>}</div></section>}
       {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang und das aktive SwissCompact-Paket.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
     </main>
     {dialog && <CreateDialog type={dialog} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
     {editingCampaign && <CampaignEditor campaign={editingCampaign} content={data.content} displays={data.displays} canEdit={canEdit} onClose={() => setEditingCampaign(null)} onSaved={() => { setEditingCampaign(null); void load(); }} />}
+    {displaySetup && <DisplaySetupDialog sites={data.sites} onClose={() => setDisplaySetup(false)} onCreated={(next) => { setDisplaySetup(false); setPairing(next); void load(); }} />}
+    {pairing && <PairingDialog pairing={pairing} onClose={() => setPairing(null)} />}
   </div>;
+}
+
+function DisplaySetupDialog({ sites, onClose, onCreated }: { sites: Site[]; onClose: () => void; onCreated: (pairing: PairingInfo) => void }) {
+  const [siteMode, setSiteMode] = useState(sites.length ? "existing" : "new");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); const form = new FormData(event.currentTarget);
+    try {
+      let siteId = String(form.get("siteId") || "");
+      if (siteMode === "new") {
+        const site = await api<{ record: Site }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "create_site", name: form.get("siteName") }) });
+        siteId = site.record.id;
+      }
+      const display = await api<{ record: { name: string }; pairing: PairingInfo }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "create_display", name: form.get("name"), siteId, kind: form.get("kind"), orientation: form.get("orientation") }) });
+      onCreated({ ...display.pairing, displayName: display.record.name });
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Display konnte nicht eingerichtet werden"); }
+    finally { setBusy(false); }
+  }
+  return <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose}>×</button><div className="eyebrow">Geräteverwaltung</div><h2>Display einrichten</h2><form onSubmit={submit}><label>Displayname<input name="name" required autoFocus placeholder="z. B. Schaufenster links"/></label><div className="date-pair"><label>Gerätetyp<select name="kind"><option value="display">Display</option><option value="led_wall">LED-Wand</option><option value="led_controller">LED-Controller</option><option value="player">Player</option></select></label><label>Ausrichtung<select name="orientation"><option value="landscape">Querformat</option><option value="portrait">Hochformat</option><option value="custom">Individuell</option></select></label></div>{sites.length > 0 && <label>Standorttyp<select value={siteMode} onChange={(event) => setSiteMode(event.target.value)}><option value="existing">Bestehender Standort</option><option value="new">Neuer Standort</option></select></label>}{siteMode === "existing" ? <label>Standort<select name="siteId" required>{sites.map((site) => <option value={site.id} key={site.id}>{site.name}</option>)}</select></label> : <label>Neuer Standort<input name="siteName" required placeholder="z. B. Filiale Bern"/></label>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy}>{busy ? "Wird vorbereitet …" : "Display vorbereiten"}</button></form></section></div>;
+}
+
+function PairingDialog({ pairing, onClose }: { pairing: PairingInfo; onClose: () => void }) {
+  const playerUrl = `${location.origin}/player?display=${encodeURIComponent(pairing.displayId)}`;
+  const [copied, setCopied] = useState(false);
+  async function copy() { await navigator.clipboard.writeText(`${playerUrl}\nAktivierungscode: ${pairing.code}`); setCopied(true); }
+  return <div className="dialog-backdrop"><section className="dialog pairing-result" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose}>×</button><div className="eyebrow">Einmaliger Aktivierungscode</div><h2>{pairing.displayName || "Display"}</h2><p>Öffnen Sie den Player auf dem Abspielgerät und geben Sie diesen Code ein.</p><div className="pairing-code">{pairing.code}</div><div className="pairing-meta"><span>Display-ID</span><code>{pairing.displayId}</code><span>Player-Adresse</span><a href={playerUrl} target="_blank" rel="noreferrer">{playerUrl}</a></div><button className="primary" onClick={() => void copy()}>{copied ? "Kopiert" : "Adresse und Code kopieren"}</button><small>Gültig bis {new Date(pairing.expiresAt).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })} Uhr. Danach kann jederzeit ein neuer Code erstellt werden.</small></section></div>;
 }
 
 function localDateTime(value?: string): string {

@@ -68,7 +68,8 @@
     "test:content-editor": "node scripts/display-content-editor-smoke.mjs",
     "test:pov": "node scripts/pov-navigation-smoke.mjs",
     "test:dashboard": "node scripts/dashboard-core-smoke.mjs",
-    "test:portal": "node scripts/portal-foundation-smoke.mjs"
+    "test:portal": "node scripts/portal-foundation-smoke.mjs",
+    "test:player": "node scripts/display-player-smoke.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^9.6.1",

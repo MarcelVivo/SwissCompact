@@ -57,8 +57,8 @@ assert.match(records, /Schlusszahlung erst nach Montagezahlung und Kundenabnahme
 assert.match(records, /marcel_approved_at.*thomas_approved_at/s);
 assert.match(records, /randomBytes\(32\).*token_hash/s, "Persönlicher Link verwendet kein starkes gehashtes Token");
 assert.match(records, /createQuotePdf.*immutable_pdf_path.*document_hash/s, "Unveränderbare Offertenversion fehlt");
-assert.match(records, /searchParams\.get\("public"\) === "quote".*postPublicQuote/s, "Öffentliche Offerten-POST-Route wurde nicht konsolidiert");
-assert.match(records, /searchParams\.get\("public"\) === "quote".*getPublicQuote/s, "Öffentliche Offerten-GET-Route wurde nicht konsolidiert");
+assert.match(records, /(?:search|searchParams)\.get\("public"\) === "quote".*postPublicQuote/s, "Öffentliche Offerten-POST-Route wurde nicht konsolidiert");
+assert.match(records, /(?:search|searchParams)\.get\("public"\) === "quote".*getPublicQuote/s, "Öffentliche Offerten-GET-Route wurde nicht konsolidiert");
 assert.match(records, /from\("invoices"\)\.update\(\{ status: "paid".*\.eq\("installment", payment\)/s, "Zahlungsfreigabe verbucht Rechnung nicht");
 assert.match(records, /createSignedUrl\(invoice\.data\.immutable_pdf_path, 10 \* 60\)/, "Geschützter Rechnungsdownload fehlt");
 assert.match(acceptanceMigration, /quote_access_tokens/);

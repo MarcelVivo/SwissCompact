@@ -27,10 +27,17 @@ export async function GET(request: Request): Promise<Response> {
       const preview = await client.storage.from("swisscompact-media").createSignedUrl(item.asset_path, 60 * 60);
       return { ...item, preview_url: preview.data?.signedUrl ?? null };
     }));
+    const displayHealthCutoff = Date.now() - 90_000;
+    const displaysWithHealth = (displays.data ?? []).map((display) => ({
+      ...display,
+      status: display.status === "online" && (!display.last_seen_at || new Date(display.last_seen_at).getTime() < displayHealthCutoff)
+        ? "offline"
+        : display.status,
+    }));
     return json({
       profile,
       sites: sites.data ?? [],
-      displays: displays.data ?? [],
+      displays: displaysWithHealth,
       content: contentWithPreviews,
       campaigns: campaigns.data ?? [],
       subscription: subscription.data ?? null,

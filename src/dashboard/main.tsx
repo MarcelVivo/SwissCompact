@@ -92,7 +92,7 @@ function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
       if (!supabase) throw new Error("Face ID ist auf diesem Gerät nicht verfügbar");
       const { data, error: signInError } = await supabase.auth.signInWithPasskey();
       if (signInError || !data?.session) throw signInError || new Error("Face ID konnte nicht bestätigt werden");
-      await api("passkey", { method: "POST", body: JSON.stringify({ action: "login", accessToken: data.session.access_token, refreshToken: data.session.refresh_token }) });
+      await api("mfa", { method: "POST", body: JSON.stringify({ action: "passkey_login", accessToken: data.session.access_token, refreshToken: data.session.refresh_token }) });
       onLoggedIn();
     } catch (e) {
       setError(friendlyPasskeyError(e));
@@ -237,12 +237,12 @@ function Marketing() { return <Generic title="Marketing" eyebrow="Wachstum" intr
 function Systems() { return <Generic title="Systeme & Displaysteuerung" eyebrow="Technik" intro="Geräte, Inhalte, Standorte und Software-Abonnements werden als getrenntes Modul aufgebaut."><div className="card-grid"><InfoCard title="Display-Flotte" text="Heartbeat, Gerätestatus, Fernwartung und Offline-Cache."/><InfoCard title="Inhaltssteuerung" text="Playlists, Zeitpläne, Freigaben und sichere Auslieferung."/><InfoCard title="Software-Abos" text="Essential, Business und Enterprise – kombiniert pro Standort und Display."/></div><section className="notice"><Icon name="screen"/><div><b>Getrenntes Kundenportal</b><span>Kunden erhalten unter /portal ausschliesslich Zugriff auf ihre eigenen Projekte, Dokumente und später ihre Displaysteuerung.</span></div></section></Generic> }
 function PasskeyCard({ refresh }: { refresh: () => Promise<void> }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [passkeys, setPasskeys] = useState<PasskeyItem[] | null>(null); const [supported, setSupported] = useState<boolean | null>(null);
-  const loadPasskeys = useCallback(async () => { try { const result = await api("passkey", { method: "POST", body: JSON.stringify({ action: "list" }) }); setPasskeys(result.passkeys || []); } catch (reason) { setError((reason as Error).message); } }, []);
+  const loadPasskeys = useCallback(async () => { try { const result = await api("mfa", { method: "POST", body: JSON.stringify({ action: "passkey_list" }) }); setPasskeys(result.passkeys || []); } catch (reason) { setError((reason as Error).message); } }, []);
   useEffect(() => { passkeyPlatformAvailable().then(setSupported); loadPasskeys(); }, [loadPasskeys]);
   async function enroll() {
     setBusy(true); setError("");
     try {
-      const tokens = await api("passkey", { method: "POST", body: JSON.stringify({ action: "bridge_tokens" }) });
+      const tokens = await api("mfa", { method: "POST", body: JSON.stringify({ action: "passkey_bridge_tokens" }) });
       const supabase = getPasskeyClient();
       if (!supabase) throw new Error("Face ID ist auf diesem Gerät nicht verfügbar");
       const { error: sessionError } = await supabase.auth.setSession({ access_token: tokens.accessToken, refresh_token: tokens.refreshToken });
@@ -260,7 +260,7 @@ function PasskeyCard({ refresh }: { refresh: () => Promise<void> }) {
   async function remove(passkeyId: string) {
     setBusy(true); setError("");
     try {
-      await api("passkey", { method: "POST", body: JSON.stringify({ action: "delete", passkeyId }) });
+      await api("mfa", { method: "POST", body: JSON.stringify({ action: "passkey_delete", passkeyId }) });
       await loadPasskeys();
     } catch (reason) {
       setError((reason as Error).message);

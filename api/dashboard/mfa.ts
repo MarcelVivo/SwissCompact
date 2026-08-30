@@ -1,10 +1,8 @@
-import { authorizeDashboard, isResponse, sessionClient, sessionCookieHeaders } from "../_lib/dashboard/auth.js";
+import { authorizeDashboard, dashboardSupabase, ensureProfile, isBuiltInAdmin, isResponse, sessionClient, sessionCookieHeaders, writeAudit } from "../_lib/dashboard/auth.js";
 import { json, validatePublicPost } from "../_lib/assistant/security.js";
 
-// Face ID/passkey login now goes through Supabase's native Passkey feature
-// (see api/dashboard/passkey.ts) instead of the classic MFA-factor WebAuthn
-// flow this file used to implement. TOTP stays here unchanged as the
-// mandatory baseline second factor / emergency fallback.
+// TOTP and native Supabase Passkeys share this endpoint to keep the
+// deployment within Vercel Hobby's serverless-function limit.
 export async function POST(request: Request): Promise<Response> {
   const guard = validatePublicPost(request, {
     key: "dashboard-mfa",
@@ -14,12 +12,47 @@ export async function POST(request: Request): Promise<Response> {
     maxBytes: 8_000,
   });
   if (guard) return guard;
-  const authorized = await authorizeDashboard(request, false);
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const action = body.action;
+  if (action === "passkey_login") {
+    const accessToken = typeof body.accessToken === "string" ? body.accessToken : "";
+    const refreshToken = typeof body.refreshToken === "string" ? body.refreshToken : "";
+    if (!accessToken || !refreshToken) return json({ error: "Ungültige Anmeldedaten" }, { status: 400 });
+    const authClient = dashboardSupabase();
+    if (!authClient) return json({ error: "Dashboard ist noch nicht konfiguriert" }, { status: 503 });
+    const { data, error } = await authClient.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    if (error || !data.session || !data.user) return json({ error: "Face-ID-Anmeldung konnte nicht bestätigt werden" }, { status: 401 });
+    const email = data.user.email?.toLowerCase() ?? "";
+    if (!isBuiltInAdmin(email)) return json({ error: "Kein Dashboard-Zugriff" }, { status: 403 });
+    const profileClient = dashboardSupabase();
+    const profile = profileClient ? await ensureProfile(profileClient, data.user) : null;
+    if (!profile) return json({ error: "Adminprofil fehlt. Bitte zuerst die Datenbankmigration ausführen." }, { status: 503 });
+    return json({ ok: true, profile }, {
+      headers: sessionCookieHeaders(data.session.access_token, data.session.refresh_token, data.session.expires_in),
+    });
+  }
+
+  const passkeyAction = typeof action === "string" && action.startsWith("passkey_");
+  const authorized = await authorizeDashboard(request, passkeyAction);
   if (isResponse(authorized)) return authorized;
   const session = await sessionClient(request);
   if (!session) return json({ error: "Sitzung abgelaufen" }, { status: 401 });
-  const body = await request.json() as Record<string, unknown>;
-  const action = body.action;
+  if (action === "passkey_bridge_tokens") {
+    return json({ accessToken: session.accessToken, refreshToken: session.refreshToken });
+  }
+  if (action === "passkey_list") {
+    const { data, error } = await session.client.auth.passkey.list();
+    if (error) return json({ error: error.message }, { status: 400 });
+    return json({ passkeys: data ?? [] });
+  }
+  if (action === "passkey_delete") {
+    const passkeyId = typeof body.passkeyId === "string" ? body.passkeyId : "";
+    if (!passkeyId) return json({ error: "Ungültiger Passkey" }, { status: 400 });
+    const { error } = await session.client.auth.passkey.delete({ passkeyId });
+    if (error) return json({ error: error.message }, { status: 400 });
+    await writeAudit(authorized.client, authorized.profile, "passkey_deleted", "dashboard_security", passkeyId);
+    return json({ ok: true });
+  }
   if (action === "enroll") {
     const { data, error } = await session.client.auth.mfa.enroll({ factorType: "totp", friendlyName: "SwissCompact Dashboard" });
     if (error) return json({ error: error.message }, { status: 400 });

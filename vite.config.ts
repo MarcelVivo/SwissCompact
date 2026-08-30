@@ -16,6 +16,7 @@ export default defineConfig({
         website: fileURLToPath(new URL("index.html", import.meta.url)),
         dashboard: fileURLToPath(new URL("dashboard.html", import.meta.url)),
         portal: fileURLToPath(new URL("portal.html", import.meta.url)),
+        player: fileURLToPath(new URL("player.html", import.meta.url)),
         quote: fileURLToPath(new URL("quote.html", import.meta.url)),
       },
     },

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260830_customer_platform.sql");
 const mediaMigration = read("supabase/migrations/20260831_portal_media.sql");
+const deviceMigration = read("supabase/migrations/20260831_display_devices.sql");
 const auth = read("api/_lib/dashboard/auth.ts");
 const records = read("api/dashboard/records.ts");
 const portal = read("src/portal/main.tsx");
@@ -20,6 +21,7 @@ const checks = {
   privateMedia: mediaMigration.includes("'swisscompact-media'") && mediaMigration.includes("public = false") && mediaMigration.includes("can_edit_tenant"),
   signedUploads: records.includes("createSignedUploadUrl") && records.includes("finalize_media_upload") && records.includes("cancel_media_upload") && portal.includes("prepared.upload.signedUrl"),
   campaignEditor: records.includes("configure_campaign") && records.includes("activate_campaign") && records.includes("pause_campaign") && portal.includes("CampaignEditor"),
+  deviceSecurity: deviceMigration.includes("device_token_hash") && deviceMigration.includes("pairing_code_hash") && records.includes('mode === "pair"') && records.includes('mode === "heartbeat"'),
 };
 
 console.log(JSON.stringify(checks, null, 2));

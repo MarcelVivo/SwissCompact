@@ -1,5 +1,5 @@
-import { authorizeDashboard, authorizePortal, isResponse, writeAudit } from "../_lib/dashboard/auth.js";
-import { cleanText, json, validEmail, validatePublicPost } from "../_lib/assistant/security.js";
+import { authorizeDashboard, authorizePortal, dashboardSupabase, isResponse, writeAudit } from "../_lib/dashboard/auth.js";
+import { cleanText, json, rateLimit, validEmail, validatePublicPost } from "../_lib/assistant/security.js";
 import { escapeHtml } from "../_lib/assistant/spamGuard.js";
 import { createQuotePdf } from "../_lib/dashboard/documents.js";
 import { createHash, randomBytes } from "node:crypto";
@@ -16,6 +16,100 @@ const PORTAL_MEDIA_TYPES: Record<string, { type: "image" | "video"; extension: s
   "video/mp4": { type: "video", extension: "mp4", maxBytes: 250 * 1024 * 1024 },
   "video/webm": { type: "video", extension: "webm", maxBytes: 250 * 1024 * 1024 },
 };
+
+function deviceToken(request: Request): string {
+  const authorization = request.headers.get("authorization") || "";
+  return authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+}
+
+function newPairingCode(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from(randomBytes(8), (value) => alphabet[value % alphabet.length]).join("");
+}
+
+async function bumpDisplayConfigurations(client: any, displayIds: string[]): Promise<void> {
+  const ids = [...new Set(displayIds.filter(Boolean))];
+  if (!ids.length) return;
+  const current = await client.from("tenant_displays").select("id,configuration_version").in("id", ids);
+  await Promise.all((current.data ?? []).map((display: { id: string; configuration_version?: number }) => client.from("tenant_displays").update({ configuration_version: Number(display.configuration_version || 1) + 1, updated_at: new Date().toISOString() }).eq("id", display.id)));
+}
+
+async function deviceRecord(request: Request) {
+  const token = deviceToken(request);
+  if (token.length < 32) return null;
+  const client = dashboardSupabase();
+  if (!client) return null;
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const display = await client.from("tenant_displays").select("id,tenant_id,name,status,configuration_version,device_token_hash").eq("device_token_hash", tokenHash).maybeSingle();
+  return display.data ? { client, display: display.data } : null;
+}
+
+async function handleDevicePost(request: Request, mode: string): Promise<Response> {
+  const limited = rateLimit(request, { key: `display-device-${mode}`, limit: mode === "pair" ? 20 : 180, windowMs: 10 * 60_000 });
+  if (limited) return limited;
+  if (!(request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) return json({ error: "JSON erforderlich" }, { status: 415 });
+  let body: Payload;
+  try { body = await request.json() as Payload; } catch { return json({ error: "Ungültige Anfrage" }, { status: 400 }); }
+
+  if (mode === "pair") {
+    const client = dashboardSupabase();
+    if (!client) return json({ error: "Geräteanbindung ist noch nicht konfiguriert" }, { status: 503 });
+    const displayId = cleanText(body.displayId, 80);
+    const code = cleanText(body.code, 20).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!displayId || code.length !== 8) return json({ error: "Ungültiger Aktivierungscode" }, { status: 400 });
+    const codeHash = createHash("sha256").update(`${displayId}:${code}`).digest("hex");
+    const display = await client.from("tenant_displays").select("id,tenant_id,name,pairing_expires_at").eq("id", displayId).eq("pairing_code_hash", codeHash).maybeSingle();
+    if (!display.data || !display.data.pairing_expires_at || new Date(display.data.pairing_expires_at).getTime() <= Date.now()) return json({ error: "Aktivierungscode ist falsch oder abgelaufen" }, { status: 401 });
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const now = new Date().toISOString();
+    const updated = await client.from("tenant_displays").update({ device_token_hash: tokenHash, pairing_code_hash: null, pairing_expires_at: null, paired_at: now, last_seen_at: now, status: "online", software_version: cleanText(body.softwareVersion, 80) || null, configuration_version: 1, updated_at: now }).eq("id", displayId).select("id,name,configuration_version").single();
+    if (updated.error) return json({ error: "Display konnte nicht aktiviert werden" }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: display.data.tenant_id, action: "device_paired", entity_type: "display", entity_id: displayId });
+    return json({ ok: true, token, display: updated.data });
+  }
+
+  const authorized = await deviceRecord(request);
+  if (!authorized) return json({ error: "Ungültiger Gerätetoken" }, { status: 401 });
+  if (mode === "heartbeat") {
+    const now = new Date().toISOString();
+    const result = await authorized.client.from("tenant_displays").update({ status: cleanText(body.health, 30) === "maintenance" ? "maintenance" : "online", last_seen_at: now, software_version: cleanText(body.softwareVersion, 80) || null, last_error: cleanText(body.lastError, 1000) || null, updated_at: now }).eq("id", authorized.display.id);
+    if (result.error) return json({ error: "Status konnte nicht aktualisiert werden" }, { status: 400 });
+    return json({ ok: true, configurationVersion: authorized.display.configuration_version });
+  }
+  return json({ error: "Unbekannte Geräteaktion" }, { status: 404 });
+}
+
+async function handleDeviceConfig(request: Request): Promise<Response> {
+  const authorized = await deviceRecord(request);
+  if (!authorized) return json({ error: "Ungültiger Gerätetoken" }, { status: 401 });
+  const { client, display } = authorized;
+  const targets = await client.from("tenant_campaign_displays").select("campaign_id").eq("display_id", display.id);
+  const campaignIds = (targets.data ?? []).map((entry) => entry.campaign_id);
+  if (!campaignIds.length) return json({ display: { id: display.id, name: display.name }, configurationVersion: display.configuration_version, campaigns: [], playlist: [], generatedAt: new Date().toISOString() });
+  const campaigns = await client.from("tenant_campaigns").select("id,name,status,starts_at,ends_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,payload,asset_path))").in("id", campaignIds).in("status", ["active", "scheduled"]).order("starts_at", { ascending: true, nullsFirst: true });
+  if (campaigns.error) return json({ error: "Konfiguration konnte nicht geladen werden" }, { status: 503 });
+  const now = Date.now();
+  const activeCampaigns = (campaigns.data ?? []).filter((campaign) => (!campaign.starts_at || new Date(campaign.starts_at).getTime() <= now) && (!campaign.ends_at || new Date(campaign.ends_at).getTime() > now));
+  const playlist = [] as Array<Record<string, unknown>>;
+  for (const campaign of activeCampaigns) {
+    if (campaign.status === "scheduled") await client.from("tenant_campaigns").update({ status: "active", updated_at: new Date().toISOString() }).eq("id", campaign.id);
+    const links = [...(campaign.content_links || [])].sort((a, b) => a.position - b.position);
+    for (const link of links) {
+      const linkedContent = Array.isArray(link.content) ? link.content[0] : link.content;
+      const content = linkedContent as { id: string; title: string; content_type: string; status: string; payload: Record<string, unknown>; asset_path?: string | null } | null;
+      if (!content || !["approved", "published"].includes(content.status)) continue;
+      let mediaUrl: string | null = null;
+      if (content.asset_path) {
+        const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUrl(content.asset_path, 6 * 60 * 60);
+        mediaUrl = signed.data?.signedUrl ?? null;
+      }
+      playlist.push({ campaignId: campaign.id, campaignName: campaign.name, contentId: content.id, title: content.title, contentType: content.content_type, payload: content.payload, mediaUrl, durationSeconds: Math.min(3600, Math.max(5, Number(link.duration_seconds) || 10)) });
+    }
+  }
+  await client.from("tenant_displays").update({ last_config_at: new Date().toISOString() }).eq("id", display.id);
+  return json({ display: { id: display.id, name: display.name }, configurationVersion: display.configuration_version, campaigns: activeCampaigns.map(({ content_links: _links, ...campaign }) => campaign), playlist, generatedAt: new Date().toISOString() });
+}
 
 async function handlePortalRecords(request: Request): Promise<Response> {
   const authorized = await authorizePortal(request);
@@ -143,6 +237,53 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true, record: result.data });
   }
 
+  if (action === "create_site") {
+    if (!['owner', 'admin'].includes(profile.role)) return json({ error: "Nur Portal-Administratoren können Standorte erstellen" }, { status: 403 });
+    const name = cleanText(body.name, 180);
+    if (!name) return json({ error: "Standortname fehlt" }, { status: 400 });
+    const result = await client.from("tenant_sites").insert({ tenant_id: profile.tenantId, name, address: {}, timezone: "Europe/Zurich", active: true }).select("id,name,address,timezone,active,created_at,updated_at").single();
+    if (result.error) return json({ error: result.error.message }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "create", entity_type: "site", entity_id: result.data.id });
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "create_display") {
+    if (!['owner', 'admin'].includes(profile.role)) return json({ error: "Nur Portal-Administratoren können Displays registrieren" }, { status: 403 });
+    const name = cleanText(body.name, 180);
+    const siteId = cleanText(body.siteId, 80);
+    const kind = cleanText(body.kind, 30);
+    const orientation = cleanText(body.orientation, 30);
+    if (!name || !siteId || !["display", "led_wall", "led_controller", "player"].includes(kind) || !["landscape", "portrait", "custom"].includes(orientation)) return json({ error: "Displayangaben sind unvollständig" }, { status: 400 });
+    const site = await client.from("tenant_sites").select("id").eq("id", siteId).eq("tenant_id", profile.tenantId).eq("active", true).maybeSingle();
+    if (!site.data) return json({ error: "Standort nicht gefunden" }, { status: 404 });
+    const created = await client.from("tenant_displays").insert({ tenant_id: profile.tenantId, site_id: siteId, name, kind, orientation, status: "provisioning" }).select("id,name,status,kind,orientation").single();
+    if (created.error) return json({ error: created.error.message }, { status: 400 });
+    const code = newPairingCode();
+    const codeHash = createHash("sha256").update(`${created.data.id}:${code}`).digest("hex");
+    const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    const prepared = await client.from("tenant_displays").update({ pairing_code_hash: codeHash, pairing_expires_at: expiresAt }).eq("id", created.data.id);
+    if (prepared.error) {
+      await client.from("tenant_displays").delete().eq("id", created.data.id);
+      return json({ error: "Aktivierungscode konnte nicht erstellt werden. Bitte zuerst die Gerätemigration ausführen." }, { status: 503 });
+    }
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "create", entity_type: "display", entity_id: created.data.id });
+    return json({ ok: true, record: created.data, pairing: { displayId: created.data.id, code, expiresAt } });
+  }
+
+  if (action === "renew_display_pairing") {
+    if (!['owner', 'admin'].includes(profile.role)) return json({ error: "Nur Portal-Administratoren können Displays aktivieren" }, { status: 403 });
+    const id = cleanText(body.id, 80);
+    const display = await client.from("tenant_displays").select("id,name").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (!display.data) return json({ error: "Display nicht gefunden" }, { status: 404 });
+    const code = newPairingCode();
+    const codeHash = createHash("sha256").update(`${id}:${code}`).digest("hex");
+    const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    const result = await client.from("tenant_displays").update({ pairing_code_hash: codeHash, pairing_expires_at: expiresAt, updated_at: now }).eq("id", id);
+    if (result.error) return json({ error: "Aktivierungscode konnte nicht erneuert werden" }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "pairing_renewed", entity_type: "display", entity_id: id });
+    return json({ ok: true, pairing: { displayId: id, code, expiresAt }, record: display.data });
+  }
+
   if (action === "configure_campaign") {
     const id = cleanText(body.id, 80);
     const name = cleanText(body.name, 180);
@@ -169,6 +310,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       const available = await client.from("tenant_displays").select("id").eq("tenant_id", profile.tenantId).in("id", displayIds);
       if (available.error || available.data?.length !== displayIds.length) return json({ error: "Mindestens ein Display gehört nicht zu diesem Kunden" }, { status: 403 });
     }
+    const previousTargets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
     const removeContent = await client.from("tenant_campaign_content").delete().eq("campaign_id", id);
     const removeDisplays = await client.from("tenant_campaign_displays").delete().eq("campaign_id", id);
     if (removeContent.error || removeDisplays.error) return json({ error: "Die bisherige Konfiguration konnte nicht aktualisiert werden" }, { status: 400 });
@@ -181,6 +323,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       if (inserted.error) return json({ error: inserted.error.message }, { status: 400 });
     }
     await client.from("tenant_campaigns").update({ name, starts_at: startsAt, ends_at: endsAt, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId);
+    await bumpDisplayConfigurations(client, [...(previousTargets.data ?? []).map((entry) => entry.display_id), ...displayIds]);
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "configure", entity_type: "campaign", entity_id: id, metadata: { contentCount: contentItems.length, displayCount: displayIds.length } });
     return json({ ok: true });
   }
@@ -192,15 +335,22 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
     if (["completed", "archived"].includes(campaign.data.status)) return json({ error: "Diese Kampagne ist abgeschlossen" }, { status: 409 });
     const [contentLinks, displayLinks] = await Promise.all([
-      client.from("tenant_campaign_content").select("content_id", { count: "exact", head: true }).eq("campaign_id", id),
+      client.from("tenant_campaign_content").select("content_id,content:tenant_content(status)").eq("campaign_id", id),
       client.from("tenant_campaign_displays").select("display_id", { count: "exact", head: true }).eq("campaign_id", id),
     ]);
-    if (!contentLinks.count) return json({ error: "Fügen Sie der Kampagne mindestens einen Inhalt hinzu" }, { status: 409 });
+    if (!contentLinks.data?.length) return json({ error: "Fügen Sie der Kampagne mindestens einen Inhalt hinzu" }, { status: 409 });
+    const unapproved = contentLinks.data.some((link) => {
+      const relation = Array.isArray(link.content) ? link.content[0] : link.content;
+      return !relation || !["approved", "published"].includes(relation.status);
+    });
+    if (unapproved) return json({ error: "Geben Sie alle gewählten Inhalte vor der Aktivierung frei" }, { status: 409 });
     if (!displayLinks.count) return json({ error: "Wählen Sie mindestens ein Ziel-Display aus" }, { status: 409 });
     if (campaign.data.ends_at && new Date(campaign.data.ends_at).getTime() <= Date.now()) return json({ error: "Das Enddatum liegt bereits in der Vergangenheit" }, { status: 409 });
     const nextStatus = campaign.data.starts_at && new Date(campaign.data.starts_at).getTime() > Date.now() ? "scheduled" : "active";
     const result = await client.from("tenant_campaigns").update({ status: nextStatus, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId).select("id,status").single();
     if (result.error) return json({ error: result.error.message }, { status: 400 });
+    const targets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
+    await bumpDisplayConfigurations(client, (targets.data ?? []).map((entry) => entry.display_id));
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: nextStatus === "active" ? "activate" : "schedule", entity_type: "campaign", entity_id: id });
     return json({ ok: true, record: result.data });
   }
@@ -209,6 +359,8 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const id = cleanText(body.id, 80);
     const result = await client.from("tenant_campaigns").update({ status: "paused", updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId).in("status", ["active", "scheduled"]).select("id,status").maybeSingle();
     if (result.error || !result.data) return json({ error: "Nur aktive oder geplante Kampagnen können pausiert werden" }, { status: 409 });
+    const targets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
+    await bumpDisplayConfigurations(client, (targets.data ?? []).map((entry) => entry.display_id));
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "pause", entity_type: "campaign", entity_id: id });
     return json({ ok: true, record: result.data });
   }
@@ -273,7 +425,10 @@ function quoteItems(value: unknown): Array<{ description: string; quantity: numb
 }
 
 export async function POST(request: Request): Promise<Response> {
-  if (new URL(request.url).searchParams.get("public") === "quote") return postPublicQuote(request);
+  const search = new URL(request.url).searchParams;
+  const deviceMode = search.get("device");
+  if (deviceMode) return handleDevicePost(request, deviceMode);
+  if (search.get("public") === "quote") return postPublicQuote(request);
   const guard = validatePublicPost(request, {
     key: "dashboard-records",
     limit: 80,
@@ -730,6 +885,8 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 export async function GET(request: Request): Promise<Response> {
-  if (new URL(request.url).searchParams.get("public") === "quote") return getPublicQuote(request);
+  const search = new URL(request.url).searchParams;
+  if (search.get("device") === "config") return handleDeviceConfig(request);
+  if (search.get("public") === "quote") return getPublicQuote(request);
   return json({ error: "Nicht gefunden" }, { status: 404 });
 }
