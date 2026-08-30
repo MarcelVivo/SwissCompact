@@ -6,6 +6,7 @@
     "forceConsistentCasingInFileNames": true,
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
+    "typeRoots": ["../node_modules/@types"],
     "jsx": "preserve"
   },
   "include": ["."]
