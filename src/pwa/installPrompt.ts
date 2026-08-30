@@ -11,6 +11,11 @@ export function mountInstallPrompt(buttonSelector: string): void {
     || (navigator as { standalone?: boolean }).standalone === true;
   if (isStandalone) return;
 
+  // Desktop already has bookmarks/tabs — an installable "app" only earns its
+  // keep on touch devices, where a home-screen icon is the point of a PWA.
+  const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+  if (!isTouchDevice) return;
+
   let deferredEvent: BeforeInstallPromptEvent | null = null;
 
   window.addEventListener("beforeinstallprompt", (event) => {
