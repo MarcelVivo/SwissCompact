@@ -18051,6 +18051,85 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   }
 }
 
+/*
+ * Stations 2-11 (the photographic scroll scenes) get the same mobile
+ * portrait treatment as the station-1 hero: the video pinned to the top
+ * at full device width using its real aspect ratio instead of the default
+ * full-viewport `cover`, which on a portrait phone crops a landscape video
+ * down to a narrow, heavily zoomed-in center strip. A black gradient fills
+ * the rest of the screen and the kicker/title/description sit on it below
+ * the video instead of overlaying the (now much smaller) video image.
+ * These scenes have no Ken-Burns pan/zoom applied in practice (`main.ts`
+ * never passes `updatePhotographicScene`'s optional `motion` option for
+ * any of them), so unlike a true hero treatment there is no JS-driven
+ * transform math tied to a full-viewport `cover` assumption to account for.
+ */
+@media (max-width: 640px) and (orientation: portrait) {
+  #scene-two .photographic-scene__media,
+  #scene-three .photographic-scene__media,
+  #scene-four .photographic-scene__media,
+  #scene-five .photographic-scene__media,
+  #scene-six .photographic-scene__media,
+  #scene-seven .photographic-scene__media,
+  #scene-eight .photographic-scene__media,
+  #scene-nine .photographic-scene__media,
+  #scene-ten .photographic-scene__media,
+  #scene-eleven .photographic-scene__media {
+    top: 0;
+    right: 0;
+    left: 0;
+    bottom: auto;
+  }
+
+  /* Real source ratio 960x640 — every other station's mobile video is 960x540. */
+  #scene-two .photographic-scene__media {
+    aspect-ratio: 960 / 640;
+  }
+
+  #scene-three .photographic-scene__media,
+  #scene-four .photographic-scene__media,
+  #scene-five .photographic-scene__media,
+  #scene-six .photographic-scene__media,
+  #scene-seven .photographic-scene__media,
+  #scene-eight .photographic-scene__media,
+  #scene-nine .photographic-scene__media,
+  #scene-ten .photographic-scene__media,
+  #scene-eleven .photographic-scene__media {
+    aspect-ratio: 960 / 540;
+  }
+
+  #scene-two,
+  #scene-three,
+  #scene-four,
+  #scene-five,
+  #scene-six,
+  #scene-seven,
+  #scene-eight,
+  #scene-nine,
+  #scene-ten,
+  #scene-eleven {
+    background: linear-gradient(180deg, #060607 0%, #060607 55%, #000 100%);
+  }
+
+  #station-2 {
+    top: calc(100vw * 640 / 960 + 12px);
+    bottom: auto;
+  }
+
+  #station-3,
+  #station-4,
+  #station-5,
+  #station-6,
+  #station-7,
+  #station-8,
+  #station-9,
+  #station-10,
+  #station-11 {
+    top: calc(100vw * 540 / 960 + 12px);
+    bottom: auto;
+  }
+}
+
 @media (max-width: 370px) {
   .hero-actions {
     grid-template-columns: 1fr;
