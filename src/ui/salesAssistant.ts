@@ -876,8 +876,8 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     () => input.removeEventListener("focus", handleInputFocus),
   );
 
-  // Other "Projekt besprechen"-style CTAs across the page (hero, project-cta
-  // section) open this same assistant instead of duplicating it or falling
+  // Consultation CTAs across the page open this same assistant instead of
+  // duplicating it or falling
   // back to a mailto link — they always open, never toggle closed.
   const openTriggers = [...document.querySelectorAll<HTMLElement>("[data-sales-assistant-open]")];
   const handleOpenTriggerClick = () => setOpen(true);

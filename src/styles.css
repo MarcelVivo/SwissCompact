@@ -444,8 +444,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 32px;
-  padding: 24px 7vw;
+  gap: clamp(18px, 2vw, 32px);
+  padding: 18px 7vw;
   border-bottom: 1px solid transparent;
   transition:
     padding 0.35s ease,
@@ -466,10 +466,13 @@ button {
 .logo {
   position: relative;
   z-index: 81;
-  font-size: 19px;
+  flex: 0 0 auto;
+  padding: 8px 0;
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.5px;
   text-decoration: none;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.72);
 }
 
 .logo span {
@@ -479,42 +482,37 @@ button {
 .primary-nav {
   display: flex;
   align-items: center;
-  gap: clamp(18px, 2vw, 34px);
+  gap: 2px;
   margin-left: auto;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(7, 7, 9, 0.5);
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px) saturate(1.12);
 }
 
 .primary-nav a {
   position: relative;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 13px;
-  font-weight: 650;
+  padding: 9px clamp(10px, 1vw, 16px);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  font-weight: 720;
   text-decoration: none;
-  transition: color 0.25s ease;
+  white-space: nowrap;
+  transition: color 0.25s ease, background-color 0.25s ease;
 }
 
 .primary-nav a::after {
-  position: absolute;
-  right: 0;
-  bottom: -8px;
-  left: 0;
-  height: 1px;
-  background: var(--red);
-  content: "";
-  transform: scaleX(0);
-  transform-origin: right center;
-  transition: transform 0.25s ease;
+  display: none;
 }
 
 .primary-nav a:hover,
 .primary-nav a:focus-visible {
   color: #fff;
+  background: rgba(255, 255, 255, 0.1);
   outline: none;
-}
-
-.primary-nav a:hover::after,
-.primary-nav a:focus-visible::after {
-  transform: scaleX(1);
-  transform-origin: left center;
 }
 
 .primary-nav__project {
@@ -524,16 +522,20 @@ button {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .contact {
-  padding: 9px 22px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  min-height: 44px;
+  padding: 11px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 30px;
-  font-size: 14px;
+  background: rgba(200, 16, 46, 0.92);
+  box-shadow: 0 12px 32px rgba(200, 16, 46, 0.24);
+  font-size: 13px;
+  font-weight: 760;
   text-decoration: none;
-  transition: border-color 0.3s, background-color 0.3s;
+  transition: border-color 0.3s, background-color 0.3s, transform 0.2s, box-shadow 0.2s;
 }
 
 .pwa-install {
@@ -598,8 +600,10 @@ button {
 
 .contact:hover,
 .contact:focus-visible {
-  border-color: var(--red);
-  background: rgba(200, 16, 46, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: #df1239;
+  box-shadow: 0 16px 38px rgba(200, 16, 46, 0.36);
+  transform: translateY(-2px);
   outline: none;
 }
 
@@ -646,16 +650,26 @@ button {
 }
 
 .hero-actions {
-  display: flex;
+  display: grid;
+  width: min(100%, 470px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  gap: 13px;
+  gap: 8px;
   margin-top: 28px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(5, 5, 7, 0.42);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(18px) saturate(1.1);
 }
 
 .hero-actions .button {
+  width: 100%;
   min-height: 50px;
-  padding: 13px 24px;
+  padding: 13px 18px;
   font-size: 14px;
+  white-space: nowrap;
 }
 
 .button--glass {
@@ -669,25 +683,6 @@ button {
   border-color: rgba(255, 255, 255, 0.62);
 }
 
-.hero-actions__link {
-  margin-left: 6px;
-  color: rgba(255, 255, 255, 0.76);
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.hero-actions__link span {
-  display: inline-block;
-  margin-left: 6px;
-  color: var(--red);
-  transition: transform 0.2s ease;
-}
-
-.hero-actions__link:hover span,
-.hero-actions__link:focus-visible span {
-  transform: translate(3px, -3px);
-}
 
 .station__kicker {
   margin-bottom: 16px;
@@ -6045,9 +6040,13 @@ button {
     align-items: flex-start;
     justify-content: center;
     gap: 0;
+    margin-left: 0;
     padding: 100px 8vw;
+    border: 0;
+    border-radius: 0;
     background: rgba(7, 7, 8, 0.98);
     box-shadow: -30px 0 80px rgba(0, 0, 0, 0.34);
+    backdrop-filter: none;
     transform: translateX(102%);
     transition: transform 0.35s cubic-bezier(.22,.8,.32,1);
   }
@@ -6059,6 +6058,7 @@ button {
     color: #fff;
     font-size: 24px;
     letter-spacing: -0.03em;
+    border-radius: 0;
   }
 
   .primary-nav a::after {
@@ -6214,11 +6214,6 @@ button {
     min-height: 45px;
     padding: 11px 17px;
     font-size: 12px;
-  }
-
-  .hero-actions__link {
-    width: 100%;
-    margin: 5px 0 0;
   }
 
   .journey-brand--panorama {
@@ -17068,19 +17063,23 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   gap: 10px;
   padding: 15px 24px;
   border-radius: 44px;
-  border: none;
-  background: var(--red);
+  border: 1px solid rgba(200, 16, 46, 0.72);
+  background: rgba(8, 8, 10, 0.78);
+  backdrop-filter: blur(16px) saturate(1.1);
   color: var(--white);
   font-weight: 700;
   font-size: 15px;
   cursor: pointer;
-  box-shadow: 0 10px 40px rgba(200, 16, 46, 0.5);
-  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+  transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s;
 }
 
 .showroom-funnel__trigger:hover,
 .showroom-funnel__trigger:focus-visible {
   transform: translateY(-3px);
+  border-color: var(--red);
+  background: rgba(200, 16, 46, 0.9);
+  box-shadow: 0 16px 38px rgba(200, 16, 46, 0.28);
 }
 
 .showroom-funnel__trigger-badge {
@@ -17090,7 +17089,7 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.24);
+  background: var(--red);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -17675,19 +17674,6 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     text-align: center;
   }
 
-  .hero-actions__link {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-    justify-content: flex-start;
-    grid-column: 1 / -1;
-    margin: 0;
-    border: 0;
-    color: rgba(255, 255, 255, 0.84);
-    background: transparent;
-    cursor: pointer;
-  }
-
   #hint {
     bottom: calc(18px + env(safe-area-inset-bottom));
     letter-spacing: 0.18em;
@@ -18069,19 +18055,6 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
 }
 
 /*
- * On the shortest phones (iPhone SE class), the top-anchored hero content
- * above still reaches far enough down to collide with the always-visible
- * floating chat/showroom-configurator buttons pinned to the bottom edge.
- * Drop the secondary "Projekt besprechen" text link there — the floating
- * buttons already cover that intent — rather than let it overlap them.
- */
-@media (max-width: 640px) and (orientation: portrait) and (max-height: 600px) {
-  .station--hero .hero-actions__link {
-    display: none;
-  }
-}
-
-/*
  * Stations 2-11 (the photographic scroll scenes) get the same mobile
  * portrait treatment as the station-1 hero: the video pinned to the top
  * at full device width using its real aspect ratio instead of the default
@@ -18249,10 +18222,6 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
 @media (max-width: 370px) {
   .hero-actions {
     grid-template-columns: 1fr;
-  }
-
-  .hero-actions__link {
-    grid-column: auto;
   }
 
   .showroom-funnel__trigger {

@@ -49,11 +49,6 @@ export function mountOverlays(stations: StationDefinition[]): OverlayUI {
             href="#wirkung"
             data-marketing-target="#wirkung"
           >Lösungen entdecken</a>
-          <button
-            type="button"
-            class="hero-actions__link"
-            data-sales-assistant-open
-          >Projekt besprechen <span aria-hidden="true">↗</span></button>
         </div>` : ""}
     `;
     overlayRoot.append(section);
