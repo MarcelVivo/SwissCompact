@@ -160,7 +160,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (new Set(contentItems.map((item) => item.contentId)).size !== contentItems.length) return json({ error: "Ein Inhalt darf nur einmal in der Playlist vorkommen" }, { status: 400 });
     const campaign = await client.from("tenant_campaigns").select("id,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
-    if (["active", "completed", "archived"].includes(campaign.data.status)) return json({ error: "Aktive oder abgeschlossene Kampagnen müssen zuerst pausiert werden" }, { status: 409 });
+    if (["active", "scheduled", "completed", "archived"].includes(campaign.data.status)) return json({ error: "Aktive, geplante oder abgeschlossene Kampagnen müssen zuerst pausiert werden" }, { status: 409 });
     if (contentItems.length) {
       const available = await client.from("tenant_content").select("id").eq("tenant_id", profile.tenantId).in("id", contentItems.map((item) => item.contentId));
       if (available.error || available.data?.length !== contentItems.length) return json({ error: "Mindestens ein Inhalt gehört nicht zu diesem Kunden" }, { status: 403 });
@@ -216,7 +216,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   if (action === "update_campaign_status") {
     const id = cleanText(body.id, 80);
     const status = cleanText(body.status, 30);
-    if (!id || !["draft", "review", "scheduled", "active", "paused", "completed", "archived"].includes(status)) {
+    if (!id || !["draft", "review", "archived"].includes(status)) {
       return json({ error: "Ungültige Statusänderung" }, { status: 400 });
     }
     const result = await client.from("tenant_campaigns").update({ status, updated_at: now })

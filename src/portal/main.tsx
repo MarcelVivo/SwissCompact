@@ -134,7 +134,7 @@ function CampaignEditor({ campaign, content, displays, canEdit, onClose, onSaved
   const [endsAt, setEndsAt] = useState(localDateTime(campaign.ends_at));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const locked = ["active", "completed", "archived"].includes(campaign.status);
+  const locked = ["active", "scheduled", "completed", "archived"].includes(campaign.status);
 
   function toggleContent(contentId: string) {
     setPlaylist((current) => current.some((item) => item.contentId === contentId) ? current.filter((item) => item.contentId !== contentId) : [...current, { contentId, durationSeconds: 10 }]);
