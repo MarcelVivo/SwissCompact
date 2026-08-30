@@ -17984,13 +17984,25 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
  * order decides here.
  */
 @media (max-width: 640px) and (orientation: portrait) {
+  :root {
+    /*
+     * The fixed site header floats above everything (z-index 80) and on
+     * mobile has a stable rendered height of 67px content + whatever the
+     * device's notch/Dynamic Island adds via its own safe-area padding —
+     * matches `.site-header`'s mobile min-height (64px) plus its measured
+     * real content height, so the video bands below start flush under it
+     * instead of being hidden behind it.
+     */
+    --mobile-video-top: calc(67px + env(safe-area-inset-top));
+  }
+
   #intro {
     background: linear-gradient(180deg, #060607 0%, #060607 55%, #000 100%);
   }
 
   .intro__media,
   .intro__scroll-media {
-    top: 0;
+    top: var(--mobile-video-top);
     right: 0;
     left: 0;
     bottom: auto;
@@ -18001,8 +18013,25 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     object-fit: cover;
   }
 
+  /*
+   * Soften the hard seam where the video band ends and the black gradient
+   * begins: a fade layered over the video's own bottom portion, going from
+   * transparent (still showing the video) to the same black used below it.
+   */
+  #intro::after {
+    content: "";
+    position: absolute;
+    top: var(--mobile-video-top);
+    right: 0;
+    left: 0;
+    z-index: 2;
+    aspect-ratio: 960 / 542;
+    background: linear-gradient(180deg, transparent 0%, transparent 58%, #060607 100%);
+    pointer-events: none;
+  }
+
   .station--hero {
-    top: calc(100vw * 542 / 960 + 12px);
+    top: calc(var(--mobile-video-top) + 100vw * 542 / 960 + 2px);
     right: var(--mobile-gutter);
     bottom: auto;
     left: var(--mobile-gutter);
@@ -18012,18 +18041,19 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   /*
    * Tighten vertical rhythm so the kicker/title/description/CTAs still
    * clear the bottom edge on the shortest tested phone (320x568) now that
-   * they start further down the screen, below the video band.
+   * they start further down the screen, below the video band and the
+   * fixed header above it.
    */
   .station--hero .station__kicker {
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
 
   .station--hero p {
-    margin-top: 8px;
+    margin-top: 6px;
   }
 
   .station--hero .hero-actions {
-    margin-top: 14px;
+    margin-top: 8px;
   }
 
   /*
@@ -18034,7 +18064,7 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
    * the title on first load.
    */
   .journey-brand--intro {
-    top: calc(50vw * 542 / 960);
+    top: calc(var(--mobile-video-top) + 50vw * 542 / 960);
   }
 }
 
@@ -18075,7 +18105,7 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   #scene-nine .photographic-scene__media,
   #scene-ten .photographic-scene__media,
   #scene-eleven .photographic-scene__media {
-    top: 0;
+    top: var(--mobile-video-top);
     right: 0;
     left: 0;
     bottom: auto;
@@ -18111,8 +18141,48 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     background: linear-gradient(180deg, #060607 0%, #060607 55%, #000 100%);
   }
 
+  /*
+   * Same bottom-of-video fade as the station-1 hero, layered above each
+   * scene's video at the same position/ratio as its media box above.
+   */
+  #scene-two::after,
+  #scene-three::after,
+  #scene-four::after,
+  #scene-five::after,
+  #scene-six::after,
+  #scene-seven::after,
+  #scene-eight::after,
+  #scene-nine::after,
+  #scene-ten::after,
+  #scene-eleven::after {
+    content: "";
+    position: absolute;
+    top: var(--mobile-video-top);
+    right: 0;
+    left: 0;
+    z-index: 2;
+    background: linear-gradient(180deg, transparent 0%, transparent 58%, #060607 100%);
+    pointer-events: none;
+  }
+
+  #scene-two::after {
+    aspect-ratio: 960 / 640;
+  }
+
+  #scene-three::after,
+  #scene-four::after,
+  #scene-five::after,
+  #scene-six::after,
+  #scene-seven::after,
+  #scene-eight::after,
+  #scene-nine::after,
+  #scene-ten::after,
+  #scene-eleven::after {
+    aspect-ratio: 960 / 540;
+  }
+
   #station-2 {
-    top: calc(100vw * 640 / 960 + 12px);
+    top: calc(var(--mobile-video-top) + 100vw * 640 / 960 + 2px);
     bottom: auto;
   }
 
@@ -18125,8 +18195,54 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   #station-9,
   #station-10,
   #station-11 {
-    top: calc(100vw * 540 / 960 + 12px);
+    top: calc(var(--mobile-video-top) + 100vw * 540 / 960 + 2px);
     bottom: auto;
+  }
+
+  /*
+   * Same vertical-rhythm tightening as the hero, for the other stations'
+   * shorter kicker/title/description/details block.
+   */
+  .station:not(.station--hero) .station__kicker {
+    margin-bottom: 4px;
+  }
+
+  .station:not(.station--hero) p {
+    margin-top: 6px;
+  }
+
+  .station__details {
+    margin-top: 6px;
+  }
+}
+
+/*
+ * On the shortest phones, stations 2-11's "Details entdecken" link and
+ * benefit line can still reach far enough down to sit under the floating
+ * chat/showroom buttons — drop them there, same reasoning as the hero's
+ * secondary link above.
+ */
+@media (max-width: 640px) and (orientation: portrait) and (max-height: 600px) {
+  .station:not(.station--hero) .station__benefit,
+  .station__details {
+    display: none;
+  }
+
+  /*
+   * On narrow *and* short phones (iPhone SE class hits both breakpoints),
+   * the <370px rule below stacks the two hero buttons into two 50px rows
+   * instead of one — the single biggest thing pushing hero content past
+   * the floating chat/showroom buttons. Vertical space is scarcer than
+   * horizontal comfort here, so keep them side by side.
+   */
+  .station--hero .hero-actions {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .station--hero .hero-actions .button {
+    padding: 11px 10px;
+    font-size: 12px;
   }
 }
 
