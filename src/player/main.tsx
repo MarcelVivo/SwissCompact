@@ -33,9 +33,11 @@ function Pairing({ initialDisplayId, onPaired }: { initialDisplayId: string; onP
 }
 
 function Player() {
-  const queryDisplayId = new URLSearchParams(location.search).get("display") || "";
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || "");
-  const [config, setConfig] = useState<DeviceConfig | null>(() => { try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || "null"); } catch { return null; } });
+  const query = new URLSearchParams(location.search);
+  const queryDisplayId = query.get("display") || "";
+  const forcePairing = query.get("pair") === "1";
+  const [token, setToken] = useState(() => forcePairing ? "" : localStorage.getItem(TOKEN_KEY) || "");
+  const [config, setConfig] = useState<DeviceConfig | null>(() => { if (forcePairing) return null; try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || "null"); } catch { return null; } });
   const [index, setIndex] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [message, setMessage] = useState("Konfiguration wird geladen …");
@@ -73,9 +75,24 @@ function Player() {
     void keepAwake();
   }, []);
 
-  if (!token) return <Pairing initialDisplayId={queryDisplayId || localStorage.getItem(DISPLAY_KEY) || ""} onPaired={(nextToken, displayId) => { localStorage.setItem(TOKEN_KEY, nextToken); localStorage.setItem(DISPLAY_KEY, displayId); setToken(nextToken); void loadConfig(nextToken); }} />;
+  function resetPairing() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(CONFIG_KEY);
+    setConfig(null);
+    setToken("");
+  }
+
+  if (!token) return <Pairing initialDisplayId={queryDisplayId || localStorage.getItem(DISPLAY_KEY) || ""} onPaired={(nextToken, displayId) => {
+    localStorage.setItem(TOKEN_KEY, nextToken);
+    localStorage.setItem(DISPLAY_KEY, displayId);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete("pair");
+    history.replaceState(null, "", cleanUrl);
+    setToken(nextToken);
+    void loadConfig(nextToken);
+  }} />;
   const item = config?.playlist[index % Math.max(1, config.playlist.length)];
-  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}`}>{item.contentType === "image" && item.mediaUrl ? <img src={item.mediaUrl} alt=""/> : item.contentType === "video" && item.mediaUrl ? <video src={item.mediaUrl} autoPlay muted playsInline/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p></section>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
+  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}`}>{item.contentType === "image" && item.mediaUrl ? <img src={item.mediaUrl} alt=""/> : item.contentType === "video" && item.mediaUrl ? <video src={item.mediaUrl} autoPlay muted playsInline/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p><button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button></section>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
 }
 
 createRoot(document.getElementById("player-root")!).render(<Player/>);

@@ -24,6 +24,9 @@ assert.match(records, /Geben Sie alle gewählten Inhalte vor der Aktivierung fre
 assert.match(player, /swisscompact_device_token/);
 assert.match(player, /device=heartbeat/);
 assert.match(player, /device=config/);
+assert.match(player, /searchParams\.get\("pair"\)|query\.get\("pair"\)/, "Direkter Neuverbindungsmodus fehlt");
+assert.match(player, /Aktivierungscode eingeben/, "Manuelle Neuverbindung auf der Leerlaufseite fehlt");
+assert.match(portal, /pair=1/, "Portal-Link öffnet den Player nicht im Neuverbindungsmodus");
 assert.match(portal, /Display einrichten/);
 assert.match(portal, /Aktivierungscode erstellen/);
 assert.match(portal, /Für Displays freigeben/);

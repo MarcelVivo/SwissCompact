@@ -152,7 +152,7 @@ function DisplaySetupDialog({ sites, onClose, onCreated }: { sites: Site[]; onCl
 }
 
 function PairingDialog({ pairing, onClose }: { pairing: PairingInfo; onClose: () => void }) {
-  const playerUrl = `${location.origin}/player?display=${encodeURIComponent(pairing.displayId)}`;
+  const playerUrl = `${location.origin}/player?display=${encodeURIComponent(pairing.displayId)}&pair=1`;
   const [copied, setCopied] = useState(false);
   async function copy() { await navigator.clipboard.writeText(`${playerUrl}\nAktivierungscode: ${pairing.code}`); setCopied(true); }
   return <div className="dialog-backdrop"><section className="dialog pairing-result" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose}>×</button><div className="eyebrow">Einmaliger Aktivierungscode</div><h2>{pairing.displayName || "Display"}</h2><p>Öffnen Sie den Player auf dem Abspielgerät und geben Sie diesen Code ein.</p><div className="pairing-code">{pairing.code}</div><div className="pairing-meta"><span>Display-ID</span><code>{pairing.displayId}</code><span>Player-Adresse</span><a href={playerUrl} target="_blank" rel="noreferrer">{playerUrl}</a></div><button className="primary" onClick={() => void copy()}>{copied ? "Kopiert" : "Adresse und Code kopieren"}</button><small>Gültig bis {new Date(pairing.expiresAt).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })} Uhr. Danach kann jederzeit ein neuer Code erstellt werden.</small></section></div>;
