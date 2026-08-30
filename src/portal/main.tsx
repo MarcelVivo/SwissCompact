@@ -81,6 +81,7 @@ function Portal() {
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [displaySetup, setDisplaySetup] = useState(false);
   const [pairing, setPairing] = useState<PairingInfo | null>(null);
+  const [pairingBusyId, setPairingBusyId] = useState("");
   const load = useCallback(async () => {
     setSession("loading"); setError("");
     try {
@@ -108,6 +109,23 @@ function Portal() {
       await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Status konnte nicht geändert werden"); }
   }
+  async function createPairing(display: Display) {
+    if (pairingBusyId) return;
+    setPairingBusyId(display.id);
+    setError("");
+    try {
+      const result = await api<{ pairing: PairingInfo }>("/api/dashboard/records?audience=portal", {
+        method: "POST",
+        body: JSON.stringify({ action: "renew_display_pairing", id: display.id }),
+      });
+      setPairing({ ...result.pairing, displayName: display.name });
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Aktivierungscode konnte nicht erstellt werden");
+    } finally {
+      setPairingBusyId("");
+    }
+  }
   return <div className="portal" style={{ "--accent": data.profile.branding?.accent || "#d90d32" } as React.CSSProperties}>
     <aside><a className="wordmark" href="/">Swiss<span>Compact</span></a><div className="tenant"><span>Arbeitsbereich</span><strong>{data.profile.tenantName}</strong></div>
       <nav>{nav.map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}><Icon name={id}/>{label}</button>)}</nav>
@@ -121,13 +139,14 @@ function Portal() {
       </section>}
       {view === "content" && <section className="view"><div className="section-title"><div><h2>Content-Bibliothek</h2><p>Medien und Inhalte für Ihre digitalen Flächen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("content")}><Icon name="plus"/>Inhalt erstellen</button>}</div><div className="content-grid">{data.content.map((item) => <article className="content-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : item.preview_url && item.content_type === "video" ? <video src={item.preview_url} muted playsInline preload="metadata"/> : null}<span>{item.payload?.uploadState === "uploading" ? "UPLOAD LÄUFT" : item.content_type.toUpperCase()}</span></div><div><Status value={item.status}/><h3>{item.title}</h3><p>{item.payload?.text || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Noch keine Beschreibung")}</p><small>Geändert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small>{canEdit && item.payload?.uploadState !== "uploading" && <button className="content-status-action" onClick={() => void setContentStatus(item.id, ["approved", "published"].includes(item.status) ? "draft" : "approved")}>{["approved", "published"].includes(item.status) ? "Freigabe zurückziehen" : "Für Displays freigeben"}</button>}</div></article>)}{!data.content.length && <Empty>Erstellen Sie Ihren ersten Inhalt.</Empty>}</div></section>}
       {view === "campaigns" && <section className="view"><div className="section-title"><div><h2>Kampagnen</h2><p>Inhalte zeitlich planen und gezielt ausspielen.</p></div>{canEdit && <button className="primary compact" onClick={() => setDialog("campaign")}><Icon name="plus"/>Kampagne planen</button>}</div><div className="table-card"><div className="table-head campaign-table"><span>Name</span><span>Zeitraum</span><span>Status</span><span></span></div>{data.campaigns.map((item) => <div className="table-row campaign-table" key={item.id}><strong>{item.name}</strong><span>{item.starts_at ? new Date(item.starts_at).toLocaleDateString("de-CH") : "Offen"} – {item.ends_at ? new Date(item.ends_at).toLocaleDateString("de-CH") : "Offen"}</span><Status value={item.status}/><button className="row-action" onClick={() => setEditingCampaign(item)}>{canEdit ? "Bearbeiten" : "Ansehen"}</button></div>)}{!data.campaigns.length && <Empty>Planen Sie Ihre erste Kampagne.</Empty>}</div></section>}
-      {view === "displays" && <section className="view"><div className="section-title"><div><h2>Display-Netzwerk</h2><p>Status und Standorte aller verbundenen Flächen.</p></div>{canManageDevices && <button className="primary compact" onClick={() => setDisplaySetup(true)}><Icon name="plus"/>Display einrichten</button>}</div><div className="display-grid">{data.displays.map((item) => <article className="display-card" key={item.id}><div className={`screen ${item.orientation === "portrait" ? "portrait" : ""}`}><div>Swiss<span>Compact</span></div></div><div><Status value={item.status}/><h3>{item.name}</h3><p>{item.site?.name || "Standort noch nicht zugewiesen"}</p><small>{item.resolution?.width ? `${item.resolution.width} × ${item.resolution.height}` : "Auflösung nicht erfasst"}</small>{canManageDevices && <button className="device-link" onClick={async () => { try { const result = await api<{ pairing: PairingInfo }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "renew_display_pairing", id: item.id }) }); setPairing({ ...result.pairing, displayName: item.name }); } catch (reason) { setError(reason instanceof Error ? reason.message : "Code konnte nicht erstellt werden"); } }}>{item.status === "provisioning" ? "Aktivierungscode erstellen" : "Display neu verbinden"}</button>}</div></article>)}{!data.displays.length && <Empty>Richten Sie Ihr erstes Display ein.</Empty>}</div></section>}
+      {view === "displays" && <section className="view"><div className="section-title"><div><h2>Display-Netzwerk</h2><p>Status und Standorte aller verbundenen Flächen.</p></div>{canManageDevices && <button className="primary compact" onClick={() => setDisplaySetup(true)}><Icon name="plus"/>Display einrichten</button>}</div><div className="display-grid">{data.displays.map((item) => <article className="display-card" key={item.id}><div className={`screen ${item.orientation === "portrait" ? "portrait" : ""}`}><div>Swiss<span>Compact</span></div></div><div><Status value={item.status}/><h3>{item.name}</h3><p>{item.site?.name || "Standort noch nicht zugewiesen"}</p><small>{item.resolution?.width ? `${item.resolution.width} × ${item.resolution.height}` : "Auflösung nicht erfasst"}</small>{canManageDevices && <button type="button" className="device-link" disabled={Boolean(pairingBusyId)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void createPairing(item); }}>{pairingBusyId === item.id ? "Code wird erstellt …" : item.status === "provisioning" ? "Aktivierungscode erstellen" : "Display neu verbinden"}</button>}</div></article>)}{!data.displays.length && <Empty>Richten Sie Ihr erstes Display ein.</Empty>}</div></section>}
       {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang und das aktive SwissCompact-Paket.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
     </main>
     {dialog && <CreateDialog type={dialog} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
     {editingCampaign && <CampaignEditor campaign={editingCampaign} content={data.content} displays={data.displays} canEdit={canEdit} onClose={() => setEditingCampaign(null)} onSaved={() => { setEditingCampaign(null); void load(); }} />}
     {displaySetup && <DisplaySetupDialog sites={data.sites} onClose={() => setDisplaySetup(false)} onCreated={(next) => { setDisplaySetup(false); setPairing(next); void load(); }} />}
     {pairing && <PairingDialog pairing={pairing} onClose={() => setPairing(null)} />}
+    {error && <div className="global-message" role="alert"><span>{error}</span><button type="button" onClick={() => setError("")} aria-label="Meldung schließen">×</button></div>}
   </div>;
 }
 

@@ -29,6 +29,8 @@ assert.match(player, /Aktivierungscode eingeben/, "Manuelle Neuverbindung auf de
 assert.match(portal, /pair=1/, "Portal-Link öffnet den Player nicht im Neuverbindungsmodus");
 assert.match(portal, /Display einrichten/);
 assert.match(portal, /Aktivierungscode erstellen/);
+assert.match(portal, /Code wird erstellt/);
+assert.match(portal, /role="alert"/);
 assert.match(portal, /Für Displays freigeben/);
 
 console.log("Display player smoke checks passed.");
