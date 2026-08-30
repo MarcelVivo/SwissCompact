@@ -1531,7 +1531,7 @@ button {
 }
 
 .solution-result > a,
-.media-studio__copy > a {
+.media-studio__copy > :is(a, button) {
   position: relative;
   color: #fff;
   font-size: 14px;
@@ -1540,7 +1540,7 @@ button {
 }
 
 .solution-result > a span,
-.media-studio__copy > a span {
+.media-studio__copy > :is(a, button) span {
   margin-left: 8px;
   color: var(--red);
 }
@@ -5517,6 +5517,41 @@ button {
   color: rgba(255, 255, 255, 0.72);
 }
 
+.media-studio__copy > button {
+  display: inline-flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 24px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(7, 7, 8, 0.94);
+  box-shadow: 0 18px 44px rgba(28, 0, 6, 0.3);
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.media-studio__copy > button:hover,
+.media-studio__copy > button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: #111114;
+  box-shadow: 0 22px 52px rgba(28, 0, 6, 0.42);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.media-studio__copy > button:focus-visible {
+  box-shadow:
+    0 22px 52px rgba(28, 0, 6, 0.42),
+    0 0 0 3px rgba(255, 255, 255, 0.82);
+}
+
 .media-wall {
   display: grid;
   min-height: min(62vh, 620px);
@@ -5789,7 +5824,9 @@ button {
   align-items: center;
   padding: clamp(100px, 12vw, 190px) 7vw;
   color: #fff;
-  background: var(--red);
+  background:
+    radial-gradient(circle at 88% 18%, rgba(255, 255, 255, 0.09), transparent 30%),
+    linear-gradient(135deg, #b70d29 0%, var(--red) 48%, #d20f34 100%);
 }
 
 .project-cta .eyebrow {
@@ -5809,19 +5846,57 @@ button {
 
 .button--light {
   margin-top: 38px;
-  color: #111114;
-  background: #fff;
-  box-shadow: 0 24px 55px rgba(70, 0, 12, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  background: #08080a;
+  box-shadow: 0 24px 55px rgba(70, 0, 12, 0.34);
+}
+
+.project-cta .button--light:hover,
+.project-cta .button--light:focus-visible {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: #151519;
+  box-shadow: 0 28px 62px rgba(70, 0, 12, 0.42);
+}
+
+.project-cta .button--light:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 3px;
 }
 
 .project-cta__actions > button {
-  display: block;
+  display: inline-flex;
+  width: fit-content;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
   margin-top: 28px;
+  padding: 8px 0;
   color: rgba(255, 255, 255, 0.78);
   background: transparent;
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.project-cta__actions > .button--light {
+  min-height: 54px;
+  padding: 15px 32px;
+  color: #fff;
+  background: #08080a;
+}
+
+.project-cta__actions > button:not(.button):hover,
+.project-cta__actions > button:not(.button):focus-visible {
+  color: #fff;
+  transform: translateX(3px);
+  outline: none;
+}
+
+.project-cta__actions > button:not(.button):focus-visible {
+  border-radius: 3px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.78);
 }
 
 .site-footer {
@@ -17798,6 +17873,11 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
 
   .project-cta__actions > :is(a, button) {
     width: 100%;
+  }
+
+  .media-studio__copy > button {
+    width: 100%;
+    min-height: 50px;
   }
 
   .site-footer {

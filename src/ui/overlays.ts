@@ -48,7 +48,7 @@ export function mountOverlays(stations: StationDefinition[]): OverlayUI {
             class="button button--glass"
             href="#wirkung"
             data-marketing-target="#wirkung"
-          >Lösungen entdecken</a>
+          >Lösungen entdecken <span aria-hidden="true">→</span></a>
         </div>` : ""}
     `;
     overlayRoot.append(section);
