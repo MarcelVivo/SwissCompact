@@ -1,11 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { authorizePortal, dashboardSupabase, isResponse } from "../_lib/dashboard/auth.js";
-import { cleanText, json, validatePublicPost } from "../_lib/assistant/security.js";
-import { AI_IMAGE_FORMATS, AI_IMAGE_MODEL, AI_IMAGE_QUALITIES, type AiImageFormat, type AiImageQuality } from "../_lib/portal/ai-config.js";
-import { renderHeadline, type HeadlineConfiguration } from "../_lib/portal/image-overlay.js";
-
-// This route stays under /api/dashboard so the HttpOnly portal session cookie is sent.
-export const config = { runtime: "nodejs", maxDuration: 180 };
+import { authorizePortal, dashboardSupabase, isResponse } from "../dashboard/auth.js";
+import { cleanText, json, validatePublicPost } from "../assistant/security.js";
+import { AI_IMAGE_FORMATS, AI_IMAGE_MODEL, AI_IMAGE_QUALITIES, type AiImageFormat, type AiImageQuality } from "./ai-config.js";
+import { renderHeadline, type HeadlineConfiguration } from "./image-overlay.js";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -36,7 +33,7 @@ async function failJob(client: any, tenantId: string, jobId: string, status: "fa
   }).eq("id", jobId).eq("tenant_id", tenantId);
 }
 
-export async function POST(request: Request): Promise<Response> {
+export async function handleAiImagePost(request: Request): Promise<Response> {
   const guard = validatePublicPost(request, {
     key: "portal-ai-image",
     limit: 12,

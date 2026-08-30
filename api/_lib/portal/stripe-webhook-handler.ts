@@ -1,10 +1,8 @@
 import Stripe from "stripe";
-import { dashboardSupabase } from "../_lib/dashboard/auth.js";
-import { json } from "../_lib/assistant/security.js";
+import { dashboardSupabase } from "../dashboard/auth.js";
+import { json } from "../assistant/security.js";
 
-export const config = { runtime: "nodejs", maxDuration: 30 };
-
-export async function POST(request: Request): Promise<Response> {
+export async function handleStripeWebhookPost(request: Request): Promise<Response> {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const signature = request.headers.get("stripe-signature");

@@ -11,7 +11,7 @@ Das Kundenportal erzeugt Displaymotive über die OpenAI Image API, legt optional
    - `STRIPE_SECRET_KEY`
    - `STRIPE_WEBHOOK_SECRET`
    - `SITE_URL=https://<produktive-domain>`
-3. In Stripe einen Webhook mit der Zieladresse `https://<produktive-domain>/api/stripe/webhook` anlegen.
+3. In Stripe einen Webhook mit der Zieladresse `https://<produktive-domain>/api/dashboard/records?integration=stripe-webhook` anlegen.
 4. Mindestens diese Stripe-Events abonnieren:
    - `checkout.session.completed`
    - `checkout.session.async_payment_succeeded`

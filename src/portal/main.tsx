@@ -342,7 +342,7 @@ function AiImageDialog({ credits, canBuy, onClose, onCreated }: { credits: AiCre
     event.preventDefault(); setBusy(true); setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch("/api/dashboard/ai-image", {
+      const response = await fetch("/api/dashboard/records?portalAi=image", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -369,7 +369,7 @@ function AiImageDialog({ credits, canBuy, onClose, onCreated }: { credits: AiCre
   async function buy(packageCode: string) {
     setBuying(packageCode); setError("");
     try {
-      const result = await api<{ checkoutUrl: string }>("/api/dashboard/ai-credits", { method: "POST", body: JSON.stringify({ packageCode }) });
+      const result = await api<{ checkoutUrl: string }>("/api/dashboard/records?portalAi=credits", { method: "POST", body: JSON.stringify({ packageCode }) });
       location.assign(result.checkoutUrl);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Stripe Checkout konnte nicht geöffnet werden");

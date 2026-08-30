@@ -5,6 +5,11 @@ import { createQuotePdf } from "../_lib/dashboard/documents.js";
 import { createHash, randomBytes } from "node:crypto";
 import { Resend } from "resend";
 import { getPublicQuote, postPublicQuote } from "../_lib/dashboard/quote-public.js";
+import { handleAiCreditsPost } from "../_lib/portal/ai-credits-handler.js";
+import { handleAiImagePost } from "../_lib/portal/ai-image-handler.js";
+import { handleStripeWebhookPost } from "../_lib/portal/stripe-webhook-handler.js";
+
+export const config = { runtime: "nodejs", maxDuration: 180 };
 
 type Payload = Record<string, unknown>;
 
@@ -454,6 +459,10 @@ function quoteItems(value: unknown): Array<{ description: string; quantity: numb
 
 export async function POST(request: Request): Promise<Response> {
   const search = new URL(request.url).searchParams;
+  const portalAi = search.get("portalAi");
+  if (portalAi === "image") return handleAiImagePost(request);
+  if (portalAi === "credits") return handleAiCreditsPost(request);
+  if (search.get("integration") === "stripe-webhook") return handleStripeWebhookPost(request);
   const deviceMode = search.get("device");
   if (deviceMode) return handleDevicePost(request, deviceMode);
   if (search.get("public") === "quote") return postPublicQuote(request);

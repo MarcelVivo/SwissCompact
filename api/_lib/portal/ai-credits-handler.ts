@@ -1,10 +1,7 @@
 import Stripe from "stripe";
-import { authorizePortal, dashboardSupabase, isResponse } from "../_lib/dashboard/auth.js";
-import { cleanText, json, validatePublicPost } from "../_lib/assistant/security.js";
-import { AI_CREDIT_PACKAGES, type AiCreditPackage } from "../_lib/portal/ai-config.js";
-
-// This route stays under /api/dashboard so the HttpOnly portal session cookie is sent.
-export const config = { runtime: "nodejs", maxDuration: 20 };
+import { authorizePortal, dashboardSupabase, isResponse } from "../dashboard/auth.js";
+import { cleanText, json, validatePublicPost } from "../assistant/security.js";
+import { AI_CREDIT_PACKAGES, type AiCreditPackage } from "./ai-config.js";
 
 function portalOrigin(request: Request): string {
   if (process.env.SITE_URL) {
@@ -15,7 +12,7 @@ function portalOrigin(request: Request): string {
   return host ? `${protocol}://${host}` : new URL(request.url).origin;
 }
 
-export async function POST(request: Request): Promise<Response> {
+export async function handleAiCreditsPost(request: Request): Promise<Response> {
   const guard = validatePublicPost(request, {
     key: "portal-ai-credit-checkout",
     limit: 10,
