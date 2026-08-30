@@ -198,14 +198,30 @@ export function mountScrollReveal(): ScrollReveal {
     if (activeText.size > 0) scheduleTextSettle();
   };
 
+  // iOS Safari keeps firing `scroll` events throughout its native momentum
+  // glide after a swipe — often a second or more — so the "no scroll for
+  // 170ms" heuristic above never gets a gap to fire in until the whole
+  // glide has fully decayed, making text stay pixelated far longer than
+  // intended on a vigorous flick. `scrollend` (Safari 17.4+, Chrome 114+,
+  // Firefox 109+) fires exactly once the browser considers scrolling
+  // genuinely finished, so use it to settle immediately where supported
+  // instead of waiting out the glide.
+  const supportsScrollEnd = "onscrollend" in window;
+  const handleScrollEnd = () => {
+    lastScrollAt = 0;
+    if (activeText.size > 0) settleActiveText();
+  };
+
   textElements.forEach((element) => textObserver.observe(element));
   window.addEventListener("scroll", handleScroll, { passive: true });
+  if (supportsScrollEnd) window.addEventListener("scrollend", handleScrollEnd, { passive: true });
 
   return {
     destroy() {
       observer.disconnect();
       textObserver.disconnect();
       window.removeEventListener("scroll", handleScroll);
+      if (supportsScrollEnd) window.removeEventListener("scrollend", handleScrollEnd);
       if (settleTimer) window.clearTimeout(settleTimer);
       root.classList.remove("has-scroll-reveal");
     },
