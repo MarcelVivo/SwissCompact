@@ -14,6 +14,25 @@ function webauthnSite(request: Request): { rpId: string; rpOrigins: string[] } |
   return null;
 }
 
+// Both the Supabase JS SDK's own auth.mfa.enroll()/challenge() calls and
+// the raw REST calls below (needed for the webauthn-specific challenge/
+// verify payloads the SDK doesn't expose) can surface this exact class of
+// error — translate it consistently regardless of which path produced it.
+function friendlyWebauthnError(rawMessage: string | undefined, code?: unknown): string {
+  const message = rawMessage || "";
+  const disabledForWebauthn = /disabled.*webauthn|webauthn.*disabled|webauthn.*not enabled/i.test(message);
+  if (code === "mfa_webauthn_enroll_not_enabled" || (disabledForWebauthn && /enroll/i.test(message))) {
+    return "Face ID muss zuerst in Supabase unter Authentication → Multi-Factor aktiviert werden";
+  }
+  if (code === "mfa_webauthn_verify_not_enabled" || (disabledForWebauthn && /verify/i.test(message))) {
+    return "Die Face-ID-Bestätigung ist in Supabase noch nicht aktiviert";
+  }
+  if (disabledForWebauthn) {
+    return "Face ID muss zuerst in Supabase unter Authentication → Multi-Factor aktiviert werden";
+  }
+  return message || "Face ID konnte nicht verarbeitet werden";
+}
+
 async function supabaseAuthRequest(
   path: string,
   accessToken: string,
@@ -34,17 +53,7 @@ async function supabaseAuthRequest(
   const payload = await response.json().catch(() => ({})) as JsonRecord;
   if (!response.ok) {
     const rawMessage = typeof payload.message === "string" ? payload.message : typeof payload.error_description === "string" ? payload.error_description : "";
-    const disabledForWebauthn = /disabled.*webauthn|webauthn.*disabled|webauthn.*not enabled/i.test(rawMessage);
-    if (payload.code === "mfa_webauthn_enroll_not_enabled" || (disabledForWebauthn && /enroll/i.test(rawMessage))) {
-      return { error: "Face ID muss zuerst in Supabase unter Authentication → Multi-Factor aktiviert werden" };
-    }
-    if (payload.code === "mfa_webauthn_verify_not_enabled" || (disabledForWebauthn && /verify/i.test(rawMessage))) {
-      return { error: "Die Face-ID-Bestätigung ist in Supabase noch nicht aktiviert" };
-    }
-    if (disabledForWebauthn) {
-      return { error: "Face ID muss zuerst in Supabase unter Authentication → Multi-Factor aktiviert werden" };
-    }
-    return { error: rawMessage || "Face ID konnte nicht verarbeitet werden" };
+    return { error: friendlyWebauthnError(rawMessage, payload.code) };
   }
   return { data: payload };
 }
@@ -81,7 +90,7 @@ export async function POST(request: Request): Promise<Response> {
       await session.client.auth.mfa.unenroll({ factorId: factor.id });
     }
     const enrolled = await session.client.auth.mfa.enroll({ factorType: "webauthn", friendlyName: "iPhone Face ID" });
-    if (enrolled.error) return json({ error: enrolled.error.message }, { status: 400 });
+    if (enrolled.error) return json({ error: friendlyWebauthnError(enrolled.error.message, (enrolled.error as { code?: unknown }).code) }, { status: 400 });
     const challenge = await supabaseAuthRequest(`factors/${enrolled.data.id}/challenge`, session.accessToken, {
       factorId: enrolled.data.id,
       webauthn: site,
