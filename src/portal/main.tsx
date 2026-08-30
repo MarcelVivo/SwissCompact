@@ -78,6 +78,9 @@ function Portal() {
     setSession("loading"); setError("");
     try {
       const overview = await api<PortalData>("/api/dashboard/overview?audience=portal");
+      if (!overview.profile || !Array.isArray(overview.displays) || !Array.isArray(overview.content) || !Array.isArray(overview.campaigns)) {
+        throw new Error("Das Kundenportal wird gerade eingerichtet. Bitte versuchen Sie es in Kürze erneut.");
+      }
       setData(overview); setSession("ready");
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "Portal nicht erreichbar";
@@ -85,7 +88,7 @@ function Portal() {
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
-  const online = useMemo(() => data?.displays.filter((display) => display.status === "online").length || 0, [data]);
+  const online = useMemo(() => data?.displays?.filter((display) => display.status === "online").length || 0, [data]);
   if (session === "loading") return <div className="boot"><div className="boot-mark">SC</div><span>Portal wird geladen</span></div>;
   if (session === "guest" || !data) return <><Login onDone={() => void load()} />{error && <div className="global-message">{error}</div>}</>;
   const canEdit = data.profile.role !== "viewer";
