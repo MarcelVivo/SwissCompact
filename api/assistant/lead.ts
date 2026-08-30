@@ -17,11 +17,14 @@ export async function GET(): Promise<Response> {
     );
   }
 
-  const { error } = await supabase
-    .from("kontaktanfragen")
-    .select("id", { count: "exact", head: true });
+  const [legacyRequests, dashboardClients, dashboardOpportunities] = await Promise.all([
+    supabase.from("kontaktanfragen").select("id", { count: "exact", head: true }),
+    supabase.from("clients").select("id", { count: "exact", head: true }),
+    supabase.from("opportunities").select("id", { count: "exact", head: true }),
+  ]);
+  const error = legacyRequests.error || dashboardClients.error || dashboardOpportunities.error;
   if (error) {
-    console.error("assistant/lead health: CRM unavailable", error.message);
+    console.error("assistant/lead health: dashboard CRM unavailable", error.message);
     return json(
       { ok: false, crm: "unavailable", email: emailConfigured ? "configured" : "not-configured" },
       { status: 503 },
@@ -177,76 +180,14 @@ export async function POST(request: Request): Promise<Response> {
     let dealId: string | undefined;
     let dashboardClientId: string | undefined;
     let dashboardOpportunityId: string | undefined;
-    let crmDelivered = false;
+    let dashboardDelivered = false;
+    let legacyCrmDelivered = false;
     if (supabase) {
+      // The operations dashboard is the authoritative destination. Keep it in
+      // its own error boundary so a failure in the historical CRM tables can
+      // never prevent a website request from reaching the dashboard.
       try {
-        const { data: requestRow, error: requestError } = await supabase
-          .from("kontaktanfragen")
-          .insert({ name, email, nachricht: crmNotes, sprache: "de", quelle: "sales-assistant", status: "neu" })
-          .select("id")
-          .single();
-        if (requestError) throw new Error(`Kontaktanfrage: ${requestError.message}`);
-        requestId = requestRow?.id;
-
-        const { data: existingCustomer, error: existingError } = await supabase
-          .from("kunden")
-          .select("id,notizen")
-          .eq("email", email)
-          .limit(1)
-          .maybeSingle();
-        if (existingError) throw new Error(`Kundensuche: ${existingError.message}`);
-
-        customerId = existingCustomer?.id as string | undefined;
-        if (customerId) {
-          const notes = [existingCustomer?.notizen, crmNotes].filter(Boolean).join("\n\n––––––––––\n\n").slice(0, 50_000);
-          const { error } = await supabase
-            .from("kunden")
-            .update({
-              kontaktperson: name,
-              firmenname: company || null,
-              telefon: phone,
-              branche: industry || null,
-              status: "lead",
-              notizen: notes,
-            })
-            .eq("id", customerId);
-          if (error) throw new Error(`Kundenaktualisierung: ${error.message}`);
-        } else {
-          const { data, error } = await supabase
-            .from("kunden")
-            .insert({
-              kontaktperson: name,
-              firmenname: company || null,
-              email,
-              telefon: phone,
-              branche: industry || null,
-              status: "lead",
-              notizen: crmNotes,
-            })
-            .select("id")
-            .single();
-          if (error) throw new Error(`Kundenerstellung: ${error.message}`);
-          customerId = data?.id;
-        }
-
         const probability = leadTemperature === "hot" ? 70 : leadTemperature === "warm" ? 50 : 30;
-        const { data: dealRow, error: dealError } = await supabase
-          .from("deals")
-          .insert({
-            titel: `Assistant-Anfrage · ${company || name}`,
-            kunden_id: customerId || null,
-            status: "lead",
-            wahrscheinlichkeit: probability,
-            notizen: crmNotes,
-          })
-          .select("id")
-          .single();
-        if (dealError) throw new Error(`Pipeline-Lead: ${dealError.message}`);
-        dealId = dealRow?.id;
-
-        // The public contact flow historically wrote to kunden/deals. Keep
-        // those records for compatibility, but also feed the protected
-        // operations dashboard so a new request is visible immediately.
         const { data: existingDashboardClient, error: dashboardClientSearchError } = await supabase
           .from("clients")
           .select("id,notes")
@@ -318,11 +259,85 @@ export async function POST(request: Request): Promise<Response> {
           },
         });
         if (dashboardAuditError) console.error("assistant/lead: dashboard audit failed", dashboardAuditError.message);
-        crmDelivered = true;
-      } catch (crmError) {
+        dashboardDelivered = true;
+      } catch (dashboardError) {
         console.error(
-          "assistant/lead: CRM delivery failed; trying email fallback",
-          crmError instanceof Error ? crmError.message : "Unknown error",
+          "assistant/lead: dashboard delivery failed; email fallback remains active",
+          dashboardError instanceof Error ? dashboardError.message : "Unknown error",
+        );
+      }
+
+      // Historical compatibility tables are best-effort only. They are kept
+      // for older integrations but no longer gate the operations dashboard.
+      try {
+        const { data: requestRow, error: requestError } = await supabase
+          .from("kontaktanfragen")
+          .insert({ name, email, nachricht: crmNotes, sprache: "de", quelle: "sales-assistant", status: "neu" })
+          .select("id")
+          .single();
+        if (requestError) throw new Error(`Kontaktanfrage: ${requestError.message}`);
+        requestId = requestRow?.id;
+
+        const { data: existingCustomer, error: existingError } = await supabase
+          .from("kunden")
+          .select("id,notizen")
+          .eq("email", email)
+          .limit(1)
+          .maybeSingle();
+        if (existingError) throw new Error(`Kundensuche: ${existingError.message}`);
+
+        customerId = existingCustomer?.id as string | undefined;
+        if (customerId) {
+          const notes = [existingCustomer?.notizen, crmNotes].filter(Boolean).join("\n\n––––––––––\n\n").slice(0, 50_000);
+          const { error } = await supabase
+            .from("kunden")
+            .update({
+              kontaktperson: name,
+              firmenname: company || null,
+              telefon: phone,
+              branche: industry || null,
+              status: "lead",
+              notizen: notes,
+            })
+            .eq("id", customerId);
+          if (error) throw new Error(`Kundenaktualisierung: ${error.message}`);
+        } else {
+          const { data, error } = await supabase
+            .from("kunden")
+            .insert({
+              kontaktperson: name,
+              firmenname: company || null,
+              email,
+              telefon: phone,
+              branche: industry || null,
+              status: "lead",
+              notizen: crmNotes,
+            })
+            .select("id")
+            .single();
+          if (error) throw new Error(`Kundenerstellung: ${error.message}`);
+          customerId = data?.id;
+        }
+
+        const probability = leadTemperature === "hot" ? 70 : leadTemperature === "warm" ? 50 : 30;
+        const { data: dealRow, error: dealError } = await supabase
+          .from("deals")
+          .insert({
+            titel: `Assistant-Anfrage · ${company || name}`,
+            kunden_id: customerId || null,
+            status: "lead",
+            wahrscheinlichkeit: probability,
+            notizen: crmNotes,
+          })
+          .select("id")
+          .single();
+        if (dealError) throw new Error(`Pipeline-Lead: ${dealError.message}`);
+        dealId = dealRow?.id;
+        legacyCrmDelivered = true;
+      } catch (legacyError) {
+        console.warn(
+          "assistant/lead: historical CRM compatibility write failed",
+          legacyError instanceof Error ? legacyError.message : "Unknown error",
         );
       }
     } else {
@@ -382,7 +397,12 @@ export async function POST(request: Request): Promise<Response> {
               <a href="mailto:${safe.email}?subject=Ihre Anfrage bei SwissCompact" style="display:inline-block;padding:12px 20px;background:#c8102e;color:#ffffff;text-decoration:none;font-weight:700">Direkt antworten</a>
             </div>
           </div>
-          <div style="padding:14px 30px;border-top:1px solid #2a2a30;color:#77777e;font-size:11px">Kontakt ${requestId || "E-Mail"} · Kunde ${customerId || "–"} · Deal ${dealId || "–"}</div>
+          ${
+            dashboardDelivered
+              ? ""
+              : '<div style="padding:14px 30px;background:#3b1018;color:#ffccd5;font-size:13px;font-weight:700">Achtung: Die Anfrage konnte nicht ins Operations-Dashboard übertragen werden und muss manuell erfasst werden.</div>'
+          }
+          <div style="padding:14px 30px;border-top:1px solid #2a2a30;color:#77777e;font-size:11px">Dashboard-Kunde ${dashboardClientId || "–"} · Dashboard-Chance ${dashboardOpportunityId || "–"} · Altsystem-Kontakt ${requestId || "–"} · Kunde ${customerId || "–"} · Deal ${dealId || "–"}</div>
         </div>`,
         });
         if (adminMail.error) {
@@ -416,7 +436,7 @@ export async function POST(request: Request): Promise<Response> {
       console.warn("assistant/lead: Resend is not configured; lead saved without email notifications");
     }
 
-    if (!crmDelivered && !adminEmailDelivered) {
+    if (!dashboardDelivered && !adminEmailDelivered) {
       return json({ error: "Die Kontaktübergabe konnte nicht abgeschlossen werden." }, { status: 502 });
     }
 
@@ -428,7 +448,9 @@ export async function POST(request: Request): Promise<Response> {
       dashboardClientId,
       dashboardOpportunityId,
       delivery: {
-        crm: crmDelivered,
+        crm: dashboardDelivered,
+        dashboard: dashboardDelivered,
+        legacyCrm: legacyCrmDelivered,
         adminEmail: adminEmailDelivered,
         customerEmail: customerEmailDelivered,
       },

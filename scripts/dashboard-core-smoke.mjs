@@ -70,6 +70,11 @@ assert.match(publicQuote, /createDepositInvoicePdf/);
 assert.match(lead, /\.from\("clients"\)/, "Website-Anfrage wird nicht in Dashboard-Kunden synchronisiert");
 assert.match(lead, /\.from\("opportunities"\)/, "Website-Anfrage wird nicht in Dashboard-Trichter synchronisiert");
 assert.match(lead, /website_lead_created/, "Website-Anfrage wird nicht protokolliert");
+assert.match(lead, /dashboard CRM unavailable/, "Live-Status prüft die Dashboard-Tabellen nicht");
+assert.match(lead, /let dashboardDelivered = false/, "Dashboard-Zustellung wird nicht separat verfolgt");
+assert.match(lead, /dashboard delivery failed; email fallback remains active/, "Dashboard-Fehler ist nicht diagnostizierbar");
+assert.match(lead, /historical CRM compatibility write failed/, "Historisches CRM ist nicht vom Dashboard entkoppelt");
+assert.match(lead, /dashboard: dashboardDelivered/, "API meldet Dashboard-Zustellung nicht separat");
 assert.ok(existsSync(new URL("../dist/dashboard.html", import.meta.url)), "Produktions-Build für Dashboard fehlt");
 assert.ok(existsSync(new URL("../dist/quote.html", import.meta.url)), "Produktions-Build für Offertenseite fehlt");
 
