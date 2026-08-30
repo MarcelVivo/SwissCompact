@@ -33,10 +33,18 @@ async function supabaseAuthRequest(
   });
   const payload = await response.json().catch(() => ({})) as JsonRecord;
   if (!response.ok) {
-    if (payload.code === "mfa_webauthn_enroll_not_enabled") return { error: "Face ID muss zuerst in Supabase unter Authentication → Multi-Factor aktiviert werden" };
-    if (payload.code === "mfa_webauthn_verify_not_enabled") return { error: "Die Face-ID-Bestätigung ist in Supabase noch nicht aktiviert" };
-    const message = typeof payload.message === "string" ? payload.message : typeof payload.error_description === "string" ? payload.error_description : "Face ID konnte nicht verarbeitet werden";
-    return { error: message };
+    const rawMessage = typeof payload.message === "string" ? payload.message : typeof payload.error_description === "string" ? payload.error_description : "";
+    const disabledForWebauthn = /disabled.*webauthn|webauthn.*disabled|webauthn.*not enabled/i.test(rawMessage);
+    if (payload.code === "mfa_webauthn_enroll_not_enabled" || (disabledForWebauthn && /enroll/i.test(rawMessage))) {
+      return { error: "Face ID muss zuerst in Supabase unter Authentication → Multi-Factor aktiviert werden" };
+    }
+    if (payload.code === "mfa_webauthn_verify_not_enabled" || (disabledForWebauthn && /verify/i.test(rawMessage))) {
+      return { error: "Die Face-ID-Bestätigung ist in Supabase noch nicht aktiviert" };
+    }
+    if (disabledForWebauthn) {
+      return { error: "Face ID muss zuerst in Supabase unter Authentication → Multi-Factor aktiviert werden" };
+    }
+    return { error: rawMessage || "Face ID konnte nicht verarbeitet werden" };
   }
   return { data: payload };
 }
