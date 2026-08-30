@@ -4,6 +4,7 @@ import { cleanText, json, validatePublicPost } from "../_lib/assistant/security.
 import { AI_IMAGE_FORMATS, AI_IMAGE_MODEL, AI_IMAGE_QUALITIES, type AiImageFormat, type AiImageQuality } from "../_lib/portal/ai-config.js";
 import { renderHeadline, type HeadlineConfiguration } from "../_lib/portal/image-overlay.js";
 
+// This route stays under /api/dashboard so the HttpOnly portal session cookie is sent.
 export const config = { runtime: "nodejs", maxDuration: 180 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

@@ -3,6 +3,7 @@ import { authorizePortal, dashboardSupabase, isResponse } from "../_lib/dashboar
 import { cleanText, json, validatePublicPost } from "../_lib/assistant/security.js";
 import { AI_CREDIT_PACKAGES, type AiCreditPackage } from "../_lib/portal/ai-config.js";
 
+// This route stays under /api/dashboard so the HttpOnly portal session cookie is sent.
 export const config = { runtime: "nodejs", maxDuration: 20 };
 
 function portalOrigin(request: Request): string {
