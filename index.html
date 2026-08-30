@@ -18,6 +18,11 @@
     <meta property="og:url" content="https://swisscompact.com/" />
     <link rel="canonical" href="https://swisscompact.com/" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SwissCompact" />
     <title>SwissCompact – Ein Tag in der Schweiz</title>
   </head>
   <body id="top">
@@ -301,6 +306,12 @@
         >Projekt starten <span aria-hidden="true">↗</span></a>
       </nav>
       <div class="header-actions">
+        <button
+          class="pwa-install"
+          type="button"
+          data-pwa-install
+          hidden
+        >App installieren</button>
         <a
           class="contact"
           href="#projekt-starten"

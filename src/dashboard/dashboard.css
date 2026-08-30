@@ -65,7 +65,8 @@ aside nav button:hover { color:#eee; background:#19191c; }
 aside nav button.active { background:#221619; color:#fff; }
 aside nav button.active:before { content:""; position:absolute; left:0; top:9px; bottom:9px; width:3px; border-radius:2px; background:var(--red); }
 aside nav button > b { margin-left:auto; min-width:20px; height:20px; border-radius:10px; background:#2d2d31; display:grid; place-items:center; font-size:10px; }
-.sidebar-foot { margin-top:auto; padding:16px 5px 0; border-top:1px solid #29292d; display:grid; grid-template-columns:36px 1fr 40px; align-items:center; gap:9px; }
+.sidebar-foot { margin-top:auto; padding:16px 5px 0; border-top:1px solid #29292d; display:grid; grid-template-columns:36px 1fr 40px 40px; align-items:center; gap:9px; }
+.sidebar-foot [data-pwa-install][hidden] { display:none; }
 .avatar { width:36px; height:36px; border-radius:50%; display:grid; place-items:center; background:#53202a; color:#ff5575; font-size:11px; font-weight:800; }
 .sidebar-foot div:nth-child(2) { display:grid; min-width:0; }
 .sidebar-foot b { font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

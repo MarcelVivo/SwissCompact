@@ -42,11 +42,18 @@ for (const viewport of viewports) {
     };
     const touchTargets = Array.from(document.querySelectorAll(
       ".menu-toggle, .hero-actions button, .hero-actions .button, .showroom-funnel__trigger, .sales-assistant__trigger",
-    )).map((element) => {
-      const rect = element.getBoundingClientRect();
-      return { selector: element.className, width: rect.width, height: rect.height };
-    });
+    ))
+      // Elements hidden at this viewport (e.g. the secondary hero link
+      // dropped on the shortest phones to avoid overlapping the floating
+      // chat/showroom buttons) have no touch target to assert on.
+      .filter((element) => getComputedStyle(element).display !== "none")
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { selector: element.className, width: rect.width, height: rect.height };
+      });
     const hero = bounds("#station-1");
+    const heroBand = bounds(".intro__scroll-media");
+    const heroText = bounds(".station--hero");
     return {
       hero,
       touchTargets,
@@ -57,6 +64,16 @@ for (const viewport of viewports) {
       horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
       navInert: document.querySelector("#primary-nav")?.hasAttribute("inert") ?? false,
       contentFits: Boolean(hero && hero.top >= 0 && hero.bottom <= window.innerHeight),
+      // Mobile hero (station 1): the video band is pinned to the top at
+      // full device width, sized by its real aspect ratio (960x542), with
+      // the kicker/title/CTAs sitting below it on a black gradient rather
+      // than floating over the video image.
+      heroBandWidth: heroBand?.width,
+      heroBandHeight: heroBand?.height,
+      heroBandExpectedHeight: window.innerWidth * (542 / 960),
+      heroTextClearsBand: Boolean(heroBand && heroText && heroText.top >= heroBand.bottom - 1),
+      introBackgroundIsGradient: getComputedStyle(document.querySelector("#intro"))
+        .backgroundImage.includes("gradient"),
     };
   });
   await page.screenshot({ path: `/tmp/swisscompact-mobile-${viewport.name}-hero.png` });
@@ -218,8 +235,10 @@ for (const viewport of viewports) {
     && initial.contentFits
     && initial.pictogramCount > 10
     && initial.heroUsesSvgPictograms
-    && heroVideo?.objectFit === "contain"
-    && heroVideo.renderedContentWidth >= heroVideo.viewportWidth - 1
+    && Math.abs(initial.heroBandHeight - initial.heroBandExpectedHeight) <= 2
+    && initial.heroTextClearsBand
+    && initial.introBackgroundIsGradient
+    && heroVideo?.objectFit === "cover"
     && heroVideo.funnel?.width >= heroVideo.viewportWidth - 100
     && lateHeroVideo?.transform === "none"
     && lateHeroVideo.mediaWidth >= lateHeroVideo.viewportWidth - 1

@@ -536,6 +536,29 @@ button {
   transition: border-color 0.3s, background-color 0.3s;
 }
 
+.pwa-install {
+  padding: 9px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 30px;
+  background: transparent;
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.3s, background-color 0.3s;
+}
+
+.pwa-install:hover,
+.pwa-install:focus-visible {
+  border-color: var(--red);
+  background: rgba(200, 16, 46, 0.12);
+  outline: none;
+}
+
+.pwa-install[hidden] {
+  display: none;
+}
+
 .menu-toggle {
   position: relative;
   display: none;
@@ -14129,6 +14152,23 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   }
 }
 
+/*
+ * Installed standalone PWA has no browser chrome reserving space near the
+ * notch/Dynamic Island, so the showroom's top-docked header needs its own
+ * safe-area clearance here — same pattern already used for `.primary-nav`.
+ */
+@media (display-mode: standalone) and (max-width: 820px) {
+  .showroom-focus-header {
+    top: calc(72px + env(safe-area-inset-top));
+  }
+}
+
+@media (display-mode: standalone) and (min-width: 821px) {
+  .showroom-focus-header {
+    top: calc(78px + env(safe-area-inset-top));
+  }
+}
+
 @media (max-width: 700px) {
   .showroom-focus-header {
     top: 72px;
@@ -17929,6 +17969,85 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     visibility: hidden;
     opacity: 0;
     pointer-events: none;
+  }
+}
+
+/*
+ * Mobile hero (station 1 only): pin the scroll video to the top at full
+ * device width using its real aspect ratio instead of centre-letterboxing
+ * it, fill the remaining screen height with a black gradient, and move the
+ * hero kicker/title/description/CTAs onto that black area instead of
+ * floating them over the video image. Scoped to `.station--hero` (not the
+ * shared `.station` rules used by stations 2-11) and must stay physically
+ * after the `.station--hero` block above (max-width: 640px, ~line 17580)
+ * to win the cascade — media queries carry no extra specificity, so source
+ * order decides here.
+ */
+@media (max-width: 640px) and (orientation: portrait) {
+  #intro {
+    background: linear-gradient(180deg, #060607 0%, #060607 55%, #000 100%);
+  }
+
+  .intro__media,
+  .intro__scroll-media {
+    top: 0;
+    right: 0;
+    left: 0;
+    bottom: auto;
+    aspect-ratio: 960 / 542;
+  }
+
+  .intro__scroll-video {
+    object-fit: cover;
+  }
+
+  .station--hero {
+    top: calc(100vw * 542 / 960 + 12px);
+    right: var(--mobile-gutter);
+    bottom: auto;
+    left: var(--mobile-gutter);
+    max-width: none;
+  }
+
+  /*
+   * Tighten vertical rhythm so the kicker/title/description/CTAs still
+   * clear the bottom edge on the shortest tested phone (320x568) now that
+   * they start further down the screen, below the video band.
+   */
+  .station--hero .station__kicker {
+    margin-bottom: 6px;
+  }
+
+  .station--hero p {
+    margin-top: 8px;
+  }
+
+  .station--hero .hero-actions {
+    margin-top: 14px;
+  }
+
+  /*
+   * The intro brand flourish is a centered logo overlay meant to sit over
+   * the hero video before scrolling starts. With the hero text now pinned
+   * just below the video, keep this centered within the video band instead
+   * of at the old 35%-of-viewport position, so it no longer collides with
+   * the title on first load.
+   */
+  .journey-brand--intro {
+    top: calc(50vw * 542 / 960);
+  }
+}
+
+/*
+ * On the shortest phones (iPhone SE class), the top-anchored hero content
+ * above still reaches far enough down to collide with the always-visible
+ * floating chat/showroom-configurator buttons pinned to the bottom edge.
+ * Drop the secondary "Projekt besprechen" text link there — the floating
+ * buttons already cover that intent — rather than let it overlap them.
+ */
+@media (max-width: 640px) and (orientation: portrait) and (max-height: 600px) {
+  .station--hero .hero-actions__link {
+    display: none;
   }
 }
 

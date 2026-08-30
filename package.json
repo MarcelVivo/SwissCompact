@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && tsc --noEmit -p api && vite build && cp -R public/site/. dist/",
     "optimize:videos": "bash scripts/optimize-videos.sh",
+    "icons:generate": "node scripts/generate-pwa-icons.mjs",
     "preview": "vite preview",
     "test:assistant": "node scripts/sales-assistant-smoke.mjs",
     "test:assistant-latency": "node scripts/sales-assistant-latency-smoke.mjs",

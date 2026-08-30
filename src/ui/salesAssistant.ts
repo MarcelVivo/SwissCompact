@@ -395,6 +395,7 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
       requestContextField.minLength = 10;
       requestContextField.maxLength = 1600;
       requestContextField.required = true;
+      requestContextField.addEventListener("focus", handleInputFocus);
       wrapper.append(requestContextField);
       form.append(wrapper);
 
@@ -851,17 +852,28 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     else stopLiveConversation();
   };
 
+  // iOS Safari ignores the page's `interactive-widget=resizes-content`
+  // viewport hint, so the on-screen keyboard can cover the fixed-position
+  // panel's composer when the textarea gets focus. Nudge it into view as a
+  // defensive fallback — cheap, and harmless on browsers that already
+  // resize the visual viewport correctly.
+  const handleInputFocus = () => {
+    window.setTimeout(() => input.scrollIntoView({ block: "end", behavior: "smooth" }), 250);
+  };
+
   trigger.addEventListener("click", handleTriggerClick);
   closeButton?.addEventListener("click", handleCloseClick);
   window.addEventListener("keydown", handleKeydown);
   composer.addEventListener("submit", handleComposerSubmit);
   liveButton?.addEventListener("click", handleLiveClick);
+  input.addEventListener("focus", handleInputFocus);
   cleanupListeners.push(
     () => trigger.removeEventListener("click", handleTriggerClick),
     () => closeButton?.removeEventListener("click", handleCloseClick),
     () => window.removeEventListener("keydown", handleKeydown),
     () => composer.removeEventListener("submit", handleComposerSubmit),
     () => liveButton?.removeEventListener("click", handleLiveClick),
+    () => input.removeEventListener("focus", handleInputFocus),
   );
 
   // Other "Projekt besprechen"-style CTAs across the page (hero, project-cta

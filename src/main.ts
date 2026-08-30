@@ -24,6 +24,11 @@ import { mountSiteNavigation } from "./ui/siteNavigation";
 import { mountSolutionFinderScenes } from "./ui/solutionFinderScenes";
 import { mountSalesAssistant } from "./ui/salesAssistant";
 import { mountShowroomFunnel } from "./ui/showroomFunnel";
+import { registerServiceWorker } from "./pwa/registerServiceWorker";
+import { mountInstallPrompt } from "./pwa/installPrompt";
+
+registerServiceWorker({ scope: "/" });
+mountInstallPrompt("[data-pwa-install]");
 
 const firstSceneVideoUrl = "/media/station1-scroll-scene.mp4";
 const firstSceneReverseVideoUrl = "/media/station1-scroll-scene-reverse.mp4";
