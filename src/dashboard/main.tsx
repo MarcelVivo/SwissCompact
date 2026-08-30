@@ -45,6 +45,23 @@ async function api(path: string, options?: RequestInit) {
   return body;
 }
 
+// Every dashboard view assumes these arrays exist and maps/reduces over
+// them directly without guards. A malformed or truncated response (a
+// backend bug, a transient proxy error) would otherwise hard-crash the
+// whole render tree instead of just showing empty sections.
+const overviewArrayFields = ["clients", "opportunities", "projects", "tasks", "quotes", "invoices", "founderTransactions", "aiJobs", "audit", "approvals", "profiles"] as const;
+function normalizeOverview(raw: any): Data {
+  const normalized: any = { ...raw };
+  for (const field of overviewArrayFields) {
+    if (!Array.isArray(normalized[field])) normalized[field] = [];
+  }
+  if (!normalized.profile || typeof normalized.profile !== "object") {
+    throw new Error("Unvollständige Antwort vom Server – bitte neu laden.");
+  }
+  if (!normalized.settings || typeof normalized.settings !== "object") normalized.settings = {};
+  return normalized as Data;
+}
+
 function decodeBase64Url(value: string): ArrayBuffer {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
   const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
@@ -249,7 +266,7 @@ function InvoiceDrawer({ invoice, project, approval, currentProfile, close, subm
 
 function Finance({ data, mutate }: { data: Data; mutate: Function }) {
   const marcel = data.founderTransactions.filter(t => t.paid_by === "marcel").reduce((s, t) => s + Number(t.amount_chf), 0); const thomas = data.founderTransactions.filter(t => t.paid_by === "thomas").reduce((s, t) => s + Number(t.amount_chf), 0); const companyExpenses = data.founderTransactions.filter(t => t.transaction_type === "company_expense").reduce((s, t) => s + Number(t.amount_chf), 0);
-  return <><header className="page-head"><div><p className="eyebrow">Interne Buchhaltung</p><h1>Finanzen</h1><p>Doppelte Buchhaltung, Belege und monatlicher 50/50-Ausgleich.</p></div><button className="secondary" disabled><Icon name="plus"/>Buchung erfassen</button></header><section className="notice"><Icon name="finance"/><div><b>Vorgründungsphase</b><span>SwissCompact Kollektivgesellschaft ist für 2027 geplant. Bis dahin werden Vorgänge Marcel Spahr als Rechnungssteller zugeordnet.</span></div></section><section className="stats"><Stat label="Marcel ausgelegt" value={money(marcel)} note="Gesellschafterdarlehen"/><Stat label="Thomas ausgeglichen" value={money(thomas)} note="Überweisung an Marcel"/><Stat label="Wirtschaftliche Belastung" value={money(companyExpenses / 2)} note="Ziel pro Inhaber"/><Stat label="MWST-Monitor" value={money(0)} note="Warnung ab CHF 80’000"/></section><section className="panel table-panel"><PanelHead title="Gründerbewegungen"/><table><thead><tr><th>Datum</th><th>Beschreibung</th><th>Bezahlt von</th><th>Kategorie</th><th>Beleg</th><th>Betrag</th></tr></thead><tbody>{data.founderTransactions.map(t => <tr key={t.id}><td>{shortDate(t.transaction_date)}</td><td><strong>{t.description}</strong></td><td>{responsibility[t.paid_by]}</td><td><input className="inline-input" defaultValue={t.category || ""} placeholder="Kategorie" onBlur={e => { if (e.target.value !== (t.category || "")) mutate({ action: "update_founder_transaction", id: t.id, category: e.target.value }); }}/></td><td><span className={`tag ${t.receipt_path ? "success" : "warning"}`}>{t.receipt_path ? "Vorhanden" : "Ausstehend"}</span></td><td><b>{money(t.amount_chf)}</b></td></tr>)}</tbody></table></section><section className="finance-grid"><div className="panel"><PanelHead title="Zahlungslogik Projekte"/><div className="large-pay"><div><strong>50 %</strong><span>Anzahlung vor Start</span></div><div><strong>30 %</strong><span>bei Montagebeginn</span></div><div><strong>20 %</strong><span>nach Abnahme</span></div></div></div><div className="panel"><PanelHead title="Kontrolle"/><ul className="check-list"><li>Vier-Augen-Freigabe für Zahlungen</li><li>Korrekturbuchungen statt Löschen</li><li>CSV und CAMT.053 vorbereitet</li><li>Monatsausgleich erst nach Bestätigung</li></ul></div></section></>;
+  return <><header className="page-head"><div><p className="eyebrow">Interne Buchhaltung</p><h1>Finanzen</h1><p>Doppelte Buchhaltung, Belege und monatlicher 50/50-Ausgleich.</p></div><button className="secondary" disabled title="Manuelle Buchungserfassung folgt in einer späteren Version"><Icon name="plus"/>Buchung erfassen</button></header><section className="notice"><Icon name="finance"/><div><b>Vorgründungsphase</b><span>SwissCompact Kollektivgesellschaft ist für 2027 geplant. Bis dahin werden Vorgänge Marcel Spahr als Rechnungssteller zugeordnet.</span></div></section><section className="stats"><Stat label="Marcel ausgelegt" value={money(marcel)} note="Gesellschafterdarlehen"/><Stat label="Thomas ausgeglichen" value={money(thomas)} note="Überweisung an Marcel"/><Stat label="Wirtschaftliche Belastung" value={money(companyExpenses / 2)} note="Ziel pro Inhaber"/><Stat label="MWST-Monitor" value={money(0)} note="Warnung ab CHF 80’000"/></section><section className="panel table-panel"><PanelHead title="Gründerbewegungen"/><table><thead><tr><th>Datum</th><th>Beschreibung</th><th>Bezahlt von</th><th>Kategorie</th><th>Beleg</th><th>Betrag</th></tr></thead><tbody>{data.founderTransactions.map(t => <tr key={t.id}><td>{shortDate(t.transaction_date)}</td><td><strong>{t.description}</strong></td><td>{responsibility[t.paid_by]}</td><td><input className="inline-input" defaultValue={t.category || ""} placeholder="Kategorie" onBlur={e => { if (e.target.value !== (t.category || "")) mutate({ action: "update_founder_transaction", id: t.id, category: e.target.value }); }}/></td><td><span className={`tag ${t.receipt_path ? "success" : "warning"}`}>{t.receipt_path ? "Vorhanden" : "Ausstehend"}</span></td><td><b>{money(t.amount_chf)}</b></td></tr>)}</tbody></table></section><section className="finance-grid"><div className="panel"><PanelHead title="Zahlungslogik Projekte"/><div className="large-pay"><div><strong>50 %</strong><span>Anzahlung vor Start</span></div><div><strong>30 %</strong><span>bei Montagebeginn</span></div><div><strong>20 %</strong><span>nach Abnahme</span></div></div></div><div className="panel"><PanelHead title="Kontrolle"/><ul className="check-list"><li>Vier-Augen-Freigabe für Zahlungen</li><li>Korrekturbuchungen statt Löschen</li><li>CSV und CAMT.053 vorbereitet</li><li>Monatsausgleich erst nach Bestätigung</li></ul></div></section></>;
 }
 
 const bots = [
@@ -278,7 +295,7 @@ function Modal({ type, clients, projects, close, submit }: { type: string; clien
 
 function Dashboard({ initial, logout }: { initial: Data; logout: () => void }) {
   const [data, setData] = useState(initial); const [view, setView] = useState<View>("overview"); const [modal, setModal] = useState<string | null>(null); const [menu, setMenu] = useState(false); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState("");
-  const refresh = useCallback(async () => setData(await api("overview")), []);
+  const refresh = useCallback(async () => setData(normalizeOverview(await api("overview"))), []);
   async function mutate(payload: any) { setBusy(true); setNotice(""); try { const result = await api("records", { method: "POST", body: JSON.stringify(payload) }); await refresh(); setNotice("Änderung gespeichert"); return result; } catch (e) { setNotice((e as Error).message); throw e; } finally { setBusy(false); } }
   const content = useMemo(() => ({ overview: <Overview data={data} go={setView}/>, pipeline: <Pipeline data={data} mutate={mutate} openModal={setModal}/>, clients: <Clients data={data} openModal={setModal} mutate={mutate}/>, quotes: <Quotes data={data} mutate={mutate}/>, projects: <Projects data={data} mutate={mutate}/>, tasks: <Tasks data={data} mutate={mutate} openModal={setModal}/>, invoices: <Invoices data={data} mutate={mutate}/>, finance: <Finance data={data} mutate={mutate}/>, ai: <AiBots data={data}/>, marketing: <Marketing/>, systems: <Systems/>, security: <Security data={data} refresh={refresh}/> })[view], [data, view, refresh]);
   useEffect(() => { mountInstallPrompt("[data-pwa-install]"); }, []);
@@ -287,7 +304,7 @@ function Dashboard({ initial, logout }: { initial: Data; logout: () => void }) {
 
 function App() {
   const [state, setState] = useState<any>({ loading: true });
-  const boot = useCallback(async () => { setState({ loading: true }); try { const session = await api("session"); if (session.mfaRequired || session.mfaEnrollmentRequired) setState({ loading: false, session }); else setState({ loading: false, data: await api("overview") }); } catch { setState({ loading: false }); } }, []);
+  const boot = useCallback(async () => { setState({ loading: true }); try { const session = await api("session"); if (session.mfaRequired || session.mfaEnrollmentRequired) setState({ loading: false, session }); else setState({ loading: false, data: normalizeOverview(await api("overview")) }); } catch { setState({ loading: false }); } }, []);
   useEffect(() => { boot(); }, [boot]);
   if (state.loading) return <div className="boot"><div className="brand"><span>Swiss</span><b>Compact</b></div><i/></div>;
   if (state.session) return <Mfa state={state.session} onVerified={boot}/>;
