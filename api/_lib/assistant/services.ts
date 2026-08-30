@@ -1,7 +1,4 @@
-// Placeholder content, drafted from swisscompact.com's own site copy
-// (impact section, Lösungsfinder tabs, Projektprinzip, Media Studio,
-// Unternehmen list) rather than an authoritative offer/pricing sheet.
-// Needs Marcel's factual review before this goes live.
+// Authoritative SwissCompact service catalogue used by the public sales assistant.
 
 export type AssistantServiceCategory =
   | "strategy"
@@ -24,6 +21,30 @@ export type AssistantServiceDefinition = {
 };
 
 export const ASSISTANT_SERVICE_LIBRARY: AssistantServiceDefinition[] = [
+  {
+    id: "website-brand-platform",
+    name: "Website, Marke & digitale Präsenz",
+    category: "marketing",
+    description:
+      "Konzipiert und erstellt eine vollständige Unternehmenswebsite inklusive Strategie, UX, Design, Entwicklung, Inhalten, Bildern, Texten sowie SEO- und GEO-Optimierung.",
+    solves: ["fragmentierte Online-Präsenz", "unklare Nutzerführung", "fehlende Inhalte", "geringe Auffindbarkeit"],
+    suitableFor: ["Neugründungen", "Relaunch", "wachsende Unternehmen", "Unternehmen mit mehreren Leistungen oder Standorten"],
+    dependencies: ["digital-audit"],
+    incompatibleWith: [],
+    priority: 96,
+  },
+  {
+    id: "business-operations-platform",
+    name: "Individuelles Business Dashboard",
+    category: "software",
+    description:
+      "Bündelt CRM, ERP, Projekte, Offerten, Rechnungen, Marketing und kundenspezifische Abläufe in einem Dashboard auf der eigenen Domain.",
+    solves: ["isolierte Einzellösungen", "manuelle Administration", "fehlender Kundenüberblick", "Medienbrüche zwischen Teams"],
+    suitableFor: ["KMU", "Dienstleister", "Retail", "mehrere Standorte", "individuelle Geschäftsprozesse"],
+    dependencies: ["digital-audit"],
+    incompatibleWith: [],
+    priority: 95,
+  },
   {
     id: "digital-audit",
     name: "Digitale Standortbestimmung",
@@ -50,15 +71,27 @@ export const ASSISTANT_SERVICE_LIBRARY: AssistantServiceDefinition[] = [
   },
   {
     id: "content-management-system",
-    name: "Content-Management-System",
+    name: "SwissCompact Display Portal",
     category: "software",
     description:
-      "Ein System steuert Inhalte auf einzelnen Displays und ganzen Standortnetzen zentral und aktuell.",
-    solves: ["manuelles Bespielen jedes Displays", "veraltete Inhalte", "kein Standortüberblick"],
+      "Die eigenständige SwissCompact Software steuert Inhalte, Kampagnen, Displays und LED-Netzwerke zentral – unter swisscompact.com/portal oder als White-Label-Portal auf der Kundendomain.",
+    solves: ["manuelles Bespielen jedes Displays", "veraltete Inhalte", "kein Standortüberblick", "komplizierte Content-Erstellung"],
     suitableFor: ["mehrere Displays", "mehrere Standorte", "regelmässig wechselnde Inhalte"],
     dependencies: ["hardware-displays-led oder bestehende Displays"],
     incompatibleWith: [],
     priority: 92,
+  },
+  {
+    id: "ai-business-automation",
+    name: "KI-Bots & Prozessautomatisierung",
+    category: "automation",
+    description:
+      "Unterstützt Administration, Kundenpflege, Marketing und Content-Erstellung direkt in Dashboard und Display Portal mit klar kontrollierten KI-Abläufen.",
+    solves: ["wiederkehrende Handarbeit", "langsame Content-Produktion", "uneinheitliche Kundenpflege", "fehlende Prozessunterstützung"],
+    suitableFor: ["wachsende Teams", "regelmässige Kampagnen", "mehrere Standorte", "individuelle Workflows"],
+    dependencies: ["business-operations-platform oder content-management-system"],
+    incompatibleWith: [],
+    priority: 86,
   },
   {
     id: "hardware-displays-led",

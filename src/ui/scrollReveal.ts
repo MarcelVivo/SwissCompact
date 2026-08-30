@@ -6,6 +6,9 @@ const revealSelectors = [
   "#marketing-content .section-heading",
   "#marketing-content .solution-finder__intro",
   "#marketing-content .solution-result",
+  "#marketing-content .business-platform__intro",
+  "#marketing-content .business-platform__card",
+  "#marketing-content .business-platform__service",
   "#marketing-content .impact-card",
   "#marketing-content .industry-card",
   "#marketing-content .project-steps article",
@@ -20,6 +23,7 @@ const revealSelectors = [
 
 const staggerGroups = [
   ".impact-grid",
+  ".business-platform__grid",
   ".industry-row",
   ".project-steps",
   ".media-wall",

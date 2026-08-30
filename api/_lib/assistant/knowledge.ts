@@ -1,8 +1,10 @@
-// Placeholder content, drafted from swisscompact.com's own site copy.
-// Needs Marcel's factual review before this goes live — this is inference
-// from marketing copy, not an authoritative company fact sheet.
-
 export const ASSISTANT_KNOWLEDGE = `Über SwissCompact:
+SwissCompact entwickelt digitale Gesamtlösungen für Unternehmen. Dazu gehören vollständige Websites mit Strategie, UX, Design, Entwicklung, Inhalten, Bildern, Texten sowie SEO- und GEO-Optimierung; individuell zugeschnittene Business Dashboards für CRM, ERP, Projekte, Marketing und Administration; die eigenständige SwissCompact Display-Portal-Software; sowie Displays, LED-Systeme, Montage, Einrichtung, Wartung und Support.
+
+Das Business Dashboard kann auf der Domain des Kunden betrieben werden, zum Beispiel firmaxy.ch/dashboard. Das Display Portal ist getrennt davon erreichbar: zentral unter swisscompact.com/portal oder als White-Label-Ausführung unter der Kundendomain, zum Beispiel firmaxy.ch/portal. Kunden sehen ausschliesslich ihre eigenen Daten, Benutzer, Standorte, Displays und Inhalte.
+
+Das Display Portal steuert Bilder, Texte, Videos, Kampagnen, Zeitpläne, Displays und LED-Netzwerke. KI-Bots unterstützen bei Content-Erstellung, Marketing, Administration und wiederkehrenden Abläufen. Die Software gehört zu den SwissCompact Service- und Software-Abonnements Essential, Business und Enterprise. Die konkrete Preislogik wird nach Funktionsumfang, Standorten und Displays festgelegt; der Berater erfindet keine Preise.
+
 SwissCompact verbindet Strategie, Inhalte und Technologie zu digitalen Räumen, die verständlich kommunizieren und nachhaltig Eindruck hinterlassen. Das Angebot deckt vier Disziplinen ab: Strategie (Ziele, Räume und Customer Journey verstehen), Media (Content, der für den Ort entwickelt ist), System (Displays, Software und Integrationen) und Betrieb (Rollout, Monitoring und Support).
 
 SwissCompact denkt nicht in Einzelgeräten, sondern in funktionierenden Erlebnissen – von der ersten Idee bis zum täglichen Betrieb: strategische Beratung, Content- und Motion-Design, Hardware- und Systemintegration, Rollout, Betrieb und Support, alles aus einer Hand mit einem Ansprechpartner.
@@ -19,6 +21,8 @@ export const ASSISTANT_SECTION_CONTEXT: Record<string, string> = {
     "Abschnitt 'Was SwissCompact bewirkt' – vier Wirkungsfelder: Aufmerksamkeit gewinnen, Entscheidungen erleichtern, Inhalte zentral steuern, Räume emotionalisieren.",
   loesungen:
     "Lösungsfinder – Besucher wählt zwischen den Wirkungszielen Verkaufen, Informieren, Orientieren, Begeistern, Monetarisieren.",
+  plattform:
+    "SwissCompact Gesamtlösung – Website und Marke, individuelles Business Dashboard, getrenntes Display Portal mit White-Label-Option sowie Hardware, Montage und Betrieb. Software und Service werden in den Paketen Essential, Business und Enterprise angeboten.",
   branchen:
     "Virtual Showroom – interaktiver Konfigurator, branchenspezifische Räume (Retail, Gastronomie, Hospitality, Gesundheit, Bildung, Corporate, Mobilität, Immobilien, Kultur, Sport, Beauty).",
   projekte:
