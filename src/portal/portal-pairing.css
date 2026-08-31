@@ -1,0 +1,9 @@
+.pairing-result-actions {
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.pairing-result-actions button {
+  width: 100%;
+  margin: 0;
+}

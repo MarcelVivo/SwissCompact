@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./player.css";
 
@@ -16,25 +16,38 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-function Pairing({ initialDisplayId, onPaired }: { initialDisplayId: string; onPaired: (token: string, displayId: string) => void }) {
+function Pairing({ initialDisplayId, initialCode, autoConnect, onPaired }: { initialDisplayId: string; initialCode: string; autoConnect: boolean; onPaired: (token: string, displayId: string) => void }) {
   const [displayId, setDisplayId] = useState(initialDisplayId);
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  async function pair(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
+  const attemptedAutomaticConnection = useRef(false);
+  const connect = useCallback(async (nextDisplayId: string, nextCode: string) => {
+    setBusy(true); setError("");
     try {
-      const result = await request<{ token: string }>("/api/dashboard/records?device=pair", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayId: displayId.trim(), code: code.trim(), softwareVersion: PLAYER_VERSION }) });
-      onPaired(result.token, displayId.trim());
+      const cleanDisplayId = nextDisplayId.trim();
+      const result = await request<{ token: string }>("/api/dashboard/records?device=pair", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayId: cleanDisplayId, code: nextCode.trim(), softwareVersion: PLAYER_VERSION }) });
+      onPaired(result.token, cleanDisplayId);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Aktivierung fehlgeschlagen"); }
     finally { setBusy(false); }
+  }, [onPaired]);
+  useEffect(() => {
+    if (!autoConnect || !initialDisplayId || !initialCode || attemptedAutomaticConnection.current) return;
+    attemptedAutomaticConnection.current = true;
+    void connect(initialDisplayId, initialCode);
+  }, [autoConnect, connect, initialCode, initialDisplayId]);
+  function pair(event: FormEvent) {
+    event.preventDefault();
+    void connect(displayId, code);
   }
-  return <main className="pairing"><section><div className="brand">Swiss<span>Compact</span></div><div className="eyebrow">Display Player</div><h1>Display aktivieren</h1><p>Geben Sie die Display-ID und den Aktivierungscode aus dem SwissCompact Portal ein.</p><form onSubmit={pair}><label>Display-ID<input value={displayId} onChange={(event) => setDisplayId(event.target.value)} required autoComplete="off" /></label><label>Aktivierungscode<input className="code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} required maxLength={8} autoComplete="one-time-code" /></label>{error && <div className="error">{error}</div>}<button disabled={busy}>{busy ? "Wird verbunden …" : "Display verbinden"}</button></form><small>Der Code ist 30 Minuten gültig und kann nur einmal verwendet werden.</small></section></main>;
+  return <main className="pairing"><section><div className="brand">Swiss<span>Compact</span></div><div className="eyebrow">Display Player</div><h1>Display aktivieren</h1><p>{autoConnect && busy ? "QR-Code erkannt. Der Bildschirm wird automatisch verbunden …" : "Geben Sie zuerst die Bildschirm-ID und danach den Aktivierungscode aus dem SwissCompact Portal ein."}</p><form onSubmit={pair}><label>1 · Bildschirm-ID<input value={displayId} onChange={(event) => setDisplayId(event.target.value)} required autoComplete="off" /></label><label>2 · Aktivierungscode<input className="code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} required maxLength={8} autoComplete="one-time-code" /></label>{error && <div className="error">{error}</div>}<button disabled={busy}>{busy ? "Wird verbunden …" : "Bildschirm verbinden"}</button></form><small>Der Aktivierungscode ist 30 Minuten gültig und kann nur einmal verwendet werden.</small></section></main>;
 }
 
 function Player() {
   const query = new URLSearchParams(location.search);
   const queryDisplayId = query.get("display") || "";
+  const queryActivationCode = (query.get("code") || "").toUpperCase();
+  const autoConnectPairing = query.get("connect") === "1";
   const previewDisplayId = query.get("preview") || "";
   const forcePairing = query.get("pair") === "1";
   const [token, setToken] = useState(() => forcePairing || previewDisplayId ? "" : localStorage.getItem(TOKEN_KEY) || "");
@@ -92,11 +105,13 @@ function Player() {
     setToken("");
   }
 
-  if (!previewDisplayId && !token) return <Pairing initialDisplayId={queryDisplayId || localStorage.getItem(DISPLAY_KEY) || ""} onPaired={(nextToken, displayId) => {
+  if (!previewDisplayId && !token) return <Pairing initialDisplayId={queryDisplayId || localStorage.getItem(DISPLAY_KEY) || ""} initialCode={queryActivationCode} autoConnect={autoConnectPairing} onPaired={(nextToken, displayId) => {
     localStorage.setItem(TOKEN_KEY, nextToken);
     localStorage.setItem(DISPLAY_KEY, displayId);
     const cleanUrl = new URL(location.href);
     cleanUrl.searchParams.delete("pair");
+    cleanUrl.searchParams.delete("code");
+    cleanUrl.searchParams.delete("connect");
     history.replaceState(null, "", cleanUrl);
     setToken(nextToken);
     void loadConfig(nextToken);

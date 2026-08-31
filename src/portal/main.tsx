@@ -1,11 +1,13 @@
 import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DetailedError, Upload } from "tus-js-client";
+import QRCode from "qrcode";
 import "./portal.css";
 import "./portal-media.css";
 import "./portal-ai.css";
 import "./portal-campaign.css";
 import "./portal-devices.css";
+import "./portal-pairing.css";
 import "./portal-records.css";
 
 type PortalProfile = { displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
@@ -406,8 +408,15 @@ function DisplaySetupDialog({ sites, areas, onClose, onCreated }: { sites: Site[
 function PairingDialog({ pairing, onClose }: { pairing: PairingInfo; onClose: () => void }) {
   const playerUrl = `${location.origin}/player?display=${encodeURIComponent(pairing.displayId)}&pair=1`;
   const [copied, setCopied] = useState(false);
-  async function copy() { await navigator.clipboard.writeText(`${playerUrl}\nAktivierungscode: ${pairing.code}`); setCopied(true); }
-  return <div className="dialog-backdrop"><section className="dialog pairing-result" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose}>×</button><div className="eyebrow">Einmaliger Aktivierungscode</div><h2>{pairing.displayName || "Bildschirm"}</h2><p>Öffnen Sie den Player auf dem Abspielgerät und geben Sie diesen Code ein.</p><div className="pairing-code">{pairing.code}</div><div className="pairing-meta"><span>Bildschirm-ID</span><code>{pairing.displayId}</code><span>Player-Adresse</span><a href={playerUrl} target="_blank" rel="noreferrer">{playerUrl}</a></div><button className="primary" onClick={() => void copy()}>{copied ? "Kopiert" : "Adresse und Code kopieren"}</button><small>Gültig bis {new Date(pairing.expiresAt).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })} Uhr. Danach kann jederzeit ein neuer Code erstellt werden.</small></section></div>;
+  const [qrCode, setQrCode] = useState("");
+  const qrPlayerUrl = `${playerUrl}&code=${encodeURIComponent(pairing.code)}&connect=1`;
+  useEffect(() => {
+    let active = true;
+    void QRCode.toDataURL(qrPlayerUrl, { width: 360, margin: 1, errorCorrectionLevel: "M", color: { dark: "#111113", light: "#ffffff" } }).then((url) => { if (active) setQrCode(url); });
+    return () => { active = false; };
+  }, [qrPlayerUrl]);
+  async function copy() { await navigator.clipboard.writeText(`Bildschirm-ID: ${pairing.displayId}\nAktivierungscode: ${pairing.code}\nPlayer-Adresse: ${playerUrl}`); setCopied(true); }
+  return <div className="dialog-backdrop"><section className="dialog pairing-result" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose}>×</button><div className="eyebrow">Bildschirm verbinden</div><h2>{pairing.displayName || "Bildschirm"}</h2><p>Scannen Sie den QR-Code auf dem Abspielgerät oder übertragen Sie die beiden Angaben in dieser Reihenfolge.</p><div className="pairing-connect-grid"><div className="pairing-manual"><div className="pairing-field"><span>1 · Bildschirm-ID</span><code>{pairing.displayId}</code></div><div className="pairing-field"><span>2 · Aktivierungscode</span><strong className="pairing-code">{pairing.code}</strong></div></div><div className="pairing-qr"><span>Schnell verbinden</span>{qrCode ? <img src={qrCode} alt="QR-Code zur automatischen Verbindung des Bildschirms"/> : <div className="pairing-qr-loading">QR-Code wird erstellt …</div>}<small>Mit der Kamera des Abspielgeräts scannen</small></div></div><div className="pairing-meta"><span>Player-Adresse für manuelle Eingabe</span><a href={playerUrl} target="_blank" rel="noreferrer">{playerUrl}</a></div><div className="pairing-result-actions"><button className="primary" onClick={() => void copy()}>{copied ? "Kopiert" : "Angaben kopieren"}</button></div><small>Der Aktivierungscode ist bis {new Date(pairing.expiresAt).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })} Uhr gültig und kann nur einmal verwendet werden.</small></section></div>;
 }
 
 function localDateTime(value?: string): string {
