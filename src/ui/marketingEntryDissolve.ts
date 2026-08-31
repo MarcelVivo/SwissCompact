@@ -217,28 +217,7 @@ export function mountMarketingEntryDissolve(): MarketingEntryDissolve {
 
   const drawSurface = (progress: number) => {
     context.clearRect(0, 0, width, height);
-    const pixelPath = new Path2D();
 
-    cells.forEach((cell) => {
-      if (progress <= cell.threshold) return;
-      const age = smoothstep((progress - cell.threshold) / 0.24);
-      const size = 1.5 + age * (gridSize + 0.7);
-      const jitter = (1 - age) * gridSize * 0.34;
-      const x =
-        cell.x
-        + (cell.secondaryNoise - 0.5) * jitter
-        - size / 2;
-      const y =
-        cell.y
-        + (cell.noise - 0.5) * jitter
-        - size / 2;
-      pixelPath.rect(x, y, size, size);
-    });
-
-    context.save();
-    context.clip(pixelPath);
-    context.fillStyle = "#f1efe9";
-    context.fillRect(0, 0, width, height);
     const glow = context.createRadialGradient(
       width * 0.84,
       height * 0.13,
@@ -251,12 +230,31 @@ export function mountMarketingEntryDissolve(): MarketingEntryDissolve {
     glow.addColorStop(1, "rgba(200, 16, 46, 0)");
     context.fillStyle = glow;
     context.fillRect(0, 0, width, height);
-    context.restore();
+
+    // Each cell is an LED that switches on independently, at its own
+    // random moment (cell.threshold) — round, fading in from fully
+    // transparent (off) to solid (on), rather than a hard-edged square
+    // clip mask popping in at full opacity.
+    const dotRadius = gridSize * 0.4;
+    context.fillStyle = "#f1efe9";
+    cells.forEach((cell) => {
+      if (progress <= cell.threshold) return;
+      const age = smoothstep((progress - cell.threshold) / 0.24);
+      const radius = dotRadius * (0.3 + age * 0.7);
+      const jitter = (1 - age) * gridSize * 0.34;
+      const x = cell.x + (cell.secondaryNoise - 0.5) * jitter;
+      const y = cell.y + (cell.noise - 0.5) * jitter;
+      context.globalAlpha = age;
+      context.beginPath();
+      context.arc(x, y, radius, 0, Math.PI * 2);
+      context.fill();
+    });
+    context.globalAlpha = 1;
   };
 
   const drawText = (progress: number) => {
     const sampleSize = width <= 640 ? 4 : 5;
-    const paths = new Map<string, Path2D>();
+    const dotRadius = sampleSize * 0.46;
 
     textLayers.forEach((layer) => {
       const rect = layer.element.getBoundingClientRect();
@@ -265,28 +263,18 @@ export function mountMarketingEntryDissolve(): MarketingEntryDissolve {
       layer.pixels.forEach((pixel) => {
         if (progress <= pixel.threshold) return;
         const age = smoothstep((progress - pixel.threshold) / 0.2);
-        const size = 1.2 + age * (sampleSize + 0.45);
+        const radius = dotRadius * (0.3 + age * 0.7);
         const jitter = (1 - age) * sampleSize * 0.8;
-        const x =
-          rect.left
-          + pixel.x
-          + (pixel.noise - 0.5) * jitter
-          - size / 2;
-        const y =
-          rect.top
-          + pixel.y
-          + (0.5 - pixel.noise) * jitter
-          - size / 2;
-        const path = paths.get(pixel.color) ?? new Path2D();
-        path.rect(x, y, size, size);
-        paths.set(pixel.color, path);
+        const x = rect.left + pixel.x + (pixel.noise - 0.5) * jitter;
+        const y = rect.top + pixel.y + (0.5 - pixel.noise) * jitter;
+        context.globalAlpha = age;
+        context.fillStyle = pixel.color;
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fill();
       });
     });
-
-    paths.forEach((path, color) => {
-      context.fillStyle = color;
-      context.fill(path);
-    });
+    context.globalAlpha = 1;
   };
 
   const render = () => {
