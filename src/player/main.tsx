@@ -132,9 +132,9 @@ function Player() {
     } catch (reason) {
       setOnline(false);
       if (!previewDisplayId && reason instanceof Error && /Gerätetoken/.test(reason.message)) { localStorage.removeItem(TOKEN_KEY); setToken(""); }
-      else if (!config) setMessage("Keine Verbindung. Erneuter Versuch läuft …");
+      else setMessage("Keine Verbindung. Erneuter Versuch läuft …");
     }
-  }, [token, config, previewDisplayId]);
+  }, [token, previewDisplayId]);
 
   useEffect(() => {
     if (previewDisplayId) {
