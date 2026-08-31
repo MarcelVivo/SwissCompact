@@ -5041,13 +5041,6 @@ button {
   backdrop-filter: blur(12px);
 }
 
-.has-scroll-reveal .project-detail .pixel-reveal-text {
-  animation: none !important;
-  filter: none !important;
-  mask-image: none !important;
-  text-shadow: none !important;
-}
-
 .project-detail__surface {
   position: relative;
   max-height: min(820px, calc(100dvh - 48px));
@@ -5999,51 +5992,6 @@ button {
   #wirkung
   .section-heading {
   opacity: 0;
-}
-
-.has-scroll-reveal .pixel-reveal-text.is-text-pixelated {
-  filter: blur(2.4px) contrast(1.75);
-  text-shadow:
-    3px 0 0 currentColor,
-    -2px 1px 0 color-mix(in srgb, currentColor 72%, transparent);
-  mask-image:
-    repeating-linear-gradient(
-      90deg,
-      #000 0 3px,
-      rgba(0, 0, 0, 0.28) 3px 5px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      #000 0 3px,
-      rgba(0, 0, 0, 0.34) 3px 6px
-    );
-  mask-composite: intersect;
-  will-change: filter;
-}
-
-.has-scroll-reveal .pixel-reveal-text.is-text-sharp {
-  mask-image: none;
-  text-shadow: none;
-  animation: text-pixel-focus 0.62s steps(6, end) both;
-}
-
-@keyframes text-pixel-focus {
-  0% {
-    filter: blur(2.4px) contrast(1.75);
-    text-shadow: 3px 0 0 currentColor, -2px 1px 0 currentColor;
-  }
-  38% {
-    filter: blur(1.6px) contrast(1.55);
-    text-shadow: 2px 0 0 currentColor;
-  }
-  72% {
-    filter: blur(0.7px) contrast(1.22);
-    text-shadow: 1px 0 0 currentColor;
-  }
-  100% {
-    filter: none;
-    text-shadow: none;
-  }
 }
 
 @keyframes display-fragment-in {
@@ -8892,8 +8840,7 @@ body:has(.showroom-section.is-themes-open) .site-header {
 
   .has-scroll-reveal #marketing-content [data-reveal],
   .has-scroll-reveal .site-footer [data-reveal],
-  .has-scroll-reveal [data-reveal] > .reveal-fragment,
-  .has-scroll-reveal .pixel-reveal-text {
+  .has-scroll-reveal [data-reveal] > .reveal-fragment {
     opacity: 1;
     filter: none;
     mask-image: none;
@@ -17209,9 +17156,17 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   height: 22px;
   border-radius: 50%;
   background: var(--red);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  flex: none;
+}
+
+.showroom-funnel__trigger-badge svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: #fff;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
 }
 
 .showroom-funnel__panel {

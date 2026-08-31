@@ -30,26 +30,6 @@ const staggerGroups = [
   ".site-footer",
 ];
 
-const textRevealSelectors = [
-  "#marketing-content .eyebrow",
-  "#marketing-content h2",
-  "#marketing-content h3",
-  "#marketing-content p",
-  "#marketing-content .impact-card > span",
-  "#marketing-content .industry-card > span",
-  "#marketing-content .project-steps span",
-  "#marketing-content .project-steps strong",
-  "#marketing-content .solution-tabs button",
-  "#marketing-content .solution-result__number",
-  "#marketing-content .solution-result__label",
-  "#marketing-content .solution-result__tags span",
-  "#marketing-content .media-tile span",
-  "#marketing-content .company-copy li",
-  "#marketing-content a",
-  "#marketing-content button",
-  ".site-footer > *",
-].join(",");
-
 function markFragments(element: HTMLElement): void {
   const fragments = Array.from(element.children).filter(
     (child): child is HTMLElement =>
@@ -70,17 +50,11 @@ export function mountScrollReveal(): ScrollReveal {
   const elements = Array.from(
     document.querySelectorAll<HTMLElement>(revealSelectors),
   );
-  const textElements = Array.from(
-    document.querySelectorAll<HTMLElement>(textRevealSelectors),
-  );
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
 
   root.classList.add("has-scroll-reveal");
-  textElements.forEach((element) => {
-    element.classList.add("pixel-reveal-text");
-  });
   elements.forEach((element) => {
     element.dataset.reveal = "";
     markFragments(element);
@@ -103,7 +77,6 @@ export function mountScrollReveal(): ScrollReveal {
 
   if (reducedMotion || !("IntersectionObserver" in window)) {
     elements.forEach((element) => element.classList.add("is-revealed"));
-    textElements.forEach((element) => element.classList.add("is-text-sharp"));
     return {
       destroy() {
         root.classList.remove("has-scroll-reveal");
@@ -128,101 +101,9 @@ export function mountScrollReveal(): ScrollReveal {
 
   elements.forEach((element) => observer.observe(element));
 
-  const activeText = new Set<HTMLElement>();
-  const settledText = new WeakSet<HTMLElement>();
-  const enteredAt = new WeakMap<HTMLElement, number>();
-  let lastScrollAt = performance.now();
-  let settleTimer = 0;
-
-  const sharpenText = (element: HTMLElement) => {
-    element.classList.remove("is-text-pixelated");
-    element.classList.add("is-text-sharp");
-    settledText.add(element);
-    activeText.delete(element);
-    textObserver.unobserve(element);
-  };
-
-  const settleActiveText = () => {
-    settleTimer = 0;
-    const now = performance.now();
-    const scrollRemaining = Math.max(0, 170 - (now - lastScrollAt));
-    let nextDelay = Number.POSITIVE_INFINITY;
-
-    activeText.forEach((element) => {
-      if (settledText.has(element)) return;
-      const visibleFor = now - (enteredAt.get(element) ?? now);
-      const dwellRemaining = Math.max(0, 320 - visibleFor);
-      const delay = Math.max(scrollRemaining, dwellRemaining);
-      if (delay <= 0) sharpenText(element);
-      else nextDelay = Math.min(nextDelay, delay);
-    });
-
-    if (Number.isFinite(nextDelay) && activeText.size > 0) {
-      settleTimer = window.setTimeout(
-        settleActiveText,
-        Math.max(16, nextDelay),
-      );
-    }
-  };
-
-  const scheduleTextSettle = () => {
-    if (settleTimer) window.clearTimeout(settleTimer);
-    settleTimer = window.setTimeout(settleActiveText, 170);
-  };
-
-  const textObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        const element = entry.target as HTMLElement;
-        if (!entry.isIntersecting) {
-          activeText.delete(element);
-          return;
-        }
-        if (settledText.has(element)) return;
-
-        activeText.add(element);
-        enteredAt.set(element, performance.now());
-        element.classList.remove("is-text-sharp");
-        element.classList.add("is-text-pixelated");
-        scheduleTextSettle();
-      });
-    },
-    {
-      rootMargin: "0px 0px -7% 0px",
-      threshold: 0.08,
-    },
-  );
-
-  const handleScroll = () => {
-    lastScrollAt = performance.now();
-    if (activeText.size > 0) scheduleTextSettle();
-  };
-
-  // iOS Safari keeps firing `scroll` events throughout its native momentum
-  // glide after a swipe — often a second or more — so the "no scroll for
-  // 170ms" heuristic above never gets a gap to fire in until the whole
-  // glide has fully decayed, making text stay pixelated far longer than
-  // intended on a vigorous flick. `scrollend` (Safari 17.4+, Chrome 114+,
-  // Firefox 109+) fires exactly once the browser considers scrolling
-  // genuinely finished, so use it to settle immediately where supported
-  // instead of waiting out the glide.
-  const supportsScrollEnd = "onscrollend" in window;
-  const handleScrollEnd = () => {
-    lastScrollAt = 0;
-    if (activeText.size > 0) settleActiveText();
-  };
-
-  textElements.forEach((element) => textObserver.observe(element));
-  window.addEventListener("scroll", handleScroll, { passive: true });
-  if (supportsScrollEnd) window.addEventListener("scrollend", handleScrollEnd, { passive: true });
-
   return {
     destroy() {
       observer.disconnect();
-      textObserver.disconnect();
-      window.removeEventListener("scroll", handleScroll);
-      if (supportsScrollEnd) window.removeEventListener("scrollend", handleScrollEnd);
-      if (settleTimer) window.clearTimeout(settleTimer);
       root.classList.remove("has-scroll-reveal");
     },
   };

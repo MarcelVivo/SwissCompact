@@ -6,10 +6,9 @@ export interface CardLinksController {
 // clickable, not just that short line of text — while keeping the real
 // <a> as the sole focusable/accessible element (no role="button" needed,
 // no duplicate tab stop). A CSS-only stretched-link (::after covering the
-// card) can't be used here: the site's pixel-reveal-text animation
-// (see scrollReveal.ts) applies its own `transform` to every enhanced
-// link, and a non-none transform makes that element its own containing
-// block for absolutely-positioned children — trapping the stretched
+// card) doesn't work here either: `.business-platform__card-link`'s own
+// `display: inline-flex` makes it a containing block for absolutely-
+// positioned children regardless of `position`, trapping the stretched
 // hitbox to the link's tiny box instead of the ancestor card.
 export function mountCardLinks(cardSelector: string, linkSelector: string): CardLinksController {
   const cards = [...document.querySelectorAll<HTMLElement>(cardSelector)];
