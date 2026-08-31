@@ -6192,6 +6192,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   const stage = root?.querySelector<HTMLElement>("[data-showroom-stage]");
   const canvas = root?.querySelector<HTMLCanvasElement>("[data-showroom-canvas]");
   const loading = root?.querySelector<HTMLElement>("[data-showroom-loading]");
+  const intro = root?.querySelector<HTMLElement>("[data-showroom-intro]");
   if (!root || !stage || !canvas || !loading) {
     return {
       destroy() {},
@@ -24484,6 +24485,19 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     });
   });
 
+  // Shown once, right after the room finishes building, so a visitor picks
+  // their own branche before staring at an arbitrary default room (see
+  // themeOptionHandler / the "preset" settings-branch below, which both
+  // dismiss it as soon as a real choice is made).
+  const showIntro = (): void => {
+    intro?.classList.add("is-open");
+    intro?.setAttribute("aria-hidden", "false");
+  };
+  const hideIntro = (): void => {
+    intro?.classList.remove("is-open");
+    intro?.setAttribute("aria-hidden", "true");
+  };
+
   const initialize = async (): Promise<void> => {
     if (initialized || destroyed) return;
     initialized = true;
@@ -24538,6 +24552,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       updateArtworkReadyState();
       root.dataset.showroomReady = "true";
       loading.classList.add("is-hidden");
+      showIntro();
       activatePermanentPov();
       startAnimation();
     } catch (error) {
@@ -25054,6 +25069,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
         signalSceneTransition();
       }
       if (key === "preset") {
+        hideIntro();
         closeDisplayFlyout();
         closeObjectFlyout();
         selectPreset(value as RoomPreset);
@@ -25556,6 +25572,11 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   });
   if (window.innerWidth <= 640) setConfigOpen(false);
 
+  const introSkip = root.querySelector<HTMLButtonElement>("[data-showroom-intro-skip]");
+  const introSkipHandler = (): void => hideIntro();
+  introSkip?.addEventListener("click", introSkipHandler);
+  cleanupHandlers.push(() => introSkip?.removeEventListener("click", introSkipHandler));
+
   const themes = root.querySelector<HTMLElement>("[data-showroom-themes]");
   const themesToggle = root.querySelector<HTMLButtonElement>("[data-showroom-themes-toggle]");
   const themesClose = root.querySelector<HTMLButtonElement>("[data-showroom-themes-close]");
@@ -25632,15 +25653,8 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       first.focus();
     }
   };
-  const themeOptions = Array.from(
-    root.querySelectorAll<HTMLButtonElement>("[data-showroom-theme-option]"),
-  );
-  const themeOptionHandler = (event: Event): void => {
-    const button = event.currentTarget as HTMLButtonElement;
-    const theme = button.dataset.showroomThemeOption as
-      | ShowroomTheme
-      | undefined;
-    if (!theme) return;
+  const applyThemeChoice = (theme: ShowroomTheme): void => {
+    hideIntro();
     const currentTheme = getThemeForPreset(config.preset);
     if (theme !== currentTheme) {
       signalSceneTransition();
@@ -25664,6 +25678,34 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       applyConfig();
       if (povActive) resetPovPosition();
     }
+  };
+  const introThemeButtons = Array.from(
+    root.querySelectorAll<HTMLButtonElement>("[data-showroom-intro-theme]"),
+  );
+  const introThemeHandler = (event: Event): void => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const theme = button.dataset.showroomIntroTheme as ShowroomTheme | undefined;
+    if (!theme) return;
+    applyThemeChoice(theme);
+  };
+  introThemeButtons.forEach((button) => {
+    button.addEventListener("click", introThemeHandler);
+  });
+  cleanupHandlers.push(() => {
+    introThemeButtons.forEach((button) => {
+      button.removeEventListener("click", introThemeHandler);
+    });
+  });
+  const themeOptions = Array.from(
+    root.querySelectorAll<HTMLButtonElement>("[data-showroom-theme-option]"),
+  );
+  const themeOptionHandler = (event: Event): void => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const theme = button.dataset.showroomThemeOption as
+      | ShowroomTheme
+      | undefined;
+    if (!theme) return;
+    applyThemeChoice(theme);
     setThemesOpen(false);
   };
   themesToggle?.addEventListener("click", toggleThemesHandler);
