@@ -17,10 +17,11 @@ const checks = {
   safeCleanup: records.includes("existing.data.payload?.posterPath") && records.includes("storagePaths") && records.includes("uploadPaths"),
   understandableUi: ["Datei wird technisch geprüft", "DISPLAYBEREIT", "Technisch lesbar"].every((value) => portal.includes(value)) && mediaCss.includes(".media-file-check.ready"),
   scalableMuxUpload: ["createMuxDirectUpload", "playback_policies", "static_renditions", "highest", "video_quality", '"plus"'].every((value) => mux.includes(value)) && ["uploadMuxVideo", "UpChunk.createUpload", "dynamicChunkSize"].every((value) => portal.includes(value)),
-  secureMuxPlayback: ["muxSignedPlaybackUrl", "RS256", 'aud: "v"', "MUX_SIGNING_KEY_ID", "MUX_PRIVATE_KEY"].every((value) => mux.includes(value)) && records.includes("materializeMediaUrl"),
+  secureMuxPlayback: ["muxSignedPlaybackUrl", "RS256", 'aud: "v"', "MUX_SIGNING_KEY_ID", "MUX_PRIVATE_KEY"].every((value) => mux.includes(value)) && records.includes("materializeMediaUrl") && overview.includes("muxSignedPlaybackUrl"),
   verifiedMuxWebhooks: ["verifyMuxWebhook", "timingSafeEqual", "mux-signature", "video.asset.static_rendition.ready"].every((value) => mux.concat(muxWebhook).includes(value)),
   asynchronousReadiness: ["VIDEO WIRD AUFBEREITET", "contentProcessingLabel", "processingState", "setInterval"].every((value) => portal.includes(value)) && muxWebhook.includes('compatibilityStatus = "display_ready"'),
   guidedCampaignMediaReadiness: ["waitUntilReady", "Datei vollständig übertragen", "Video wird für Bildschirme aufbereitet", "Video ist displaybereit", "Verfügbarkeit erneut prüfen"].every((value) => portal.includes(value)) && mediaCss.includes(".upload-progress.stage-processing"),
+  campaignVideoPreview: ["Videovorschau", "autoPlay", "muted", "loop", "playsInline", "poster={previewContent.poster_url"].every((value) => portal.includes(value)) && ["muxPlaybackId", "muxPreviewUrl"].every((value) => overview.includes(value)),
   muxDeletion: records.includes("deleteMuxAsset") && records.includes("deleteMuxDirectUpload") && records.includes("Mux content cleanup failed"),
 };
 

@@ -1,7 +1,7 @@
 import { authorizeDashboard, authorizePortal, dashboardSupabase, isResponse } from "../_lib/dashboard/auth.js";
 import { json } from "../_lib/assistant/security.js";
 import { publicAiConfiguration } from "../_lib/portal/ai-config.js";
-import { muxVideoEnabled } from "../_lib/portal/mux-video.js";
+import { muxSignedPlaybackUrl, muxVideoEnabled } from "../_lib/portal/mux-video.js";
 
 export const config = { runtime: "nodejs", maxDuration: 15 };
 
@@ -85,10 +85,17 @@ export async function GET(request: Request): Promise<Response> {
       const poster = posterPath ? await client.storage.from("swisscompact-media").createSignedUrl(posterPath, 60 * 60) : null;
       const ready = item.payload?.uploadState === "ready" && (!item.payload?.processingState || item.payload.processingState === "ready");
       const muxVideo = item.payload?.mediaProvider === "mux";
-      const preview = ready && item.asset_path && !muxVideo
+      const muxPlaybackId = typeof item.payload?.mux?.playbackId === "string" ? item.payload.mux.playbackId.trim() : "";
+      const muxRenditionName = typeof item.payload?.mux?.renditionName === "string" ? item.payload.mux.renditionName.trim() : "highest.mp4";
+      let muxPreviewUrl: string | null = null;
+      if (ready && muxVideo && muxPlaybackId) {
+        try { muxPreviewUrl = muxSignedPlaybackUrl(muxPlaybackId, muxRenditionName || "highest.mp4", 60 * 60); }
+        catch (reason) { console.error("portal Mux preview URL failed", reason); }
+      }
+      const storagePreview = ready && item.asset_path && !muxVideo
         ? await client.storage.from("swisscompact-media").createSignedUrl(item.asset_path, 60 * 60)
         : null;
-      return { ...enriched, preview_url: preview?.data?.signedUrl ?? null, poster_url: poster?.data?.signedUrl ?? null };
+      return { ...enriched, preview_url: muxPreviewUrl ?? storagePreview?.data?.signedUrl ?? null, poster_url: poster?.data?.signedUrl ?? null };
     }));
     const displayHealthCutoff = Date.now() - 90_000;
     const deliveryStateByDisplay = new Map((displayDeliveryState.data ?? []).map((entry) => [entry.id, entry]));
