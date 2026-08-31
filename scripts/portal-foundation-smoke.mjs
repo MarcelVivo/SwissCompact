@@ -26,7 +26,8 @@ const checks = {
   deviceSecurity: deviceMigration.includes("device_token_hash") && deviceMigration.includes("pairing_code_hash") && records.includes('mode === "pair"') && records.includes('mode === "heartbeat"'),
   displayPreview: portal.includes("DisplayPreview") && portal.includes("Noch nicht aktiviert") && portal.includes("Kein Inhalt zugeordnet"),
   creatorAttribution: overview.includes("creator_name") && overview.includes("created_by") && overview.includes("tenant_audit_log") && portal.includes("Erstellt von"),
-  safeDeletion: ["delete_content", "delete_campaign", "delete_display"].every((action) => records.includes(action)) && records.includes("Aktive oder geplante Kampagnen") && portal.includes("DeleteDialog") && portal.includes("Diese Aktion kann nicht rückgängig gemacht werden"),
+  safeDeletion: ["delete_content", "delete_campaign", "delete_display"].every((action) => records.includes(action)) && records.includes("Löschen Sie zuerst diese Kampagne") && records.includes("bumpDisplayConfigurations") && portal.includes("DeleteDialog") && portal.includes("Diese Aktion kann nicht rückgängig gemacht werden"),
+  logicalWorkflow: portal.includes('[["overview","Übersicht"],["displays","Displays"],["content","Inhalte"],["campaigns","Kampagnen"]') && portal.includes("Einrichtung in drei Schritten") && portal.includes("Displays verbinden") && portal.includes("Kampagne starten"),
 };
 
 console.log(JSON.stringify(checks, null, 2));

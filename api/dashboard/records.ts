@@ -251,7 +251,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const links = await client.from("tenant_campaign_content").select("campaign_id,campaign:tenant_campaigns(name,status)").eq("content_id", id);
     const blocking = (links.data ?? []).map((link) => Array.isArray(link.campaign) ? link.campaign[0] : link.campaign)
       .find((campaign) => campaign && ["active", "scheduled"].includes(campaign.status));
-    if (blocking) return json({ error: `Der Inhalt wird in der aktiven oder geplanten Kampagne „${blocking.name}“ verwendet. Pausieren oder bearbeiten Sie diese Kampagne zuerst.` }, { status: 409 });
+    if (blocking) return json({ error: `Der Inhalt wird noch in der Kampagne „${blocking.name}“ verwendet. Löschen Sie zuerst diese Kampagne oder entfernen Sie dort den Inhalt.` }, { status: 409 });
     const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
     if (removed.error) return json({ error: "Inhalt konnte nicht gelöscht werden" }, { status: 400 });
     if (existing.data.asset_path) {
@@ -448,7 +448,6 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (!id) return json({ error: "Kampagne fehlt" }, { status: 400 });
     const existing = await client.from("tenant_campaigns").select("id,name,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (existing.error || !existing.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
-    if (["active", "scheduled"].includes(existing.data.status)) return json({ error: "Aktive oder geplante Kampagnen müssen vor dem Löschen pausiert werden" }, { status: 409 });
     const targets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
     const removed = await client.from("tenant_campaigns").delete().eq("id", id).eq("tenant_id", profile.tenantId);
     if (removed.error) return json({ error: "Kampagne konnte nicht gelöscht werden" }, { status: 400 });

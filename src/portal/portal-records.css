@@ -5,6 +5,84 @@
   font-size: 11px !important;
 }
 
+.portal-workflow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.portal-workflow button {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #dedbd5;
+  border-radius: 15px;
+  padding: 14px 15px;
+  background: #fff;
+  color: #171719;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.portal-workflow button:hover,
+.portal-workflow button:focus-visible {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.portal-workflow button > span {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #eceae6;
+  color: #6e6b66;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.portal-workflow button.complete > span {
+  background: #dff5e9;
+  color: #087548;
+}
+
+.portal-workflow button > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.portal-workflow button small {
+  color: #8c8983;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.portal-workflow button strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.portal-workflow button > b {
+  min-width: 25px;
+  border-radius: 999px;
+  padding: 5px 7px;
+  background: #f1efeb;
+  color: #6e6b66;
+  font-size: 10px;
+  text-align: center;
+}
+
 .record-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -128,6 +206,11 @@
 }
 
 @media (max-width: 680px) {
+  .portal-workflow {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
   .campaign-table {
     grid-template-columns: 1fr auto;
   }
