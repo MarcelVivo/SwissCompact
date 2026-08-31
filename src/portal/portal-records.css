@@ -7,9 +7,25 @@
 
 .portal-workflow {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin: 18px 0;
+}
+
+.welcome-action {
+  width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.welcome-action svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
 }
 
 .portal-workflow button {
@@ -193,6 +209,12 @@
 .delete-dialog-actions button:disabled {
   opacity: .55;
   cursor: wait;
+}
+
+@media (max-width: 1120px) {
+  .portal-workflow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {

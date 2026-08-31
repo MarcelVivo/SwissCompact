@@ -251,7 +251,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const links = await client.from("tenant_campaign_content").select("campaign_id,campaign:tenant_campaigns(name,status)").eq("content_id", id);
     const blocking = (links.data ?? []).map((link) => Array.isArray(link.campaign) ? link.campaign[0] : link.campaign)
       .find((campaign) => campaign && ["active", "scheduled"].includes(campaign.status));
-    if (blocking) return json({ error: `Der Inhalt wird noch in der Kampagne „${blocking.name}“ verwendet. Löschen Sie zuerst diese Kampagne oder entfernen Sie dort den Inhalt.` }, { status: 409 });
+    if (blocking) return json({ error: `Das Medium wird noch in der Anzeige „${blocking.name}“ verwendet. Löschen Sie zuerst diese Anzeige oder entfernen Sie dort das Motiv.` }, { status: 409 });
     const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
     if (removed.error) return json({ error: "Inhalt konnte nicht gelöscht werden" }, { status: 400 });
     if (existing.data.asset_path) {
@@ -266,7 +266,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const name = cleanText(body.name, 180);
     const startsAt = optionalDate(body.startsAt);
     const endsAt = optionalDate(body.endsAt);
-    if (!name) return json({ error: "Kampagnenname fehlt" }, { status: 400 });
+    if (!name) return json({ error: "Name der Anzeige fehlt" }, { status: 400 });
     if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) return json({ error: "Das Enddatum muss nach dem Start liegen" }, { status: 400 });
     const result = await client.from("tenant_campaigns").insert({
       tenant_id: profile.tenantId,
@@ -292,12 +292,12 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   }
 
   if (action === "create_display") {
-    if (!['owner', 'admin'].includes(profile.role)) return json({ error: "Nur Portal-Administratoren können Displays registrieren" }, { status: 403 });
+    if (!['owner', 'admin'].includes(profile.role)) return json({ error: "Nur Portal-Administratoren können Bildschirme registrieren" }, { status: 403 });
     const name = cleanText(body.name, 180);
     const siteId = cleanText(body.siteId, 80);
     const kind = cleanText(body.kind, 30);
     const orientation = cleanText(body.orientation, 30);
-    if (!name || !siteId || !["display", "led_wall", "led_controller", "player"].includes(kind) || !["landscape", "portrait", "custom"].includes(orientation)) return json({ error: "Displayangaben sind unvollständig" }, { status: 400 });
+    if (!name || !siteId || !["display", "led_wall", "led_controller", "player"].includes(kind) || !["landscape", "portrait", "custom"].includes(orientation)) return json({ error: "Bildschirmangaben sind unvollständig" }, { status: 400 });
     const site = await client.from("tenant_sites").select("id").eq("id", siteId).eq("tenant_id", profile.tenantId).eq("active", true).maybeSingle();
     if (!site.data) return json({ error: "Standort nicht gefunden" }, { status: 404 });
     const created = await client.from("tenant_displays").insert({ tenant_id: profile.tenantId, site_id: siteId, name, kind, orientation, status: "provisioning" }).select("id,name,status,kind,orientation").single();
@@ -315,10 +315,10 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   }
 
   if (action === "renew_display_pairing") {
-    if (!['owner', 'admin'].includes(profile.role)) return json({ error: "Nur Portal-Administratoren können Displays aktivieren" }, { status: 403 });
+    if (!['owner', 'admin'].includes(profile.role)) return json({ error: "Nur Portal-Administratoren können Bildschirme aktivieren" }, { status: 403 });
     const id = cleanText(body.id, 80);
     const display = await client.from("tenant_displays").select("id,name").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
-    if (!display.data) return json({ error: "Display nicht gefunden" }, { status: 404 });
+    if (!display.data) return json({ error: "Bildschirm nicht gefunden" }, { status: 404 });
     const code = newPairingCode();
     const codeHash = createHash("sha256").update(`${id}:${code}`).digest("hex");
     const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
@@ -337,13 +337,13 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   }
 
   if (action === "delete_display") {
-    if (!["owner", "admin"].includes(profile.role)) return json({ error: "Nur Inhaber oder Admins können Displays löschen" }, { status: 403 });
+    if (!["owner", "admin"].includes(profile.role)) return json({ error: "Nur Inhaber oder Admins können Bildschirme löschen" }, { status: 403 });
     const id = cleanText(body.id, 80);
-    if (!id) return json({ error: "Display fehlt" }, { status: 400 });
+    if (!id) return json({ error: "Bildschirm fehlt" }, { status: 400 });
     const existing = await client.from("tenant_displays").select("id,name,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
-    if (existing.error || !existing.data) return json({ error: "Display nicht gefunden" }, { status: 404 });
+    if (existing.error || !existing.data) return json({ error: "Bildschirm nicht gefunden" }, { status: 404 });
     const removed = await client.from("tenant_displays").delete().eq("id", id).eq("tenant_id", profile.tenantId);
-    if (removed.error) return json({ error: "Display konnte nicht gelöscht werden" }, { status: 400 });
+    if (removed.error) return json({ error: "Bildschirm konnte nicht gelöscht werden" }, { status: 400 });
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "delete", entity_type: "display", entity_id: id, metadata: { name: existing.data.name, previousStatus: existing.data.status } });
     return json({ ok: true });
   }
@@ -355,7 +355,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const endsAt = optionalDate(body.endsAt);
     const rawContent = Array.isArray(body.contentItems) ? body.contentItems : [];
     const rawDisplays = Array.isArray(body.displayIds) ? body.displayIds : [];
-    if (!id || !name || rawContent.length > 100 || rawDisplays.length > 200) return json({ error: "Ungültige Kampagnenkonfiguration" }, { status: 400 });
+    if (!id || !name || rawContent.length > 100 || rawDisplays.length > 200) return json({ error: "Ungültige Anzeigenkonfiguration" }, { status: 400 });
     if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) return json({ error: "Das Enddatum muss nach dem Start liegen" }, { status: 400 });
     const contentItems = rawContent.map((entry, position) => {
       const item = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
@@ -364,15 +364,15 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const displayIds = [...new Set(rawDisplays.map((value) => cleanText(value, 80)).filter(Boolean))];
     if (new Set(contentItems.map((item) => item.contentId)).size !== contentItems.length) return json({ error: "Ein Inhalt darf nur einmal in der Playlist vorkommen" }, { status: 400 });
     const campaign = await client.from("tenant_campaigns").select("id,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
-    if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
-    if (["active", "scheduled", "completed", "archived"].includes(campaign.data.status)) return json({ error: "Aktive, geplante oder abgeschlossene Kampagnen müssen zuerst pausiert werden" }, { status: 409 });
+    if (campaign.error || !campaign.data) return json({ error: "Anzeige nicht gefunden" }, { status: 404 });
+    if (["active", "scheduled", "completed", "archived"].includes(campaign.data.status)) return json({ error: "Aktive, geplante oder abgeschlossene Anzeigen müssen zuerst pausiert werden" }, { status: 409 });
     if (contentItems.length) {
       const available = await client.from("tenant_content").select("id").eq("tenant_id", profile.tenantId).in("id", contentItems.map((item) => item.contentId));
-      if (available.error || available.data?.length !== contentItems.length) return json({ error: "Mindestens ein Inhalt gehört nicht zu diesem Kunden" }, { status: 403 });
+      if (available.error || available.data?.length !== contentItems.length) return json({ error: "Mindestens ein Motiv gehört nicht zu diesem Kunden" }, { status: 403 });
     }
     if (displayIds.length) {
       const available = await client.from("tenant_displays").select("id").eq("tenant_id", profile.tenantId).in("id", displayIds);
-      if (available.error || available.data?.length !== displayIds.length) return json({ error: "Mindestens ein Display gehört nicht zu diesem Kunden" }, { status: 403 });
+      if (available.error || available.data?.length !== displayIds.length) return json({ error: "Mindestens ein Bildschirm gehört nicht zu diesem Kunden" }, { status: 403 });
     }
     const previousTargets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
     const removeContent = await client.from("tenant_campaign_content").delete().eq("campaign_id", id);
@@ -394,21 +394,21 @@ async function handlePortalRecords(request: Request): Promise<Response> {
 
   if (action === "activate_campaign") {
     const id = cleanText(body.id, 80);
-    if (!id) return json({ error: "Kampagne fehlt" }, { status: 400 });
+    if (!id) return json({ error: "Anzeige fehlt" }, { status: 400 });
     const campaign = await client.from("tenant_campaigns").select("id,status,starts_at,ends_at").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
-    if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
-    if (["completed", "archived"].includes(campaign.data.status)) return json({ error: "Diese Kampagne ist abgeschlossen" }, { status: 409 });
+    if (campaign.error || !campaign.data) return json({ error: "Anzeige nicht gefunden" }, { status: 404 });
+    if (["completed", "archived"].includes(campaign.data.status)) return json({ error: "Diese Anzeige ist abgeschlossen" }, { status: 409 });
     const [contentLinks, displayLinks] = await Promise.all([
       client.from("tenant_campaign_content").select("content_id,content:tenant_content(status)").eq("campaign_id", id),
       client.from("tenant_campaign_displays").select("display_id", { count: "exact", head: true }).eq("campaign_id", id),
     ]);
-    if (!contentLinks.data?.length) return json({ error: "Fügen Sie der Kampagne mindestens einen Inhalt hinzu" }, { status: 409 });
+    if (!contentLinks.data?.length) return json({ error: "Fügen Sie der Anzeige mindestens ein Motiv hinzu" }, { status: 409 });
     const unapproved = contentLinks.data.some((link) => {
       const relation = Array.isArray(link.content) ? link.content[0] : link.content;
       return !relation || !["approved", "published"].includes(relation.status);
     });
-    if (unapproved) return json({ error: "Geben Sie alle gewählten Inhalte vor der Aktivierung frei" }, { status: 409 });
-    if (!displayLinks.count) return json({ error: "Wählen Sie mindestens ein Ziel-Display aus" }, { status: 409 });
+    if (unapproved) return json({ error: "Geben Sie alle gewählten Motive vor dem Start frei" }, { status: 409 });
+    if (!displayLinks.count) return json({ error: "Wählen Sie mindestens einen Bildschirm aus" }, { status: 409 });
     if (campaign.data.ends_at && new Date(campaign.data.ends_at).getTime() <= Date.now()) return json({ error: "Das Enddatum liegt bereits in der Vergangenheit" }, { status: 409 });
     const nextStatus = campaign.data.starts_at && new Date(campaign.data.starts_at).getTime() > Date.now() ? "scheduled" : "active";
     const result = await client.from("tenant_campaigns").update({ status: nextStatus, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId).select("id,status").single();
@@ -422,7 +422,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   if (action === "pause_campaign") {
     const id = cleanText(body.id, 80);
     const result = await client.from("tenant_campaigns").update({ status: "paused", updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId).in("status", ["active", "scheduled"]).select("id,status").maybeSingle();
-    if (result.error || !result.data) return json({ error: "Nur aktive oder geplante Kampagnen können pausiert werden" }, { status: 409 });
+    if (result.error || !result.data) return json({ error: "Nur aktive oder geplante Anzeigen können pausiert werden" }, { status: 409 });
     const targets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
     await bumpDisplayConfigurations(client, (targets.data ?? []).map((entry) => entry.display_id));
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "pause", entity_type: "campaign", entity_id: id });
@@ -438,19 +438,19 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const result = await client.from("tenant_campaigns").update({ status, updated_at: now })
       .eq("id", id).eq("tenant_id", profile.tenantId)
       .select("id,name,status,starts_at,ends_at,schedule,created_at,updated_at").single();
-    if (result.error) return json({ error: "Kampagne nicht gefunden oder Zugriff verweigert" }, { status: 404 });
+    if (result.error) return json({ error: "Anzeige nicht gefunden oder Zugriff verweigert" }, { status: 404 });
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "status_change", entity_type: "campaign", entity_id: result.data.id, metadata: { status } });
     return json({ ok: true, record: result.data });
   }
 
   if (action === "delete_campaign") {
     const id = cleanText(body.id, 80);
-    if (!id) return json({ error: "Kampagne fehlt" }, { status: 400 });
+    if (!id) return json({ error: "Anzeige fehlt" }, { status: 400 });
     const existing = await client.from("tenant_campaigns").select("id,name,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
-    if (existing.error || !existing.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
+    if (existing.error || !existing.data) return json({ error: "Anzeige nicht gefunden" }, { status: 404 });
     const targets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
     const removed = await client.from("tenant_campaigns").delete().eq("id", id).eq("tenant_id", profile.tenantId);
-    if (removed.error) return json({ error: "Kampagne konnte nicht gelöscht werden" }, { status: 400 });
+    if (removed.error) return json({ error: "Anzeige konnte nicht gelöscht werden" }, { status: 400 });
     await bumpDisplayConfigurations(client, (targets.data ?? []).map((entry) => entry.display_id));
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "delete", entity_type: "campaign", entity_id: id, metadata: { name: existing.data.name, previousStatus: existing.data.status } });
     return json({ ok: true });
