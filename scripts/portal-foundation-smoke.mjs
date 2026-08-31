@@ -27,7 +27,7 @@ const checks = {
   displayPreview: portal.includes("DisplayPreview") && portal.includes("Noch nicht aktiviert") && portal.includes("Kein Inhalt zugeordnet"),
   creatorAttribution: overview.includes("creator_name") && overview.includes("created_by") && overview.includes("tenant_audit_log") && portal.includes("Erstellt von"),
   safeDeletion: ["delete_content", "delete_campaign", "delete_display"].every((action) => records.includes(action)) && records.includes("Löschen Sie zuerst diese Kampagne") && records.includes("bumpDisplayConfigurations") && portal.includes("DeleteDialog") && portal.includes("Diese Aktion kann nicht rückgängig gemacht werden"),
-  logicalWorkflow: portal.includes('[["overview","Übersicht"],["displays","Displays"],["content","Inhalte"],["campaigns","Kampagnen"]') && portal.includes("Einrichtung in drei Schritten") && portal.includes("Displays verbinden") && portal.includes("Kampagne starten"),
+  logicalWorkflow: portal.includes('[["overview","Übersicht"],["campaigns","Kampagnen"],["displays","Displays"],["content","Inhalte"]') && portal.includes("Kampagnenablauf in drei Schritten") && portal.includes("Kampagne planen") && portal.includes("Displays auswählen") && portal.includes("Inhalte hinzufügen"),
 };
 
 console.log(JSON.stringify(checks, null, 2));
