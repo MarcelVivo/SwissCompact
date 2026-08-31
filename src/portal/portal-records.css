@@ -176,7 +176,8 @@
   margin-top: 0;
 }
 
-.assign-record-action {
+.assign-record-action,
+.player-open-action {
   grid-column: 1 / -1;
   border: 0;
   border-radius: 10px;
@@ -189,8 +190,17 @@
   transition: filter 160ms ease, transform 160ms ease;
 }
 
+.player-open-action {
+  display: block;
+  background: #171719;
+  text-align: center;
+  text-decoration: none;
+}
+
 .assign-record-action:hover,
-.assign-record-action:focus-visible {
+.assign-record-action:focus-visible,
+.player-open-action:hover,
+.player-open-action:focus-visible {
   filter: brightness(1.08);
   transform: translateY(-1px);
   outline: none;

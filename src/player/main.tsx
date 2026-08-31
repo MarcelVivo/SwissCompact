@@ -35,32 +35,42 @@ function Pairing({ initialDisplayId, onPaired }: { initialDisplayId: string; onP
 function Player() {
   const query = new URLSearchParams(location.search);
   const queryDisplayId = query.get("display") || "";
+  const previewDisplayId = query.get("preview") || "";
   const forcePairing = query.get("pair") === "1";
-  const [token, setToken] = useState(() => forcePairing ? "" : localStorage.getItem(TOKEN_KEY) || "");
-  const [config, setConfig] = useState<DeviceConfig | null>(() => { if (forcePairing) return null; try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || "null"); } catch { return null; } });
+  const [token, setToken] = useState(() => forcePairing || previewDisplayId ? "" : localStorage.getItem(TOKEN_KEY) || "");
+  const [config, setConfig] = useState<DeviceConfig | null>(() => { if (forcePairing || previewDisplayId) return null; try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || "null"); } catch { return null; } });
   const [index, setIndex] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [message, setMessage] = useState("Konfiguration wird geladen …");
 
   const loadConfig = useCallback(async (activeToken = token) => {
-    if (!activeToken) return;
+    if (!activeToken && !previewDisplayId) return;
     try {
-      const next = await request<DeviceConfig>("/api/dashboard/records?device=config", { headers: { Authorization: `Bearer ${activeToken}` } });
-      setConfig(next); localStorage.setItem(CONFIG_KEY, JSON.stringify(next)); setOnline(true); setMessage(next.playlist.length ? "" : "Noch keine aktive Kampagne für dieses Display.");
+      const next = previewDisplayId
+        ? await request<DeviceConfig>(`/api/dashboard/records?portalPreview=${encodeURIComponent(previewDisplayId)}`)
+        : await request<DeviceConfig>("/api/dashboard/records?device=config", { headers: { Authorization: `Bearer ${activeToken}` } });
+      setConfig(next);
+      if (!previewDisplayId) localStorage.setItem(CONFIG_KEY, JSON.stringify(next));
+      setOnline(true); setMessage(next.playlist.length ? "" : "Noch keine aktive Kampagne für dieses Display.");
     } catch (reason) {
       setOnline(false);
-      if (reason instanceof Error && /Gerätetoken/.test(reason.message)) { localStorage.removeItem(TOKEN_KEY); setToken(""); }
+      if (!previewDisplayId && reason instanceof Error && /Gerätetoken/.test(reason.message)) { localStorage.removeItem(TOKEN_KEY); setToken(""); }
       else if (!config) setMessage("Keine Verbindung. Erneuter Versuch läuft …");
     }
-  }, [token, config]);
+  }, [token, config, previewDisplayId]);
 
   useEffect(() => {
+    if (previewDisplayId) {
+      void loadConfig();
+      const refresh = window.setInterval(() => void loadConfig(), 60_000);
+      return () => window.clearInterval(refresh);
+    }
     if (!token) return;
     void loadConfig();
     const refresh = window.setInterval(() => void loadConfig(), 60_000);
     const heartbeat = window.setInterval(() => void request("/api/dashboard/records?device=heartbeat", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ health: "online", softwareVersion: PLAYER_VERSION }) }).then(() => setOnline(true)).catch(() => setOnline(false)), 30_000);
     return () => { clearInterval(refresh); clearInterval(heartbeat); };
-  }, [token, loadConfig]);
+  }, [token, loadConfig, previewDisplayId]);
 
   useEffect(() => {
     if (!config?.playlist.length) return;
@@ -82,7 +92,7 @@ function Player() {
     setToken("");
   }
 
-  if (!token) return <Pairing initialDisplayId={queryDisplayId || localStorage.getItem(DISPLAY_KEY) || ""} onPaired={(nextToken, displayId) => {
+  if (!previewDisplayId && !token) return <Pairing initialDisplayId={queryDisplayId || localStorage.getItem(DISPLAY_KEY) || ""} onPaired={(nextToken, displayId) => {
     localStorage.setItem(TOKEN_KEY, nextToken);
     localStorage.setItem(DISPLAY_KEY, displayId);
     const cleanUrl = new URL(location.href);
@@ -92,7 +102,7 @@ function Player() {
     void loadConfig(nextToken);
   }} />;
   const item = config?.playlist[index % Math.max(1, config.playlist.length)];
-  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}`}>{item.contentType === "image" && item.mediaUrl ? <img src={item.mediaUrl} alt=""/> : item.contentType === "video" && item.mediaUrl ? <video src={item.mediaUrl} autoPlay muted playsInline/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p><button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button></section>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
+  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}`}>{item.contentType === "image" && item.mediaUrl ? <img src={item.mediaUrl} alt=""/> : item.contentType === "video" && item.mediaUrl ? <video src={item.mediaUrl} autoPlay muted playsInline/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p>{!previewDisplayId && <button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button>}</section>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
 }
 
 createRoot(document.getElementById("player-root")!).render(<Player/>);

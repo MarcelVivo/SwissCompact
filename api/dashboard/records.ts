@@ -125,12 +125,9 @@ async function handleDevicePost(request: Request, mode: string): Promise<Respons
   return json({ error: "Unbekannte Geräteaktion" }, { status: 404 });
 }
 
-async function handleDeviceConfig(request: Request): Promise<Response> {
-  const authorized = await deviceRecord(request);
-  if (!authorized) return json({ error: "Ungültiger Gerätetoken" }, { status: 401 });
-  const { client, display } = authorized;
+async function buildDisplayConfig(client: any, display: any, updateDeviceState = true): Promise<Response> {
   const targets = await client.from("tenant_campaign_displays").select("campaign_id").eq("display_id", display.id);
-  const campaignIds = (targets.data ?? []).map((entry) => entry.campaign_id);
+  const campaignIds = (targets.data ?? []).map((entry: { campaign_id: string }) => entry.campaign_id);
   if (!campaignIds.length) return json({ display: { id: display.id, name: display.name }, configurationVersion: display.configuration_version, campaigns: [], playlist: [], generatedAt: new Date().toISOString() });
   const campaigns = await client.from("tenant_campaigns").select("id,name,status,starts_at,ends_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,payload,asset_path))").in("id", campaignIds).in("status", ["active", "scheduled"]).order("starts_at", { ascending: true, nullsFirst: true });
   if (campaigns.error) return json({ error: "Konfiguration konnte nicht geladen werden" }, { status: 503 });
@@ -145,10 +142,10 @@ async function handleDeviceConfig(request: Request): Promise<Response> {
     targetContentByCampaign.set(link.campaign_id, links);
   }
   const now = Date.now();
-  const activeCampaigns = (campaigns.data ?? []).filter((campaign) => (!campaign.starts_at || new Date(campaign.starts_at).getTime() <= now) && (!campaign.ends_at || new Date(campaign.ends_at).getTime() > now));
+  const activeCampaigns = (campaigns.data ?? []).filter((campaign: any) => (!campaign.starts_at || new Date(campaign.starts_at).getTime() <= now) && (!campaign.ends_at || new Date(campaign.ends_at).getTime() > now));
   const playlist = [] as Array<Record<string, unknown>>;
   for (const campaign of activeCampaigns) {
-    if (campaign.status === "scheduled") await client.from("tenant_campaigns").update({ status: "active", updated_at: new Date().toISOString() }).eq("id", campaign.id);
+    if (updateDeviceState && campaign.status === "scheduled") await client.from("tenant_campaigns").update({ status: "active", updated_at: new Date().toISOString() }).eq("id", campaign.id);
     const targetedLinks = targetContentByCampaign.get(campaign.id) ?? [];
     const links = [...(targetedLinks.length ? targetedLinks : campaign.content_links || [])].sort((a, b) => a.position - b.position);
     for (const link of links) {
@@ -163,8 +160,24 @@ async function handleDeviceConfig(request: Request): Promise<Response> {
       playlist.push({ campaignId: campaign.id, campaignName: campaign.name, contentId: content.id, title: content.title, contentType: content.content_type, payload: content.payload, mediaUrl, durationSeconds: Math.min(3600, Math.max(5, Number(link.duration_seconds) || 10)) });
     }
   }
-  await client.from("tenant_displays").update({ last_config_at: new Date().toISOString() }).eq("id", display.id);
-  return json({ display: { id: display.id, name: display.name }, configurationVersion: display.configuration_version, campaigns: activeCampaigns.map(({ content_links: _links, ...campaign }) => campaign), playlist, generatedAt: new Date().toISOString() });
+  if (updateDeviceState) await client.from("tenant_displays").update({ last_config_at: new Date().toISOString() }).eq("id", display.id);
+  return json({ display: { id: display.id, name: display.name }, configurationVersion: display.configuration_version, campaigns: activeCampaigns.map((campaign: any) => ({ id: campaign.id, name: campaign.name, status: campaign.status, starts_at: campaign.starts_at, ends_at: campaign.ends_at, updated_at: campaign.updated_at })), playlist, generatedAt: new Date().toISOString() });
+}
+
+async function handleDeviceConfig(request: Request): Promise<Response> {
+  const authorized = await deviceRecord(request);
+  if (!authorized) return json({ error: "Ungültiger Gerätetoken" }, { status: 401 });
+  return buildDisplayConfig(authorized.client, authorized.display);
+}
+
+async function handlePortalPlayerPreview(request: Request, displayId: string): Promise<Response> {
+  const authorized = await authorizePortal(request);
+  if (isResponse(authorized)) return authorized;
+  const display = await authorized.client.from("tenant_displays")
+    .select("id,tenant_id,name,status,configuration_version")
+    .eq("id", displayId).eq("tenant_id", authorized.profile.tenantId).maybeSingle();
+  if (display.error || !display.data) return json({ error: "Bildschirm nicht gefunden" }, { status: 404 });
+  return buildDisplayConfig(authorized.client, display.data, false);
 }
 
 async function handlePortalRecords(request: Request): Promise<Response> {
@@ -1129,6 +1142,7 @@ export async function POST(request: Request): Promise<Response> {
 export async function GET(request: Request): Promise<Response> {
   const search = new URL(request.url).searchParams;
   if (search.get("portalAi") === "credits") return handleAiCreditsStatusGet(request);
+  if (search.get("portalPreview")) return handlePortalPlayerPreview(request, cleanText(search.get("portalPreview"), 80));
   if (search.get("device") === "config") return handleDeviceConfig(request);
   if (search.get("public") === "quote") return getPublicQuote(request);
   return json({ error: "Nicht gefunden" }, { status: 404 });
