@@ -671,7 +671,7 @@ function Portal() {
   if (session === "guest" || !data) return <><Login onDone={() => void load()} />{error && <div className="global-message">{error}</div>}</>;
   const canEdit = data.profile.role !== "viewer";
   const canManageDevices = data.profile.role === "owner" || data.profile.role === "admin";
-  const nav: Array<[View,string]> = [["overview","Übersicht"],["records","Meine Vorgänge"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"],["partners","Partnerwerbung"],["archive","Archiv"],["settings","Einstellungen"]];
+  const nav: Array<[View,string]> = [["overview","Übersicht"],["records","Meine Vorgänge"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"],["partners","Partnernetzwerk"],["archive","Archiv"],["settings","Einstellungen"]];
   const onboardingComplete = data.campaigns.some((campaign) => ["active", "scheduled"].includes(campaign.status));
   const onboardingCampaign = [...data.campaigns]
     .filter((campaign) => ["draft", "paused"].includes(campaign.status))

@@ -26,6 +26,12 @@ create index if not exists tenant_partnerships_a_idx
 create index if not exists tenant_partnerships_b_idx
   on swisscompact.tenant_partnerships(tenant_b_id, status, updated_at desc);
 
+-- Ein überschaubares Punktelimit verhindert einseitige Dauernutzung. Der
+-- Einladende schlägt das Limit vor, der Partner akzeptiert es mit der Einladung.
+alter table swisscompact.tenant_partnerships
+  add column if not exists barter_credit_limit_points numeric(12,2) not null default 300
+    check (barter_credit_limit_points between 10 and 100000);
+
 create table if not exists swisscompact.tenant_partner_content_offers (
   id uuid primary key default gen_random_uuid(),
   partnership_id uuid not null references swisscompact.tenant_partnerships(id) on delete cascade,
@@ -55,6 +61,29 @@ create unique index if not exists tenant_partner_offers_one_pending_idx
   on swisscompact.tenant_partner_content_offers(partnership_id, sender_tenant_id, recipient_tenant_id, source_content_id)
   where status = 'pending';
 
+-- 1 Werbepunkt entspricht einem Bildschirmtag mit 10 % Playlist-Anteil.
+-- Dadurch sind z. B. 1 Bildschirm zu 100 % und 10 Bildschirme zu 10 % fair
+-- vergleichbar. Geld wird nur dokumentiert, nicht über SwissCompact eingezogen.
+alter table swisscompact.tenant_partner_content_offers
+  add column if not exists settlement_mode text not null default 'barter'
+    check (settlement_mode in ('barter','paid','hybrid','courtesy')),
+  add column if not exists requested_display_count integer not null default 1
+    check (requested_display_count between 1 and 10000),
+  add column if not exists playlist_share_percent numeric(5,2) not null default 10
+    check (playlist_share_percent between 1 and 100),
+  add column if not exists delivery_value_points numeric(12,2) not null default 1
+    check (delivery_value_points > 0),
+  add column if not exists barter_value_points numeric(12,2) not null default 0
+    check (barter_value_points >= 0),
+  add column if not exists cash_amount_chf numeric(12,2) not null default 0
+    check (cash_amount_chf >= 0),
+  add column if not exists cash_status text not null default 'not_applicable'
+    check (cash_status in ('not_applicable','agreed','received','cancelled')),
+  add column if not exists delivery_status text not null default 'proposed'
+    check (delivery_status in ('proposed','planned','host_confirmed','confirmed','disputed','cancelled')),
+  add column if not exists host_confirmed_at timestamptz,
+  add column if not exists advertiser_confirmed_at timestamptz;
+
 create or replace function swisscompact.validate_partner_network_scope()
 returns trigger
 language plpgsql
@@ -63,12 +92,16 @@ set search_path = swisscompact, public
 as $$
 declare
   partnership swisscompact.tenant_partnerships%rowtype;
+  expected_points numeric(12,2);
 begin
   select * into partnership
   from swisscompact.tenant_partnerships
   where id = new.partnership_id;
 
-  if partnership.id is null or partnership.status <> 'active' then
+  if partnership.id is null then
+    raise exception 'Die Partnerschaft wurde nicht gefunden';
+  end if;
+  if partnership.status <> 'active' and (tg_op = 'INSERT' or new.status = 'pending') then
     raise exception 'Die Partnerschaft ist nicht aktiv';
   end if;
   if not (
@@ -96,6 +129,30 @@ begin
       and content.tenant_id = new.recipient_tenant_id
   ) then
     raise exception 'Die übernommene Kopie gehört nicht zum Empfänger';
+  end if;
+
+  if new.proposed_starts_at is null or new.proposed_ends_at is null then
+    raise exception 'Für Partnerwerbung sind Start und Ende erforderlich';
+  end if;
+  expected_points := round((
+    new.requested_display_count
+    * greatest(1, ceil(extract(epoch from (new.proposed_ends_at - new.proposed_starts_at)) / 86400))
+    * new.playlist_share_percent / 10
+  )::numeric, 2);
+  if abs(new.delivery_value_points - expected_points) > 0.01 then
+    raise exception 'Der Werbewert wurde nicht korrekt berechnet';
+  end if;
+  if new.barter_value_points > new.delivery_value_points then
+    raise exception 'Tauschpunkte dürfen den Werbewert nicht übersteigen';
+  end if;
+  if new.settlement_mode = 'barter' and (new.barter_value_points <> new.delivery_value_points or new.cash_amount_chf <> 0) then
+    raise exception 'Beim Werbetausch muss der gesamte Werbewert ausgeglichen werden';
+  elsif new.settlement_mode = 'paid' and (new.barter_value_points <> 0 or new.cash_amount_chf <= 0) then
+    raise exception 'Bezahlte Werbung benötigt einen vereinbarten CHF-Betrag';
+  elsif new.settlement_mode = 'hybrid' and (new.barter_value_points <= 0 or new.barter_value_points >= new.delivery_value_points or new.cash_amount_chf <= 0) then
+    raise exception 'Die Mischform benötigt Tauschpunkte und einen CHF-Ausgleich';
+  elsif new.settlement_mode = 'courtesy' and (new.barter_value_points <> 0 or new.cash_amount_chf <> 0) then
+    raise exception 'Kostenlose Unterstützung darf keine Gegenleistung enthalten';
   end if;
   return new;
 end;

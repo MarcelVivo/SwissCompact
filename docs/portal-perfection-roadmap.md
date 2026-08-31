@@ -66,7 +66,7 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 - [x] Medien vor Upload dekodieren, technische Metadaten erfassen und Vorschaubilder erzeugen
 - [x] Unvollständige oder nicht lesbare Medien von Kampagnen und Player-Auslieferung ausschliessen
 - [x] Videos serverseitig über Mux in adaptive, displaytaugliche Auslieferungsformate normalisieren
-- [x] Sicheres Partnerprogramm für gegenseitige lokale Werbung mit Annahme durch den Bildschirmbesitzer
+- [x] Optionales Partnernetzwerk mit fairen Werbepunkten, Tausch/CHF/Mischform und beidseitiger Erfüllungsbestätigung
 - [ ] Kampagnenvorlagen und wiederverwendbare Abläufe
 - [ ] Bildschirmgruppen, Suche, Filter und Massenaktionen
 - [ ] Prioritäten und Playlists je Standort, Gebäude, Stockwerk und Bereich
