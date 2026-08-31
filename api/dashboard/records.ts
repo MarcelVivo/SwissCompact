@@ -243,6 +243,25 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true, record: result.data });
   }
 
+  if (action === "delete_content") {
+    const id = cleanText(body.id, 80);
+    if (!id) return json({ error: "Inhalt fehlt" }, { status: 400 });
+    const existing = await client.from("tenant_content").select("id,title,asset_path").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (existing.error || !existing.data) return json({ error: "Inhalt nicht gefunden" }, { status: 404 });
+    const links = await client.from("tenant_campaign_content").select("campaign_id,campaign:tenant_campaigns(name,status)").eq("content_id", id);
+    const blocking = (links.data ?? []).map((link) => Array.isArray(link.campaign) ? link.campaign[0] : link.campaign)
+      .find((campaign) => campaign && ["active", "scheduled"].includes(campaign.status));
+    if (blocking) return json({ error: `Der Inhalt wird in der aktiven oder geplanten Kampagne „${blocking.name}“ verwendet. Pausieren oder bearbeiten Sie diese Kampagne zuerst.` }, { status: 409 });
+    const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
+    if (removed.error) return json({ error: "Inhalt konnte nicht gelöscht werden" }, { status: 400 });
+    if (existing.data.asset_path) {
+      const storageRemoval = await client.storage.from(PORTAL_MEDIA_BUCKET).remove([existing.data.asset_path]);
+      if (storageRemoval.error) console.error("content asset cleanup:", storageRemoval.error.message);
+    }
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "delete", entity_type: "content", entity_id: id, metadata: { title: existing.data.title } });
+    return json({ ok: true });
+  }
+
   if (action === "create_campaign") {
     const name = cleanText(body.name, 180);
     const startsAt = optionalDate(body.startsAt);
@@ -315,6 +334,18 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (result.error) return json({ error: "Aktivierungscode konnte nicht erneuert werden" }, { status: 400 });
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "pairing_renewed", entity_type: "display", entity_id: id, metadata: { previousDeviceRevoked: true } });
     return json({ ok: true, pairing: { displayId: id, code, expiresAt }, record: display.data });
+  }
+
+  if (action === "delete_display") {
+    if (!["owner", "admin"].includes(profile.role)) return json({ error: "Nur Inhaber oder Admins können Displays löschen" }, { status: 403 });
+    const id = cleanText(body.id, 80);
+    if (!id) return json({ error: "Display fehlt" }, { status: 400 });
+    const existing = await client.from("tenant_displays").select("id,name,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (existing.error || !existing.data) return json({ error: "Display nicht gefunden" }, { status: 404 });
+    const removed = await client.from("tenant_displays").delete().eq("id", id).eq("tenant_id", profile.tenantId);
+    if (removed.error) return json({ error: "Display konnte nicht gelöscht werden" }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "delete", entity_type: "display", entity_id: id, metadata: { name: existing.data.name, previousStatus: existing.data.status } });
+    return json({ ok: true });
   }
 
   if (action === "configure_campaign") {
@@ -410,6 +441,20 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (result.error) return json({ error: "Kampagne nicht gefunden oder Zugriff verweigert" }, { status: 404 });
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "status_change", entity_type: "campaign", entity_id: result.data.id, metadata: { status } });
     return json({ ok: true, record: result.data });
+  }
+
+  if (action === "delete_campaign") {
+    const id = cleanText(body.id, 80);
+    if (!id) return json({ error: "Kampagne fehlt" }, { status: 400 });
+    const existing = await client.from("tenant_campaigns").select("id,name,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (existing.error || !existing.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
+    if (["active", "scheduled"].includes(existing.data.status)) return json({ error: "Aktive oder geplante Kampagnen müssen vor dem Löschen pausiert werden" }, { status: 409 });
+    const targets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
+    const removed = await client.from("tenant_campaigns").delete().eq("id", id).eq("tenant_id", profile.tenantId);
+    if (removed.error) return json({ error: "Kampagne konnte nicht gelöscht werden" }, { status: 400 });
+    await bumpDisplayConfigurations(client, (targets.data ?? []).map((entry) => entry.display_id));
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "delete", entity_type: "campaign", entity_id: id, metadata: { name: existing.data.name, previousStatus: existing.data.status } });
+    return json({ ok: true });
   }
 
   return json({ error: "Unbekannte Portal-Aktion" }, { status: 400 });

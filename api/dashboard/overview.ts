@@ -10,40 +10,54 @@ export async function GET(request: Request): Promise<Response> {
     if (isResponse(authorized)) return authorized;
     const { client, profile } = authorized;
     const tenantId = profile.tenantId;
-    const [sites, displays, content, campaigns, subscription, members, aiBalance] = await Promise.all([
+    const [sites, displays, content, campaigns, subscription, members, creatorEvents, aiBalance] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_displays").select("id,site_id,name,kind,status,orientation,resolution,last_seen_at,created_at,updated_at,site:tenant_sites(name)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
-      client.from("tenant_content").select("id,title,content_type,status,payload,asset_path,created_at,updated_at").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
-      client.from("tenant_campaigns").select("id,name,status,starts_at,ends_at,schedule,created_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,preview_path:asset_path)),display_links:tenant_campaign_displays(display_id,display:tenant_displays(id,name,status,site:tenant_sites(name)))").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
+      client.from("tenant_content").select("id,title,content_type,status,payload,asset_path,created_by,created_at,updated_at").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
+      client.from("tenant_campaigns").select("id,name,status,starts_at,ends_at,schedule,created_by,created_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,preview_path:asset_path)),display_links:tenant_campaign_displays(display_id,display:tenant_displays(id,name,status,site:tenant_sites(name)))").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
       client.from("tenant_subscriptions").select("package_code,status,starts_on,minimum_ends_on,monthly_amount_chf,included_ai_credits").eq("tenant_id", tenantId).in("status", ["trial","active","past_due","paused"]).maybeSingle(),
-      client.from("tenant_memberships").select("id,role,display_name,user_id,active").eq("tenant_id", tenantId).eq("active", true),
+      client.from("tenant_memberships").select("id,role,display_name,user_id,active").eq("tenant_id", tenantId),
+      client.from("tenant_audit_log").select("entity_type,entity_id,actor_user_id,created_at").eq("tenant_id", tenantId).eq("action", "create").in("entity_type", ["display", "content", "campaign"]).order("created_at", { ascending: true }),
       client.rpc("get_ai_credit_balance", { target_tenant: tenantId }),
     ]);
-    const firstError = [sites, displays, content, campaigns, subscription, members].find((result) => result.error)?.error;
+    const firstError = [sites, displays, content, campaigns, subscription, members, creatorEvents].find((result) => result.error)?.error;
     if (firstError) {
       console.error("portal overview:", firstError.message);
       return json({ error: "Das Kundenportal-Datenmodell ist noch nicht eingerichtet" }, { status: 503 });
     }
+    const creatorNames = new Map((members.data ?? []).map((member) => [member.user_id, member.display_name || "Portalbenutzer"]));
+    const auditedCreators = new Map<string, string>();
+    for (const event of creatorEvents.data ?? []) {
+      const key = `${event.entity_type}:${event.entity_id}`;
+      if (event.actor_user_id && !auditedCreators.has(key)) auditedCreators.set(key, event.actor_user_id);
+    }
+    const creatorName = (userId?: string | null) => userId ? creatorNames.get(userId) || "Ehemaliger Benutzer" : "Nicht erfasst";
     const contentWithPreviews = await Promise.all((content.data ?? []).map(async (item) => {
-      if (!item.asset_path || item.payload?.uploadState !== "ready") return { ...item, preview_url: null };
+      const enriched = { ...item, creator_name: creatorName(item.created_by || auditedCreators.get(`content:${item.id}`)) };
+      if (!item.asset_path || item.payload?.uploadState !== "ready") return { ...enriched, preview_url: null };
       const preview = await client.storage.from("swisscompact-media").createSignedUrl(item.asset_path, 60 * 60);
-      return { ...item, preview_url: preview.data?.signedUrl ?? null };
+      return { ...enriched, preview_url: preview.data?.signedUrl ?? null };
     }));
     const displayHealthCutoff = Date.now() - 90_000;
     const displaysWithHealth = (displays.data ?? []).map((display) => ({
       ...display,
+      creator_name: creatorName(auditedCreators.get(`display:${display.id}`)),
       status: display.status === "online" && (!display.last_seen_at || new Date(display.last_seen_at).getTime() < displayHealthCutoff)
         ? "offline"
         : display.status,
+    }));
+    const campaignsWithCreators = (campaigns.data ?? []).map((campaign) => ({
+      ...campaign,
+      creator_name: creatorName(campaign.created_by || auditedCreators.get(`campaign:${campaign.id}`)),
     }));
     return json({
       profile,
       sites: sites.data ?? [],
       displays: displaysWithHealth,
       content: contentWithPreviews,
-      campaigns: campaigns.data ?? [],
+      campaigns: campaignsWithCreators,
       subscription: subscription.data ?? null,
-      members: members.data ?? [],
+      members: (members.data ?? []).filter((member) => member.active),
       aiCredits: {
         ...publicAiConfiguration(),
         balance: aiBalance.error ? null : (Array.isArray(aiBalance.data) ? aiBalance.data[0] ?? null : aiBalance.data),
