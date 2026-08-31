@@ -135,7 +135,7 @@ function Login({ onDone }: { onDone: () => void }) {
     finally { setBusy(false); }
   }
   return <main className="login-shell">
-    <section className="login-brand"><a className="wordmark" href="/">Swiss<span>Compact</span></a><p>Kundenportal</p><h1>Ihre digitale Kommunikation. Zentral gesteuert.</h1><p className="lead">Kampagnen, Medien und Bildschirme einfach verwalten – für alle Standorte.</p></section>
+    <section className="login-brand"><a className="wordmark" href="/">Swiss<span>Compact</span></a><p>Kundenportal</p><h1>Ihre digitale Kommunikation. Zentral gesteuert.</h1><p className="lead">Kampagnen, Bildschirme und Medien einfach verwalten – für alle Standorte.</p></section>
     <section className="login-panel"><div className="eyebrow">Sicherer Zugang</div><h2>Anmelden</h2><p>Verwenden Sie Ihren persönlichen SwissCompact-Zugang.</p>
       <form onSubmit={submit}>
         <label>E-Mail<input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
@@ -250,7 +250,7 @@ function Portal() {
   if (session === "guest" || !data) return <><Login onDone={() => void load()} />{error && <div className="global-message">{error}</div>}</>;
   const canEdit = data.profile.role !== "viewer";
   const canManageDevices = data.profile.role === "owner" || data.profile.role === "admin";
-  const nav: Array<[View,string]> = [["overview","Übersicht"],["campaigns","Kampagnen"],["content","Medien & Vorlagen"],["displays","Bildschirme"],["settings","Einstellungen"]];
+  const nav: Array<[View,string]> = [["overview","Übersicht"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"],["settings","Einstellungen"]];
   async function logout() { await api("/api/dashboard/logout", { method: "POST", body: "{}" }).catch(() => undefined); setData(null); setSession("guest"); }
   async function setContentStatus(id: string, status: "approved" | "draft") {
     try {
