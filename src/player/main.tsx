@@ -65,7 +65,7 @@ function usePlayableUrl(item?: PlaylistItem): string | null {
   return url;
 }
 
-function PlayerVideo({ source, loop, onFailure }: { source: string | null; loop: boolean; onFailure: () => void }) {
+function PlayerVideo({ source, loop, onEnded, onFailure }: { source: string | null; loop: boolean; onEnded: () => void; onFailure: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const retryTimer = useRef<number | null>(null);
   const [playback, setPlayback] = useState<"loading" | "playing" | "waiting" | "blocked" | "error">("loading");
@@ -116,6 +116,7 @@ function PlayerVideo({ source, loop, onFailure }: { source: string | null; loop:
       onLoadedData={() => void start()}
       onCanPlay={() => void start()}
       onPlaying={() => setPlayback("playing")}
+      onEnded={onEnded}
       onWaiting={() => setPlayback("waiting")}
       onStalled={() => setPlayback("waiting")}
       onError={() => { setPlayback("error"); onFailure(); }}
@@ -206,6 +207,9 @@ function Player() {
     if (!config?.playlist.length) return;
     if (index >= config.playlist.length) setIndex(0);
     const item = config.playlist[index % config.playlist.length];
+    // Videos bestimmen ihre Laufzeit selbst und wechseln erst beim `ended`-Event.
+    // Nur Bilder, Texte und Web-Inhalte verwenden die eingestellte Dauer.
+    if (item.contentType === "video") return;
     const timer = window.setTimeout(() => setIndex((current) => (current + 1) % config.playlist.length), Math.max(5, item.durationSeconds) * 1000);
     return () => clearTimeout(timer);
   }, [config, index]);
@@ -226,6 +230,12 @@ function Player() {
   const usingFallback = Boolean(config?.fallback && (!scheduledItem || mediaFailed));
   const item = usingFallback ? config?.fallback || undefined : scheduledItem;
   const playableUrl = usePlayableUrl(item);
+  const advancePlaylist = useCallback(() => {
+    const playlistLength = config?.playlist.length || 0;
+    if (usingFallback || playlistLength < 2) return;
+    setMediaFailed(false);
+    setIndex((current) => (current + 1) % playlistLength);
+  }, [config?.playlist.length, usingFallback]);
 
   if (!previewDisplayId && !token) return <Pairing initialDisplayId={queryDisplayId || localStorage.getItem(DISPLAY_KEY) || ""} initialCode={queryActivationCode} autoConnect={autoConnectPairing} onPaired={(nextToken, displayId) => {
     localStorage.setItem(TOKEN_KEY, nextToken);
@@ -238,7 +248,7 @@ function Player() {
     setToken(nextToken);
     void loadConfig(nextToken);
   }} />;
-  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}-${usingFallback ? "fallback" : "scheduled"}`}>{item.contentType === "image" && playableUrl ? <img src={playableUrl} alt="" onError={() => setMediaFailed(true)}/> : item.contentType === "video" && playableUrl ? <PlayerVideo source={playableUrl} loop={usingFallback || config?.playlist.length === 1} onFailure={() => setMediaFailed(true)}/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p>{!previewDisplayId && <button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button>}</section>}{usingFallback && <div className="player-mode fallback">Ersatzinhalt</div>}{config?.mode === "test" && <div className="player-mode test">Testbetrieb</div>}{previewDisplayId && <div className="player-mode preview">Gerätevorschau</div>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
+  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}-${usingFallback ? "fallback" : "scheduled"}`}>{item.contentType === "image" && playableUrl ? <img src={playableUrl} alt="" onError={() => setMediaFailed(true)}/> : item.contentType === "video" && playableUrl ? <PlayerVideo source={playableUrl} loop={usingFallback || config?.playlist.length === 1} onEnded={advancePlaylist} onFailure={() => setMediaFailed(true)}/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p>{!previewDisplayId && <button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button>}</section>}{usingFallback && <div className="player-mode fallback">Ersatzinhalt</div>}{config?.mode === "test" && <div className="player-mode test">Testbetrieb</div>}{previewDisplayId && <div className="player-mode preview">Gerätevorschau</div>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
 }
 
 createRoot(document.getElementById("player-root")!).render(<Player/>);
