@@ -14,6 +14,7 @@ import "./portal-service.css";
 import "./portal-customer-records.css";
 import "./portal-project-collaboration.css";
 import "./portal-safety.css";
+import "./portal-onboarding.css";
 
 type PortalProfile = { displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
 type Site = { id: string; name: string; active: boolean; address?: Record<string, string> };
@@ -397,6 +398,29 @@ function DisplaySafetyDialog({ display, campaigns, content, safety, canEdit, onC
   </section></div>;
 }
 
+function campaignHasContentForEveryDisplay(campaign: Campaign): boolean {
+  const displayIds = (campaign.display_links || []).map((link) => link.display_id);
+  if (!displayIds.length) return false;
+  const targetAssignments = campaign.target_assignments || [];
+  if (!targetAssignments.length) return Boolean(campaign.content_links?.length);
+  return displayIds.every((displayId) => targetAssignments.some((assignment) => assignment.display_id === displayId && assignment.content_links.length > 0));
+}
+
+function PortalOnboarding({ currentStep, complete, campaignName, canEdit, onContinue, onStartNew }: { currentStep: 1 | 2 | 3 | 4; complete: boolean; campaignName?: string; canEdit: boolean; onContinue: () => void; onStartNew: () => void }) {
+  const steps = [
+    { title: "Kampagne anlegen", description: "Name, Thema und Laufzeit festlegen." },
+    { title: "Bildschirme auswählen", description: "Die gewünschten Anzeigeflächen zuordnen." },
+    { title: "Inhalte hinzufügen", description: "Bilder oder Videos je Bildschirm bestimmen." },
+    { title: "Prüfen und starten", description: "Alles kontrollieren und veröffentlichen." },
+  ];
+  const current = steps[currentStep - 1];
+  return <section className={`portal-onboarding ${complete ? "is-complete" : ""}`} aria-label="Geführte Ersteinrichtung">
+    <header><div><span className="eyebrow">Geführte Einrichtung</span><h3>{complete ? "Ihre erste Anzeige ist bereit." : campaignName ? `„${campaignName}“ fortsetzen` : "In vier Schritten zur ersten Anzeige"}</h3><p>{complete ? "Kampagne, Bildschirm und Inhalt sind vollständig verbunden." : "Sie sehen immer nur den nächsten notwendigen Schritt. Bereits Erledigtes bleibt gespeichert."}</p></div><b>{complete ? "Bereit" : `${currentStep} von 4`}</b></header>
+    <div className="portal-onboarding-steps">{steps.map((step, index) => { const number = index + 1; const done = complete || number < currentStep; const currentStepActive = !complete && number === currentStep; return <article className={done ? "done" : currentStepActive ? "current" : "locked"} key={step.title}><span>{done ? "✓" : number}</span><div><small>{done ? "Erledigt" : currentStepActive ? "Jetzt" : "Danach"}</small><strong>{step.title}</strong>{!done && <p>{currentStepActive ? step.description : `Wird nach „${steps[index - 1].title}“ verfügbar.`}</p>}</div>{currentStepActive && <b>→</b>}</article>; })}</div>
+    <footer>{complete ? <><span><strong>Bereit für weitere Kampagnen</strong><small>Vorhandene Anzeigen bleiben unverändert.</small></span>{canEdit && <button type="button" className="secondary" onClick={onStartNew}>Weitere Kampagne erstellen</button>}</> : <><span><strong>Nächster Schritt: {current.title}</strong><small>{campaignName ? `Entwurf „${campaignName}“ wird an der richtigen Stelle geöffnet.` : current.description}</small></span>{canEdit ? <button type="button" className="primary" onClick={onContinue}>{campaignName ? "Einrichtung fortsetzen" : "Jetzt beginnen"}</button> : <small>Ein Inhaber oder Bearbeiter kann diesen Schritt ausführen.</small>}</>}</footer>
+  </section>;
+}
+
 function Portal() {
   const [data, setData] = useState<PortalData | null>(null);
   const [session, setSession] = useState<"loading" | "guest" | "ready">("loading");
@@ -495,6 +519,32 @@ function Portal() {
   const canEdit = data.profile.role !== "viewer";
   const canManageDevices = data.profile.role === "owner" || data.profile.role === "admin";
   const nav: Array<[View,string]> = [["overview","Übersicht"],["records","Meine Vorgänge"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"],["archive","Archiv"],["settings","Einstellungen"]];
+  const onboardingComplete = data.campaigns.some((campaign) => ["active", "scheduled"].includes(campaign.status));
+  const onboardingCampaign = [...data.campaigns]
+    .filter((campaign) => ["draft", "paused"].includes(campaign.status))
+    .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime())[0];
+  const onboardingStep: 1 | 2 | 3 | 4 = !onboardingCampaign
+    ? 1
+    : !(onboardingCampaign.display_links || []).length
+      ? 2
+      : !campaignHasContentForEveryDisplay(onboardingCampaign)
+        ? 3
+        : 4;
+  function openOnboardingStep() {
+    if (!onboardingCampaign) {
+      setCampaignInitialStep(1);
+      setCampaignPreset(null);
+      setCreatingCampaign(true);
+      return;
+    }
+    setCampaignInitialStep(onboardingStep);
+    setEditingCampaign(onboardingCampaign);
+  }
+  function startNewCampaign() {
+    setCampaignInitialStep(1);
+    setCampaignPreset(null);
+    setCreatingCampaign(true);
+  }
   async function logout() { await api("/api/dashboard/logout", { method: "POST", body: "{}" }).catch(() => undefined); setData(null); setSession("guest"); }
   async function setContentStatus(id: string, status: "approved" | "draft") {
     try {
@@ -556,9 +606,9 @@ function Portal() {
       <button className="logout" onClick={() => void logout()}><Icon name="logout"/>Abmelden</button>
     </aside>
     <main className="workspace"><header><div><div className="eyebrow">{data.profile.tenantName}</div><h1>{nav.find(([id]) => id === view)?.[1]}</h1></div><div className="profile"><span>{data.profile.displayName.slice(0,1).toUpperCase()}</span><div><strong>{data.profile.displayName}</strong><small>{labels[data.profile.role]}</small></div></div></header>
-      {view === "overview" && <section className="view"><div className="welcome"><div><div className="eyebrow">Guten Tag, {data.profile.displayName.split(" ")[0]}</div><h2>Alles im Blick.</h2><p>Planen Sie eine Kampagne, wählen Sie ihre Ziel-Bildschirme und bestimmen Sie danach die Inhalte je Ziel.</p>{canEdit && <button className="primary welcome-action" onClick={() => setCreatingCampaign(true)}><Icon name="plus"/>Neue Kampagne erstellen</button>}</div><div className="pulse"><i></i>{online} von {data.displays.length} Bildschirmen online</div></div>
+      {view === "overview" && <section className="view"><div className="welcome"><div><div className="eyebrow">Guten Tag, {data.profile.displayName.split(" ")[0]}</div><h2>Alles im Blick.</h2><p>Planen Sie eine Kampagne, wählen Sie ihre Ziel-Bildschirme und bestimmen Sie danach die Inhalte je Ziel.</p>{canEdit && <button className="primary welcome-action" onClick={onboardingComplete ? startNewCampaign : openOnboardingStep}><Icon name="plus"/>{onboardingComplete ? "Neue Kampagne erstellen" : onboardingCampaign ? "Einrichtung fortsetzen" : "Erste Kampagne erstellen"}</button>}</div><div className="pulse"><i></i>{online} von {data.displays.length} Bildschirmen online</div></div>
         <button className="customer-record-overview" onClick={() => setView("records")}><div><span>Ihre Zusammenarbeit mit SwissCompact</span><strong>Offerten, Aufträge und Rechnungen</strong><small>Alle Vorgänge und geschützten Dokumente an einem Ort.</small></div><div className="customer-record-overview-counts"><span><b>{data.customerRecords.quotes.filter((quote) => ["sent", "viewed"].includes(quote.status)).length}</b> offene Offerten</span><span><b>{data.customerRecords.projects.filter((project) => !["completed", "cancelled"].includes(project.status)).length}</b> laufende Aufträge</span><i>Öffnen →</i></div></button>
-        <div className="portal-workflow" aria-label="Kampagne in vier Schritten erstellen"><button className={data.campaigns.length ? "complete" : ""} onClick={() => setView("campaigns")}><span>1</span><div><small>Schritt 1</small><strong>Kampagne planen</strong></div><b>{data.campaigns.length}</b></button><button className={data.displays.length ? "complete" : ""} onClick={() => setView("displays")}><span>2</span><div><small>Schritt 2</small><strong>Ziele wählen</strong></div><b>{data.displays.length}</b></button><button className={data.content.length ? "complete" : ""} onClick={() => setView("content")}><span>3</span><div><small>Schritt 3</small><strong>Inhalte zuordnen</strong></div><b>{data.content.length}</b></button><button className={data.campaigns.some((item) => ["active","scheduled"].includes(item.status)) ? "complete" : ""} onClick={() => setView("campaigns")}><span>4</span><div><small>Schritt 4</small><strong>Prüfen & starten</strong></div><b>{data.campaigns.filter((item) => ["active","scheduled"].includes(item.status)).length}</b></button></div>
+        <PortalOnboarding currentStep={onboardingStep} complete={onboardingComplete} campaignName={onboardingCampaign?.name} canEdit={canEdit} onContinue={openOnboardingStep} onStartNew={startNewCampaign}/>
         <div className="metrics"><article><span>Bildschirme</span><strong>{data.displays.length}</strong><small>{online} online</small></article><article><span>Medien</span><strong>{data.content.length}</strong><small>{data.content.filter((item) => item.status === "published").length} veröffentlicht</small></article><article><span>Kampagnen</span><strong>{data.campaigns.length}</strong><small>{data.campaigns.filter((item) => item.status === "active").length} aktiv</small></article><article><span>Standorte</span><strong>{data.sites.length}</strong><small>{data.sites.filter((item) => item.active).length} verbunden</small></article></div>
         <div className="split"><section className="card"><div className="card-head"><div><span>Aktuelle Kampagnen</span><h3>Planung & Ausspielung</h3></div><button onClick={() => setView("campaigns")}>Alle ansehen</button></div>{data.campaigns.length ? data.campaigns.slice(0,4).map((item) => <div className="row" key={item.id}><div><strong>{item.name}</strong><small>Aktualisiert {new Date(item.updated_at).toLocaleDateString("de-CH")} · Erstellt von {item.creator_name || "Nicht erfasst"}</small></div><Status value={item.status}/></div>) : <Empty>Noch keine Kampagnen vorhanden.</Empty>}</section>
           <section className="card"><div className="card-head"><div><span>Bildschirm-Status</span><h3>Ihre Flächen</h3></div><button onClick={() => setView("displays")}>Alle ansehen</button></div>{data.displays.length ? data.displays.slice(0,4).map((item) => <div className="row" key={item.id}><div><strong>{item.name}</strong><small>{item.site?.name || "Ohne Standort"} · Erstellt von {item.creator_name || "Nicht erfasst"}</small></div><Status value={item.status}/></div>) : <Empty>Noch keine Bildschirme verbunden.</Empty>}</section></div>
