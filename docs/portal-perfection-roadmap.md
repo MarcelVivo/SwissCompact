@@ -31,14 +31,14 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 - [x] Bestätigung und ersten Login überwachen
 - [x] Benutzer sperren, erneut einladen und Rollen ändern
 
-### 3. Kundenbereich „Meine Vorgänge“
+### 3. Kundenbereich „Meine Vorgänge“ – umgesetzt
 
-- [ ] Produktionsanfragen und Status anzeigen
-- [ ] Offerten ansehen, annehmen oder ablehnen
-- [ ] Aufträge, Termine und verantwortliche Person anzeigen
-- [ ] Rechnungen und Zahlungsstatus anzeigen
-- [ ] Dokumente sicher herunterladen
-- [ ] Automatische, verständliche Statusbenachrichtigungen senden
+- [x] Produktionsanfragen und Status anzeigen
+- [x] Offerten ansehen, annehmen oder ablehnen
+- [x] Aufträge, Termine und verantwortliche Person anzeigen
+- [x] Rechnungen und Zahlungsstatus anzeigen
+- [x] Dokumente sicher herunterladen
+- [x] Automatische, verständliche Statusbenachrichtigungen senden
 
 ### 4. Produktion, Freigaben und Kommunikation
 

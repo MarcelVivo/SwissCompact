@@ -88,6 +88,36 @@ async function sendPortalInvitation(email: string, displayName: string, companyN
   return true;
 }
 
+async function sendCustomerStatusNotification(
+  client: any,
+  clientId: string | null | undefined,
+  subject: string,
+  heading: string,
+  message: string,
+): Promise<boolean> {
+  if (!clientId || !process.env.RESEND_API_KEY) return false;
+  const customer = await client.from("clients").select("company_name,contact_name,email").eq("id", clientId).maybeSingle();
+  if (!customer.data?.email || !validEmail(customer.data.email)) return false;
+  let portalUrl = "https://www.swisscompact.com/portal";
+  if (process.env.SITE_URL) {
+    try { portalUrl = `${new URL(process.env.SITE_URL).origin}/portal`; } catch { /* keep production URL */ }
+  }
+  try {
+    const mail = await new Resend(process.env.RESEND_API_KEY).emails.send({
+      from: "SwissCompact <kontakt@swisscompact.com>",
+      to: customer.data.email,
+      replyTo: "kontakt@swisscompact.com",
+      subject,
+      html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#18181b"><p style="color:#c8102e;font-weight:800;letter-spacing:.12em">SWISSCOMPACT</p><h1 style="font-size:28px">${escapeHtml(heading)}</h1><p>Guten Tag ${escapeHtml(customer.data.contact_name || customer.data.company_name || "")},</p><p style="font-size:16px;line-height:1.65">${escapeHtml(message)}</p><p style="margin:30px 0"><a href="${escapeHtml(portalUrl)}" style="display:inline-block;padding:15px 22px;background:#d70b31;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Meine Vorgänge öffnen</a></p><p style="font-size:13px;color:#666">Im geschützten Kundenportal sehen Sie jederzeit den aktuellen Stand und die zugehörigen Dokumente.</p><p>Freundliche Grüsse<br>Marcel Spahr und Thomas Peter<br>SwissCompact</p></div>`,
+    });
+    if (mail.error) throw new Error(mail.error.message);
+    return true;
+  } catch (reason) {
+    console.error("Customer status notification failed", reason);
+    return false;
+  }
+}
+
 function resumableStorageUrl(signedUploadUrl: string): string {
   const url = new URL(signedUploadUrl);
   if (url.hostname.endsWith(".supabase.co") && !url.hostname.endsWith(".storage.supabase.co")) {
@@ -254,6 +284,25 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   const body = await request.json() as Payload;
   const action = cleanText(body.action, 80);
   const now = new Date().toISOString();
+
+  if (action === "create_portal_quote_access") {
+    if (!["owner", "admin"].includes(profile.role)) return json({ error: "Nur Inhaber oder Administratoren dürfen Offerten entscheiden" }, { status: 403 });
+    const quoteId = cleanText(body.quoteId, 80);
+    const admin = dashboardSupabase();
+    if (!quoteId || !admin) return json({ error: "Offerte oder Portalverwaltung fehlt" }, { status: 400 });
+    const quote = await admin.from("quotes").select("id,quote_number,status,valid_until").eq("id", quoteId).eq("client_id", profile.clientId).maybeSingle();
+    if (!quote.data) return json({ error: "Offerte nicht gefunden" }, { status: 404 });
+    if (!["sent", "viewed"].includes(quote.data.status)) return json({ error: "Diese Offerte ist bereits abgeschlossen" }, { status: 409 });
+    const validityEnd = quote.data.valid_until ? new Date(`${quote.data.valid_until}T23:59:59.999+02:00`) : new Date(Date.now() + 7 * 24 * 60 * 60_000);
+    const maximum = new Date(Date.now() + 30 * 24 * 60 * 60_000);
+    const expiresAt = new Date(Math.min(validityEnd.getTime(), maximum.getTime()));
+    if (expiresAt.getTime() <= Date.now()) return json({ error: "Diese Offerte ist abgelaufen" }, { status: 409 });
+    const token = randomBytes(32).toString("base64url");
+    const access = await admin.from("quote_access_tokens").insert({ quote_id: quoteId, token_hash: createHash("sha256").update(token).digest("hex"), recipient_email: profile.email.toLowerCase(), expires_at: expiresAt.toISOString(), created_by: profile.userId }).select("id").single();
+    if (access.error) return json({ error: "Offerte konnte nicht sicher geöffnet werden" }, { status: 503 });
+    await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "quote_opened_from_portal", entity_type: "quote", entity_id: quoteId, metadata: { quoteNumber: quote.data.quote_number, accessId: access.data.id } });
+    return json({ ok: true, url: `${new URL(request.url).origin}/offerte/${token}`, expiresAt: expiresAt.toISOString() });
+  }
 
   if (action === "prepare_media_upload") {
     const title = cleanText(body.title, 180);
@@ -820,6 +869,26 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   return json({ error: "Unbekannte Portal-Aktion" }, { status: 400 });
 }
 
+async function handlePortalDocument(request: Request): Promise<Response> {
+  const authorized = await authorizePortal(request);
+  if (isResponse(authorized)) return authorized;
+  const { profile } = authorized;
+  const admin = dashboardSupabase();
+  if (!admin) return json({ error: "Dokumentenservice ist nicht konfiguriert" }, { status: 503 });
+  const search = new URL(request.url).searchParams;
+  const kind = cleanText(search.get("portalDocument"), 30);
+  const id = cleanText(search.get("id"), 80);
+  if (!id || !["quote", "invoice"].includes(kind)) return json({ error: "Dokument fehlt" }, { status: 400 });
+  const record = kind === "quote"
+    ? await admin.from("quotes").select("id,quote_number,immutable_pdf_path,status").eq("id", id).eq("client_id", profile.clientId).in("status", ["sent", "viewed", "accepted", "declined", "expired"]).maybeSingle()
+    : await admin.from("invoices").select("id,invoice_number,immutable_pdf_path,status").eq("id", id).eq("client_id", profile.clientId).maybeSingle();
+  if (!record.data?.immutable_pdf_path) return json({ error: "Dieses Dokument ist noch nicht verfügbar" }, { status: 404 });
+  const signed = await admin.storage.from("swisscompact-documents").createSignedUrl(record.data.immutable_pdf_path, 10 * 60);
+  if (signed.error || !signed.data?.signedUrl) return json({ error: "Dokument konnte nicht geöffnet werden" }, { status: 503 });
+  await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "customer_document_opened", entity_type: kind, entity_id: id, metadata: { status: record.data.status } });
+  return json({ ok: true, url: signed.data.signedUrl, expiresIn: 600 });
+}
+
 function amount(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.round(Math.min(parsed, 1_000_000_000) * 100) / 100) : 0;
@@ -890,7 +959,7 @@ export async function POST(request: Request): Promise<Response> {
     const id = cleanText(body.id, 80);
     const status = cleanText(body.status, 40);
     if (!id || !["submitted", "planning", "production", "completed", "declined"].includes(status)) return json({ error: "Ungültiger Produktionsstatus" }, { status: 400 });
-    const existing = await client.from("tenant_content").select("id,title,payload").eq("id", id).contains("payload", { serviceRequest: true }).maybeSingle();
+    const existing = await client.from("tenant_content").select("id,tenant_id,title,payload").eq("id", id).contains("payload", { serviceRequest: true }).maybeSingle();
     if (existing.error || !existing.data) return json({ error: "Produktionsanfrage nicht gefunden" }, { status: 404 });
     const payload = { ...(existing.data.payload || {}), serviceRequestStatus: status };
     const result = await client.from("tenant_content").update({ payload, updated_at: new Date().toISOString() }).eq("id", id).select("id,title,status,payload,updated_at").single();
@@ -913,6 +982,17 @@ export async function POST(request: Request): Promise<Response> {
       await opportunityUpdateQuery;
     }
     await writeAudit(client, profile, "status_change", "content_request", id, { serviceRequestStatus: existing.data.payload?.serviceRequestStatus }, { serviceRequestStatus: status });
+    if (existing.data.payload?.serviceRequestStatus !== status) {
+      const tenant = await client.from("tenants").select("client_id").eq("id", existing.data.tenant_id).maybeSingle();
+      const statusLabels: Record<string, string> = { submitted: "eingegangen", planning: "in Planung", production: "in Produktion", completed: "abgeschlossen", declined: "nicht weitergeführt" };
+      await sendCustomerStatusNotification(
+        client,
+        tenant.data?.client_id,
+        `Produktionsanfrage: ${existing.data.title}`,
+        `Ihre Anfrage ist ${statusLabels[status] || status}`,
+        `Der Status Ihrer Produktionsanfrage „${existing.data.title}“ wurde aktualisiert. Sie ist jetzt ${statusLabels[status] || status}.`,
+      );
+    }
     return json({ ok: true, record: result.data });
   }
 
@@ -1355,6 +1435,17 @@ export async function POST(request: Request): Promise<Response> {
     if (result.error) return json({ error: result.error.message }, { status: 400 });
     await client.from("approvals").update({ invalidated_at: new Date().toISOString() }).eq("entity_id", id).is("executed_at", null).is("invalidated_at", null);
     await writeAudit(client, profile, "update", "project", id, previous.data, result.data);
+    if (previous.data.status !== status) {
+      const projectStatusLabels: Record<string, string> = { planning: "in Planung", active: "in Umsetzung", blocked: "mit einer offenen Rückfrage", acceptance: "bereit zur Abnahme", completed: "abgeschlossen", cancelled: "storniert" };
+      const target = result.data.target_completion ? ` Der aktuelle Zieltermin ist der ${new Date(`${result.data.target_completion}T12:00:00`).toLocaleDateString("de-CH")}.` : "";
+      await sendCustomerStatusNotification(
+        client,
+        result.data.client_id,
+        `Auftragsstatus: ${result.data.title}`,
+        `Ihr Auftrag ist ${projectStatusLabels[status] || status}`,
+        `Der Auftrag „${result.data.title}“ ist jetzt ${projectStatusLabels[status] || status}.${target}`,
+      );
+    }
     return json({ ok: true, record: result.data });
   }
 
@@ -1421,6 +1512,13 @@ export async function POST(request: Request): Promise<Response> {
       ]);
       if (payment === "deposit_50") await client.from("tasks").update({ status: "done", completed_at: new Date().toISOString() }).eq("project_id", projectId).eq("title", "50-%-Anzahlung prüfen und gemeinsam bestätigen");
       await writeAudit(client, profile, "dual_approval_executed", "project_payment", projectId, project.data, { payment, label: config.label });
+      await sendCustomerStatusNotification(
+        client,
+        project.data.client_id,
+        `Zahlung bestätigt: ${project.data.title}`,
+        `${config.label} bestätigt`,
+        `Wir haben die ${config.label} für den Auftrag „${project.data.title}“ verbucht. Der Zahlungsstatus und der nächste Projektschritt sind im Kundenportal aktualisiert.`,
+      );
     } else {
       await writeAudit(client, profile, "approval_recorded", "project_payment", projectId, undefined, { payment, approvalId: current.id, fullyApproved });
     }
@@ -1498,5 +1596,6 @@ export async function GET(request: Request): Promise<Response> {
   if (search.get("portalPreview")) return handlePortalPlayerPreview(request, cleanText(search.get("portalPreview"), 80));
   if (search.get("device") === "config") return handleDeviceConfig(request);
   if (search.get("public") === "quote") return getPublicQuote(request);
+  if (search.get("portalDocument")) return handlePortalDocument(request);
   return json({ error: "Nicht gefunden" }, { status: 404 });
 }

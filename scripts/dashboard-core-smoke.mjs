@@ -83,6 +83,9 @@ assert.match(records, /createSignedUrl\(invoice\.data\.immutable_pdf_path, 10 \*
 assert.match(acceptanceMigration, /quote_access_tokens/);
 assert.match(acceptanceMigration, /invoices_quote_installment_unique/);
 assert.match(publicQuote, /\.in\("status", \["sent", "viewed"\]\)/, "Atomare Einmalannahme fehlt");
+assert.match(publicQuote, /decision === "decline"/, "Verbindliche Offertenablehnung fehlt");
+assert.match(publicQuote, /customer_quote_declined/, "Ablehnung wird nicht revisionssicher protokolliert");
+assert.match(publicQuote, /stage: "lost"/, "Abgelehnte Offerte schliesst die Verkaufschance nicht");
 assert.match(publicQuote, /installment: "deposit_50"/);
 assert.match(publicQuote, /Math\.round\(Number\(quote\.total\) \* 50\) \/ 100/);
 assert.match(publicQuote, /stage: "deposit_50"/);

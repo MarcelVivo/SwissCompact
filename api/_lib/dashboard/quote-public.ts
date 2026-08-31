@@ -68,12 +68,37 @@ export async function postPublicQuote(request: Request): Promise<Response> {
   const body = await request.json() as Record<string, unknown>;
   const name = cleanText(body.name, 200);
   const email = cleanText(body.email, 200).toLowerCase();
+  const decision = body.decision === "decline" ? "decline" : "accept";
   if (!name || !validEmail(email) || body.confirm !== true) return json({ error: "Name, gültige E-Mail und Bestätigung sind erforderlich" }, { status: 400 });
   if (email !== String(access.recipient_email).toLowerCase()) return json({ error: "Die E-Mail-Adresse stimmt nicht mit dem persönlichen Offertenlink überein" }, { status: 403 });
 
   const quoteResult = await client.from("quotes").select("*,client:clients(*),opportunity:opportunities(*)").eq("id", access.quote_id).single();
   if (quoteResult.error || !["sent", "viewed"].includes(quoteResult.data.status)) return json({ error: "Diese Offerte kann nicht mehr angenommen werden" }, { status: 409 });
   const quote = quoteResult.data; const customer = relation(quote.client); const opportunity = relation(quote.opportunity);
+  if (decision === "decline") {
+    const reason = cleanText(body.reason, 1500);
+    const declinedAt = new Date().toISOString();
+    const declined = await client.from("quotes").update({ status: "declined", updated_at: declinedAt }).eq("id", quote.id).in("status", ["sent", "viewed"]).select("id").maybeSingle();
+    if (declined.error || !declined.data) return json({ error: "Die Offerte wurde gleichzeitig verarbeitet. Bitte laden Sie die Seite neu." }, { status: 409 });
+    await Promise.all([
+      client.from("quote_access_tokens").update({ revoked_at: declinedAt }).eq("quote_id", quote.id).is("revoked_at", null),
+      quote.opportunity_id ? client.from("opportunities").update({ stage: "lost", next_action: "Kundenabsage auswerten und bei Bedarf persönlich nachfassen", updated_at: declinedAt }).eq("id", quote.opportunity_id) : Promise.resolve(),
+      client.from("audit_log").insert({ actor_email: email, action: "customer_quote_declined", entity_type: "quote", entity_id: quote.id, metadata: { declinedBy: name, reason: reason || null, userAgent: cleanText(request.headers.get("user-agent"), 400) } }),
+    ]);
+    if (process.env.RESEND_API_KEY) {
+      const recipients = email === "kontakt@swisscompact.com" ? [email] : [email, "kontakt@swisscompact.com"];
+      try {
+        await new Resend(process.env.RESEND_API_KEY).emails.send({
+          from: "SwissCompact <kontakt@swisscompact.com>", to: recipients, replyTo: email,
+          subject: `Offerte ${quote.quote_number} wurde abgelehnt`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#18181b"><p style="color:#c8102e;font-weight:800;letter-spacing:.12em">SWISSCOMPACT</p><h1>Entscheidung gespeichert.</h1><p>Die Offerte <strong>${escapeHtml(quote.quote_number)}</strong> wurde durch ${escapeHtml(name)} abgelehnt.</p>${reason ? `<p><strong>Rückmeldung:</strong><br>${escapeHtml(reason)}</p>` : ""}<p>Bei Fragen melden wir uns persönlich.</p></div>`,
+        });
+      } catch (reason) {
+        console.error("Quote decline notification failed", reason);
+      }
+    }
+    return json({ ok: true, declined: true, quoteNumber: quote.quote_number });
+  }
   const acceptedAt = new Date().toISOString();
   const ip = clientAddress(request);
   const accepted = await client.from("quotes").update({ status: "accepted", accepted_by_name: name, accepted_by_email: email, accepted_at: acceptedAt, acceptance_ip: ip === "unknown" ? null : ip, updated_at: acceptedAt }).eq("id", quote.id).in("status", ["sent", "viewed"]).select("id").maybeSingle();

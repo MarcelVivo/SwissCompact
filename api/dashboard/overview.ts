@@ -10,6 +10,8 @@ export async function GET(request: Request): Promise<Response> {
     if (isResponse(authorized)) return authorized;
     const { client, profile } = authorized;
     const tenantId = profile.tenantId;
+    const customerAdmin = dashboardSupabase();
+    if (!customerAdmin) return json({ error: "Kundenvorgänge sind noch nicht konfiguriert" }, { status: 503 });
     const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
@@ -22,10 +24,21 @@ export async function GET(request: Request): Promise<Response> {
       client.from("tenant_audit_log").select("entity_type,entity_id,actor_user_id,created_at").eq("tenant_id", tenantId).eq("action", "create").in("entity_type", ["display", "content", "campaign"]).order("created_at", { ascending: true }),
       client.rpc("get_ai_credit_balance", { target_tenant: tenantId }),
     ]);
+    const [customerQuotes, customerProjects, customerInvoices, responsibleProfiles] = await Promise.all([
+      customerAdmin.from("quotes").select("id,quote_number,opportunity_id,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at,opportunity:opportunities(title)").eq("client_id", profile.clientId).in("status", ["sent", "viewed", "accepted", "declined", "expired"]).order("updated_at", { ascending: false }).limit(100),
+      customerAdmin.from("projects").select("id,quote_id,opportunity_id,order_number,title,status,software_owner,hardware_owner,starts_on,target_completion,deposit_received,installation_payment_received,final_payment_received,created_at,updated_at").eq("client_id", profile.clientId).order("updated_at", { ascending: false }).limit(100),
+      customerAdmin.from("invoices").select("id,quote_id,project_id,invoice_number,installment,status,amount,currency,issued_on,due_on,paid_at,immutable_pdf_path,created_at,updated_at,project:projects(order_number,title)").eq("client_id", profile.clientId).order("created_at", { ascending: false }).limit(150),
+      customerAdmin.from("dashboard_profiles").select("user_id,display_name,email").eq("active", true),
+    ]);
     const firstError = [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents].find((result) => result.error)?.error;
     if (firstError) {
       console.error("portal overview:", firstError.message);
       return json({ error: "Das Kundenportal-Datenmodell ist noch nicht eingerichtet" }, { status: 503 });
+    }
+    const customerRecordsError = [customerQuotes, customerProjects, customerInvoices, responsibleProfiles].find((result) => result.error)?.error;
+    if (customerRecordsError) {
+      console.error("portal customer records:", customerRecordsError.message);
+      return json({ error: "Ihre Vorgänge konnten nicht sicher geladen werden" }, { status: 503 });
     }
     const creatorNames = new Map((members.data ?? []).map((member) => [member.user_id, member.display_name || "Portalbenutzer"]));
     const auditedCreators = new Map<string, string>();
@@ -60,6 +73,12 @@ export async function GET(request: Request): Promise<Response> {
       creator_name: creatorName(campaign.created_by || auditedCreators.get(`campaign:${campaign.id}`)),
       target_assignments: [...(targetContentByCampaign.get(campaign.id) ?? new Map())].map(([display_id, content_links]) => ({ display_id, content_links })),
     }));
+    const responsibleNames = new Map((responsibleProfiles.data ?? []).map((entry) => [entry.user_id, entry.display_name || entry.email]));
+    const projectsForCustomer = (customerProjects.data ?? []).map((project) => ({
+      ...project,
+      software_owner_name: project.software_owner ? responsibleNames.get(project.software_owner) || "SwissCompact Team" : "SwissCompact Team",
+      hardware_owner_name: project.hardware_owner ? responsibleNames.get(project.hardware_owner) || "SwissCompact Team" : "SwissCompact Team",
+    }));
     return json({
       profile,
       sites: sites.data ?? [],
@@ -68,6 +87,11 @@ export async function GET(request: Request): Promise<Response> {
       content: contentWithPreviews.filter((item) => item.payload?.serviceRequest !== true && item.status !== "archived"),
       archivedContent: contentWithPreviews.filter((item) => item.payload?.serviceRequest !== true && item.status === "archived"),
       serviceRequests: contentWithPreviews.filter((item) => item.payload?.serviceRequest === true),
+      customerRecords: {
+        quotes: customerQuotes.data ?? [],
+        projects: projectsForCustomer,
+        invoices: (customerInvoices.data ?? []).map(({ immutable_pdf_path: documentPath, ...invoice }) => ({ ...invoice, document_available: Boolean(documentPath) })),
+      },
       campaigns: campaignsWithCreators,
       subscription: subscription.data ?? null,
       members: (members.data ?? []).filter((member) => member.active && member.access_status === "active" && member.verified_at),
