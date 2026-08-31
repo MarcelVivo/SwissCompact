@@ -644,6 +644,7 @@ button {
 }
 
 .station--hero {
+  z-index: 15;
   bottom: 9vh;
   max-width: min(680px, 58vw);
 }
@@ -730,6 +731,18 @@ button {
   font-weight: 700;
   letter-spacing: 4px;
   text-transform: uppercase;
+}
+
+/* The hero photo has its own baked-in "SwissCompact" wordmark, at a
+   vertical position that shifts with the viewport's aspect ratio — a
+   text-shadow alone can't guarantee separation when the two happen to
+   land on the exact same line, so the hero's own eyebrow gets a small
+   solid backdrop instead, independent of viewport size. */
+.station--hero .station__kicker {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(6, 6, 7, 0.94);
 }
 
 .station h1,
