@@ -164,7 +164,7 @@ export async function ensurePortalProfile(
   request: Request,
 ): Promise<PortalProfile | null> {
   const email = user.email?.toLowerCase();
-  if (!email) return null;
+  if (!email || !user.email_confirmed_at) return null;
   const requestedSlug = new URL(request.url).searchParams.get("tenant")?.trim().toLowerCase() || "";
   const hostname = requestHostname(request);
   let tenantId = "";
@@ -177,13 +177,15 @@ export async function ensurePortalProfile(
   }
   let query = client
     .from("tenant_memberships")
-    .select("id,tenant_id,user_id,role,display_name,active")
+    .select("id,tenant_id,user_id,role,display_name,active,access_status,verified_at")
     .eq("user_id", user.id)
-    .eq("active", true);
+    .eq("active", true)
+    .eq("access_status", "active")
+    .not("verified_at", "is", null);
   if (tenantId) query = query.eq("tenant_id", tenantId);
   const memberships = await query.order("created_at", { ascending: true }).limit(1);
   const membership = memberships.data?.[0];
-  if (!membership) return null;
+  if (!membership || membership.access_status !== "active" || !membership.verified_at) return null;
   const tenant = await client
     .from("tenants")
     .select("id,client_id,name,slug,status,branding,enabled_modules")

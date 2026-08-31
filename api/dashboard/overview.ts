@@ -18,7 +18,7 @@ export async function GET(request: Request): Promise<Response> {
       client.from("tenant_campaigns").select("id,name,theme,status,starts_at,ends_at,schedule,scope_site_id,scope_area_id,created_by,created_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,preview_path:asset_path)),display_links:tenant_campaign_displays(display_id,display:tenant_displays(id,name,status,site:tenant_sites(name),area:tenant_areas(id,name,kind)))").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
       client.from("tenant_campaign_display_content").select("campaign_id,display_id,position,duration_seconds,content:tenant_content(id,title,content_type,status)").eq("tenant_id", tenantId).order("position"),
       client.from("tenant_subscriptions").select("package_code,status,starts_on,minimum_ends_on,monthly_amount_chf,included_ai_credits").eq("tenant_id", tenantId).in("status", ["trial","active","past_due","paused"]).maybeSingle(),
-      client.from("tenant_memberships").select("id,role,display_name,user_id,active").eq("tenant_id", tenantId),
+      client.from("tenant_memberships").select("id,role,display_name,user_id,active,access_status,invited_at,accepted_at,verified_at").eq("tenant_id", tenantId),
       client.from("tenant_audit_log").select("entity_type,entity_id,actor_user_id,created_at").eq("tenant_id", tenantId).eq("action", "create").in("entity_type", ["display", "content", "campaign"]).order("created_at", { ascending: true }),
       client.rpc("get_ai_credit_balance", { target_tenant: tenantId }),
     ]);
@@ -70,7 +70,7 @@ export async function GET(request: Request): Promise<Response> {
       serviceRequests: contentWithPreviews.filter((item) => item.payload?.serviceRequest === true),
       campaigns: campaignsWithCreators,
       subscription: subscription.data ?? null,
-      members: (members.data ?? []).filter((member) => member.active),
+      members: (members.data ?? []).filter((member) => member.active && member.access_status === "active" && member.verified_at),
       aiCredits: {
         ...publicAiConfiguration(),
         balance: aiBalance.error ? null : (Array.isArray(aiBalance.data) ? aiBalance.data[0] ?? null : aiBalance.data),

@@ -23,6 +23,9 @@ export async function POST(request: Request): Promise<Response> {
     const { data, error } = await authClient.auth.signInWithPassword({ email, password });
     if (error || !data.session || !data.user) return json({ error: "E-Mail oder Passwort ist falsch" }, { status: 401 });
     if (audience === "portal") {
+      if (!data.user.email_confirmed_at) {
+        return json({ error: "Bitte bestätigen Sie zuerst Ihre E-Mail-Adresse. Öffnen Sie dafür die Nachricht von SwissCompact." }, { status: 403 });
+      }
       const portalProfile = await ensurePortalProfile(authClient, data.user, request);
       if (!portalProfile) return json({ error: "Für dieses Konto ist kein registriertes und verifiziertes Kundenportal freigeschaltet" }, { status: 403 });
       return json({ ok: true, audience, profile: portalProfile }, {

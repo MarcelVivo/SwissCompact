@@ -30,7 +30,7 @@ type Content = { id: string; title: string; content_type: string; status: string
 type CampaignContentLink = { position: number; duration_seconds: number; content: { id: string; title: string; content_type: string; status: string } | null };
 type Campaign = { id: string; name: string; theme?: string | null; status: string; starts_at?: string; ends_at?: string; scope_site_id?: string | null; scope_area_id?: string | null; created_at?: string; creator_name?: string; updated_at: string; content_links?: CampaignContentLink[]; target_assignments?: Array<{ display_id: string; content_links: CampaignContentLink[] }>; display_links?: Array<{ display_id: string; display: { id: string; name: string; status: string; site?: { name?: string }; area?: { id?: string; name?: string; kind?: string } } | null }> };
 type Subscription = { package_code: string; status: string; starts_on: string; minimum_ends_on?: string; monthly_amount_chf?: number; included_ai_credits?: number } | null;
-type Member = { id: string; role: string; display_name?: string; active: boolean };
+type Member = { id: string; role: string; display_name?: string; active: boolean; access_status: "invited" | "active" | "suspended" | "revoked"; invited_at?: string; accepted_at?: string; verified_at?: string };
 type PairingInfo = { displayId: string; code: string; expiresAt: string; displayName?: string };
 type AiCredits = {
   enabled: boolean;
