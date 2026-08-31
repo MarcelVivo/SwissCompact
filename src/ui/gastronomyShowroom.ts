@@ -6970,12 +6970,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   const displayNetworkShareOutput = root.querySelector<HTMLOutputElement>(
     "[data-showroom-network-share-output]",
   );
-  const historyUndoButton = root.querySelector<HTMLButtonElement>(
-    "[data-showroom-history-undo]",
-  );
-  const historyRedoButton = root.querySelector<HTMLButtonElement>(
-    "[data-showroom-history-redo]",
-  );
   const openingToolbar = root.querySelector<HTMLElement>(
     "[data-showroom-opening-toolbar]",
   );
@@ -7164,9 +7158,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   );
   const contentAiRole = root.querySelector<HTMLSelectElement>(
     "[data-showroom-content-ai-role]",
-  );
-  const contentAiGenerate = root.querySelector<HTMLButtonElement>(
-    "[data-showroom-content-ai-generate]",
   );
   const contentAiOrder = root.querySelector<HTMLButtonElement>(
     "[data-showroom-content-ai-order]",
@@ -20441,69 +20432,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   contentHeroYInput?.addEventListener("input", contentHeroHandler);
   contentHeroEffectInput?.addEventListener("change", contentHeroHandler);
 
-  const contentAiGenerateHandler = async (): Promise<void> => {
-    const prompt = contentAiPrompt?.value.trim() ?? "";
-    if (!prompt) {
-      if (contentAiStatus) contentAiStatus.value = "Bitte zuerst das gewünschte Bild beschreiben.";
-      contentAiPrompt?.focus();
-      return;
-    }
-    const endpoint = (
-      import.meta.env.VITE_SWISSCOMPACT_IMAGE_API_URL as string | undefined
-    )?.trim() || document.querySelector<HTMLMetaElement>(
-      'meta[name="swisscompact-image-api"]',
-    )?.content.trim();
-    if (!endpoint) {
-      if (contentAiStatus) {
-        contentAiStatus.value = "Die KI-API ist vorbereitet, aber noch nicht verbunden. Du kannst das Bild direkt bei SwissCompact bestellen.";
-      }
-      contentAiOrder?.focus();
-      return;
-    }
-    if (contentAiGenerate) contentAiGenerate.disabled = true;
-    if (contentAiStatus) contentAiStatus.value = "KI-Bild wird erstellt …";
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          room: config.preset,
-          role: contentAiRole?.value ?? "background",
-          orientation: getSelectedDisplayUnit()?.orientation ?? "landscape",
-        }),
-      });
-      if (!response.ok) throw new Error(`API ${response.status}`);
-      const result = await response.json() as {
-        dataUrl?: string;
-        imageUrl?: string;
-        imageBase64?: string;
-      };
-      let source = result.dataUrl
-        ?? (result.imageBase64
-          ? `data:image/webp;base64,${result.imageBase64}`
-          : "");
-      if (!source && result.imageUrl) {
-        const imageResponse = await fetch(result.imageUrl);
-        if (!imageResponse.ok) throw new Error("Bilddownload fehlgeschlagen");
-        source = await resizeUploadedDisplayImage(await imageResponse.blob());
-      }
-      if (!source) throw new Error("Kein Bild in der API-Antwort");
-      setDisplayContentImage(
-        contentAiRole?.value === "hero" ? "hero" : "background",
-        source,
-        "SwissCompact KI-Bild",
-      );
-      if (contentAiStatus) contentAiStatus.value = "KI-Bild wurde eingesetzt und kann weiter bearbeitet werden.";
-    } catch {
-      if (contentAiStatus) {
-        contentAiStatus.value = "KI-Erstellung momentan nicht erreichbar. Die Bildbestellung bleibt verfügbar.";
-      }
-    } finally {
-      if (contentAiGenerate) contentAiGenerate.disabled = false;
-    }
-  };
-
   const contentAiOrderHandler = (): void => {
     const prompt = contentAiPrompt?.value.trim()
       || "Individuelles Bild für meinen Displayinhalt";
@@ -20534,7 +20462,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     }\n\nBildwunsch:\n${prompt}`;
     window.dispatchEvent(new CustomEvent("swisscompact:open-consultation", { detail: { note } }));
   };
-  contentAiGenerate?.addEventListener("click", contentAiGenerateHandler);
   contentAiOrder?.addEventListener("click", contentAiOrderHandler);
 
   cleanupHandlers.push(() => {
@@ -20566,7 +20493,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     contentHeroXInput?.removeEventListener("input", contentHeroHandler);
     contentHeroYInput?.removeEventListener("input", contentHeroHandler);
     contentHeroEffectInput?.removeEventListener("change", contentHeroHandler);
-    contentAiGenerate?.removeEventListener("click", contentAiGenerateHandler);
     contentAiOrder?.removeEventListener("click", contentAiOrderHandler);
   });
 
@@ -29935,133 +29861,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       focusInspectorCloseHandler,
     );
     window.removeEventListener("resize", focusInspectorResizeHandler);
-  });
-
-  interface RoomHistory {
-    entries: string[];
-    index: number;
-  }
-  const roomHistories = new Map<RoomPreset, RoomHistory>();
-  (Object.keys(roomConfigurations) as RoomPreset[]).forEach((preset) => {
-    roomHistories.set(preset, {
-      entries: [JSON.stringify(roomConfigurations[preset])],
-      index: 0,
-    });
-  });
-  let restoringHistory = false;
-  let historyCaptureTimer = 0;
-  const updateHistoryButtons = (): void => {
-    const history = roomHistories.get(config.preset);
-    if (historyUndoButton) {
-      historyUndoButton.disabled = !history || history.index <= 0;
-    }
-    if (historyRedoButton) {
-      historyRedoButton.disabled =
-        !history || history.index >= history.entries.length - 1;
-    }
-    root.dataset.showroomHistoryIndex = String(history?.index ?? 0);
-    root.dataset.showroomHistoryLength = String(
-      history?.entries.length ?? 0,
-    );
-  };
-  const captureRoomHistory = (): void => {
-    if (restoringHistory) return;
-    const preset = config.preset;
-    const serialized = JSON.stringify(roomConfigurations[preset]);
-    const history = roomHistories.get(preset);
-    if (!history) {
-      roomHistories.set(preset, { entries: [serialized], index: 0 });
-      updateHistoryButtons();
-      return;
-    }
-    if (history.entries[history.index] === serialized) {
-      updateHistoryButtons();
-      return;
-    }
-    history.entries.splice(history.index + 1);
-    history.entries.push(serialized);
-    if (history.entries.length > 40) history.entries.shift();
-    history.index = history.entries.length - 1;
-    updateHistoryButtons();
-  };
-  const scheduleHistoryCapture = (delay = 0): void => {
-    window.clearTimeout(historyCaptureTimer);
-    historyCaptureTimer = window.setTimeout(captureRoomHistory, delay);
-  };
-  captureContentChange = () => scheduleHistoryCapture(260);
-  const restoreRoomHistory = (direction: -1 | 1): void => {
-    const preset = config.preset;
-    const history = roomHistories.get(preset);
-    if (!history) return;
-    const nextIndex = clamp(
-      history.index + direction,
-      0,
-      history.entries.length - 1,
-    );
-    if (nextIndex === history.index) return;
-    restoringHistory = true;
-    history.index = nextIndex;
-    roomConfigurations[preset] = JSON.parse(
-      history.entries[nextIndex],
-    ) as RoomConfiguration;
-    const restored = roomConfigurations[preset];
-    manualRoomSizeOverrides.set(preset, restored.roomSize);
-    config.roomSize = restored.roomSize;
-    config.light = restored.light;
-    config.brightness = restored.brightness;
-    config.wall = restored.selectedWall;
-    selectedStructureIndex = isFreestandingWall(config.wall)
-      ? Math.max(
-        0,
-        restored.structures[config.wall].findIndex((item) => item.enabled),
-      )
-      : 0;
-    clearEverySelection();
-    loadSelectedInstallation();
-    setWallFocus(getWallFocusForDisplayWall(config.wall));
-    signalSceneTransition();
-    applyConfig();
-    renderSelectionBrowser();
-    restoringHistory = false;
-    updateHistoryButtons();
-  };
-  const historyUndoHandler = (): void => restoreRoomHistory(-1);
-  const historyRedoHandler = (): void => restoreRoomHistory(1);
-  const genericHistoryClickHandler = (event: MouseEvent): void => {
-    if (
-      event.target instanceof Element
-      && event.target.closest(
-        "[data-showroom-history-undo], [data-showroom-history-redo]",
-      )
-    ) {
-      return;
-    }
-    scheduleHistoryCapture();
-  };
-  const genericHistoryInputHandler = (): void => {
-    scheduleHistoryCapture(220);
-  };
-  const genericHistoryPointerUpHandler = (): void => {
-    scheduleHistoryCapture();
-  };
-  historyUndoButton?.addEventListener("click", historyUndoHandler);
-  historyRedoButton?.addEventListener("click", historyRedoHandler);
-  root.addEventListener("click", genericHistoryClickHandler);
-  root.addEventListener("input", genericHistoryInputHandler);
-  canvas.addEventListener("pointerup", genericHistoryPointerUpHandler);
-  canvas.addEventListener("pointercancel", genericHistoryPointerUpHandler);
-  updateHistoryButtons();
-  cleanupHandlers.push(() => {
-    window.clearTimeout(historyCaptureTimer);
-    historyUndoButton?.removeEventListener("click", historyUndoHandler);
-    historyRedoButton?.removeEventListener("click", historyRedoHandler);
-    root.removeEventListener("click", genericHistoryClickHandler);
-    root.removeEventListener("input", genericHistoryInputHandler);
-    canvas.removeEventListener("pointerup", genericHistoryPointerUpHandler);
-    canvas.removeEventListener(
-      "pointercancel",
-      genericHistoryPointerUpHandler,
-    );
   });
 
   const showroomUiPointerBoundaryHandler = (event: PointerEvent): void => {

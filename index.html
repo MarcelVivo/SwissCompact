@@ -715,22 +715,6 @@
               </div>
             </div>
             <div class="showroom-focus-header__history">
-              <button class="showroom-focus-header__network" type="button" data-showroom-network-open aria-expanded="false">
-                <span aria-hidden="true">⌁</span>
-                <strong>Netzwerk</strong>
-                <small data-showroom-network-count>1 aktiv</small>
-              </button>
-              <button type="button" data-showroom-history-undo disabled aria-label="Rückgängig" title="Rückgängig">↶</button>
-              <button type="button" data-showroom-history-redo disabled aria-label="Wiederholen" title="Wiederholen">↷</button>
-              <button class="showroom-focus-header__saved-rooms" type="button" data-showroom-saved-rooms-open aria-expanded="false" title="Gespeicherte Räume öffnen">
-                <span aria-hidden="true">▣</span>
-                <strong>Meine Räume</strong>
-                <small data-showroom-saved-rooms-count>0</small>
-              </button>
-              <button class="showroom-focus-header__save" type="button" data-showroom-room-save title="Aktuellen Raum speichern">
-                <span aria-hidden="true">✓</span>
-                <strong data-showroom-room-save-label>Speichern</strong>
-              </button>
               <button type="button" data-showroom-room-reset aria-label="Raum zurücksetzen" title="Raum auf Grundausstattung zurücksetzen">Reset</button>
             </div>
           </header>
@@ -768,70 +752,6 @@
               </div>
             </nav>
           </section>
-
-          <aside class="showroom-network-panel" data-showroom-network-panel hidden aria-label="SwissCompact Partnernetzwerk">
-            <header>
-              <div>
-                <span>SwissCompact Ökosystem</span>
-                <strong>Gemeinsam mehr erreichen</strong>
-              </div>
-              <button type="button" data-showroom-network-close aria-label="Partnernetzwerk schliessen">×</button>
-            </header>
-            <div class="showroom-network-panel__body">
-              <section class="showroom-network-membership">
-                <div>
-                  <span>Teilnahme</span>
-                  <strong data-showroom-network-membership-title>Partnernetzwerk aktiv</strong>
-                  <small>Eigene Inhalte haben immer Vorrang. Jede Partnerschaft wird einzeln freigegeben.</small>
-                </div>
-                <button class="is-active" type="button" data-showroom-network-membership aria-pressed="true">
-                  <span></span><strong>Aktiv</strong>
-                </button>
-              </section>
-              <section class="showroom-network-overview">
-                <header>
-                  <div><span>Aktueller Standort</span><strong data-showroom-network-current-room>Restaurant</strong></div>
-                  <output><strong data-showroom-network-approved-count>1</strong><small>aktive Partner</small></output>
-                </header>
-                <div class="showroom-network-map" data-showroom-network-map aria-label="Verbundene Partner"></div>
-              </section>
-              <section class="showroom-network-section">
-                <header>
-                  <div><span>Passende Empfehlungen</span><strong>Von SwissCompact vorgeschlagen</strong></div>
-                  <small>Nach Branche, Zielgruppe und Nutzungssituation</small>
-                </header>
-                <div class="showroom-network-partners" data-showroom-network-partners></div>
-              </section>
-              <section class="showroom-network-section">
-                <header>
-                  <div><span>Kampagnen</span><strong>Auf deinen Displays</strong></div>
-                  <small data-showroom-network-campaign-summary>Eigener Content bleibt der sichere Fallback.</small>
-                </header>
-                <div class="showroom-network-campaigns" data-showroom-network-campaigns></div>
-              </section>
-            </div>
-            <footer>
-              <span><strong>SwissCompact Network</strong><small>Planung, Freigabe, Ausspielung und Reporting aus einer Hand.</small></span>
-              <button type="button" data-sales-assistant-open>Netzwerk-Beratung <span aria-hidden="true">↗</span></button>
-            </footer>
-          </aside>
-
-          <aside class="showroom-saved-rooms-panel" data-showroom-saved-rooms-panel hidden aria-label="Meine gespeicherten Räume">
-            <header>
-              <div>
-                <span>Projektübersicht</span>
-                <strong>Meine Räume</strong>
-                <small data-showroom-saved-rooms-subtitle>Noch keine Konfiguration gespeichert</small>
-              </div>
-              <button type="button" data-showroom-saved-rooms-close aria-label="Meine Räume schliessen">×</button>
-            </header>
-            <section class="showroom-saved-rooms-summary" data-showroom-saved-rooms-summary aria-label="Projektumfang"></section>
-            <div class="showroom-saved-rooms-list" data-showroom-saved-rooms-list></div>
-            <footer>
-              <span><strong>Bereit für die Umsetzung?</strong><small>Wir prüfen Technik, Montage und zentrale Steuerung.</small></span>
-              <button type="button" data-showroom-saved-rooms-consult>Projekt beraten lassen <span aria-hidden="true">→</span></button>
-            </footer>
-          </aside>
 
           <nav class="showroom-focus-tools" aria-label="Showroom-Werkzeuge">
             <button type="button" data-showroom-focus-tool="select" aria-label="Alles auswählen">
@@ -1175,7 +1095,7 @@
               aria-expanded="false"
               aria-controls="showroom-display-advanced"
             >
-              <span><strong>Weitere Einstellungen</strong><small>Bildtechnologie und Netzwerk-Freigaben</small></span><i aria-hidden="true">⌄</i>
+              <span><strong>Weitere Einstellungen</strong><small>Bildtechnologie</small></span><i aria-hidden="true">⌄</i>
             </button>
             <div class="showroom-display-flyout__advanced" id="showroom-display-advanced" data-showroom-display-advanced hidden>
             <div class="showroom-display-flyout__group showroom-display-technology">
@@ -1201,44 +1121,6 @@
               </div>
               <small data-showroom-display-technology-hint>Automatik: bis 75″ Display · über 75″ modular berechnete LED-Wand.</small>
             </div>
-            <section class="showroom-display-network" data-showroom-display-network>
-              <header>
-                <div>
-                  <span>SwissCompact Netzwerk</span>
-                  <strong>Inhaltsquelle</strong>
-                </div>
-                <output data-showroom-display-network-badge>Nur eigene Inhalte</output>
-              </header>
-              <div class="showroom-network-source-options" role="group" aria-label="Inhaltsquelle wählen">
-                <button class="is-active" type="button" data-showroom-network-mode="own"><strong>Eigene Inhalte</strong><small>100 % dein Betrieb</small></button>
-                <button type="button" data-showroom-network-mode="partner"><strong>Partner</strong><small>Freigegebene Werbung</small></button>
-                <button type="button" data-showroom-network-mode="mix"><strong>Automatischer Mix</strong><small>Eigene Inhalte zuerst</small></button>
-              </div>
-              <div class="showroom-display-network__partner" data-showroom-display-network-partner hidden>
-                <label>
-                  <span>Wer darf hier werben?</span>
-                  <select data-showroom-network-partner aria-label="Netzwerkpartner für dieses Display"></select>
-                </label>
-                <div data-showroom-network-partner-preview></div>
-                <label class="showroom-network-schedule">
-                  <span>Wann?</span>
-                  <select data-showroom-network-schedule aria-label="Zeitraum für Partnercontent">
-                    <option value="allDay">Ganztags</option>
-                    <option value="morning">Morgen · 06–11 Uhr</option>
-                    <option value="lunch">Mittag · 11–14 Uhr</option>
-                    <option value="evening">Abend · 17–22 Uhr</option>
-                  </select>
-                </label>
-                <label class="showroom-network-share">
-                  <span>Partneranteil <output data-showroom-network-share-output>30 %</output></span>
-                  <input type="range" min="10" max="70" step="10" value="30" data-showroom-network-share>
-                  <small>Eigene Inhalte füllen automatisch die übrige Zeit.</small>
-                </label>
-              </div>
-              <button class="showroom-display-network__open" type="button" data-showroom-network-open>
-                <span>Partner finden und Freigaben verwalten</span><i aria-hidden="true">›</i>
-              </button>
-            </section>
             </div>
             <small>Änderungen gelten nur für dieses Display.</small>
           </aside>
@@ -1382,14 +1264,13 @@
 
                   <section class="showroom-content-editor__section showroom-content-editor__ai">
                     <span class="showroom-content-editor__label">SwissCompact Bildstudio</span>
-                    <strong>Bild per KI erstellen lassen</strong>
+                    <strong>Individuelles Bild bestellen</strong>
                     <textarea rows="3" data-showroom-content-ai-prompt placeholder="Beschreibe Motiv, Stil, Stimmung und gewünschte Aussage …"></textarea>
                     <label><span>Verwendung</span><select data-showroom-content-ai-role><option value="background">Als Hintergrund</option><option value="hero">Als Hauptbild</option></select></label>
                     <div>
-                      <button type="button" data-showroom-content-ai-generate>KI-Bild erstellen</button>
                       <button type="button" data-showroom-content-ai-order>Bei SwissCompact bestellen <span aria-hidden="true">↗</span></button>
                     </div>
-                    <output data-showroom-content-ai-status>KI-Erstellung wird über eine sichere API-Schnittstelle verbunden.</output>
+                    <output data-showroom-content-ai-status>Ein SwissCompact-Team-Mitglied erstellt dein individuelles Bild.</output>
                   </section>
                 </aside>
 
