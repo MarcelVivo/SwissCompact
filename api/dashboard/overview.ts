@@ -12,7 +12,8 @@ export async function GET(request: Request): Promise<Response> {
     const tenantId = profile.tenantId;
     const customerAdmin = dashboardSupabase();
     if (!customerAdmin) return json({ error: "Kundenvorgänge sind noch nicht konfiguriert" }, { status: 503 });
-    await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
+    const displayHealthRefresh = await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
+    if (displayHealthRefresh.error) console.warn("portal display health refresh:", displayHealthRefresh.error.message);
     const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayVersions, displayTests, displayAlerts] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
@@ -42,11 +43,17 @@ export async function GET(request: Request): Promise<Response> {
       customerAdmin.from("project_review_decisions").select("id,deliverable_version_id,project_id,decision,feedback,decided_by_name,created_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
       customerAdmin.from("project_revision_rounds").select("id,project_id,deliverable_id,round_number,status,request_text,response_text,included,additional_cost_chf,approved_at,created_at,updated_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
     ]);
-    const firstError = [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, displayVersions, displayTests, displayAlerts].find((result) => result.error)?.error;
+    const firstError = [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents].find((result) => result.error)?.error;
     if (firstError) {
       console.error("portal overview:", firstError.message);
       return json({ error: "Das Kundenportal-Datenmodell ist noch nicht eingerichtet" }, { status: 503 });
     }
+    const displaySafetyAvailable = [displayVersions, displayTests, displayAlerts].every((result) => !result.error);
+    if (!displaySafetyAvailable) console.warn("portal display safety is temporarily unavailable", {
+      versions: displayVersions.error?.message,
+      tests: displayTests.error?.message,
+      alerts: displayAlerts.error?.message,
+    });
     const customerRecordsError = [customerQuotes, customerProjects, customerInvoices, responsibleProfiles].find((result) => result.error)?.error;
     if (customerRecordsError) {
       console.error("portal customer records:", customerRecordsError.message);
@@ -117,9 +124,9 @@ export async function GET(request: Request): Promise<Response> {
         revisions: collaborationAvailable ? projectRevisions.data ?? [] : [],
       },
       displaySafety: {
-        versions: displayVersions.data ?? [],
-        tests: displayTests.data ?? [],
-        alerts: displayAlerts.data ?? [],
+        versions: displaySafetyAvailable ? displayVersions.data ?? [] : [],
+        tests: displaySafetyAvailable ? displayTests.data ?? [] : [],
+        alerts: displaySafetyAvailable ? displayAlerts.data ?? [] : [],
       },
       campaigns: campaignsWithCreators,
       subscription: subscription.data ?? null,
