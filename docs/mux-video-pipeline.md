@@ -13,6 +13,11 @@ Die Anwendung ist so gebaut, dass Bilder weiterhin privat in Supabase liegen. Vi
 
 Die Anzahl Videos ist im Portal nicht begrenzt. Abrechnung und technische Kontingente richten sich nach dem bei Mux aktivierten Tarif.
 
+Neue Mux-Videos werden mit der Qualitätsstufe `plus` verarbeitet. Diese Stufe ist
+für professionelle Marken- und Displayinhalte vorgesehen und verursacht bei Mux
+Kodierungskosten pro hochgeladener Videominute. Bereits vorhandene Assets werden
+durch eine Änderung dieser Einstellung nicht neu verarbeitet.
+
 ## 1. Mux-Zugang vorbereiten
 
 Im Mux-Dashboard in der produktiven Umgebung anlegen:

@@ -74,7 +74,10 @@ export async function createMuxDirectUpload(origin: string, contentId: string, t
       new_asset_settings: {
         passthrough: contentId,
         playback_policies: ["signed"],
-        video_quality: "basic",
+        // SwissCompact displays show professional branded content on large panels.
+        // Mux Basic visibly over-compresses detailed footage; Plus uses the
+        // higher-quality per-title encoding ladder intended for this use case.
+        video_quality: "plus",
         static_renditions: [{ resolution: "highest", passthrough: contentId }],
         meta: { title: title.slice(0, 512), external_id: contentId },
       },
