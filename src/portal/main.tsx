@@ -746,6 +746,19 @@ function Portal() {
       setPairingBusyId("");
     }
   }
+  async function waitForContentReady(id: string): Promise<Content> {
+    const deadline = Date.now() + 15 * 60_000;
+    while (Date.now() < deadline) {
+      const overview = await load(false);
+      const created = overview?.content.find((item) => item.id === id);
+      if (created?.payload?.processingState === "error") {
+        throw new Error(created.payload.processingError || `„${created.title}“ konnte nicht aufbereitet werden.`);
+      }
+      if (created && contentIsDisplayReady(created)) return created;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 3_000));
+    }
+    throw new Error("Das Video wurde gespeichert, benötigt aber länger als erwartet. Klicken Sie auf „Verfügbarkeit erneut prüfen“.");
+  }
   return <div className="portal" style={{ "--accent": data.profile.branding?.accent || "#d90d32" } as React.CSSProperties}>
     <aside><a className="wordmark" href="/">Swiss<span>Compact</span></a><div className="tenant"><span>Arbeitsbereich</span><strong>{data.profile.tenantName}</strong></div>
       <nav>{nav.map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}><Icon name={id}/>{label}</button>)}</nav>
@@ -767,11 +780,11 @@ function Portal() {
       {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang und das aktive SwissCompact-Paket.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
       {view === "records" && <CustomerRecordsView data={data} onRefresh={async () => { await load(false); }}/>}
     </main>
-    {dialog && <CreateDialog type={dialog} initialContentType={dialog === "content" ? "image" : "composition"} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
+    {dialog && <CreateDialog type={dialog} initialContentType={dialog === "content" ? "image" : "composition"} waitUntilReady={waitForContentReady} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
     {serviceRequestDialog && <ServiceRequestDialog profile={data.profile} onClose={() => setServiceRequestDialog(false)} onCreated={() => { setServiceRequestDialog(false); void load(false); }} />}
     {editingContent && <ContentEditDialog content={editingContent} onClose={() => setEditingContent(null)} onUpload={() => { setEditingContent(null); setDialog("content"); }} onSaved={() => { setEditingContent(null); void load(); }} />}
     {aiDialog && <AiImageDialog credits={data.aiCredits} canBuy={canManageDevices} checkoutNotice={creditNotice} onDismissCheckoutNotice={() => setCreditNotice(null)} onClose={() => setAiDialog(false)} onCreated={() => { setAiDialog(false); void load(); }} />}
-    {(creatingCampaign || editingCampaign) && <CampaignEditor campaign={editingCampaign} preset={editingCampaign ? null : campaignPreset} initialStep={campaignInitialStep} sites={data.sites} areas={data.areas} content={data.content} displays={data.displays} aiCredits={data.aiCredits} canEdit={canEdit} canManageDevices={canManageDevices} onContentCreated={async (id) => {
+    {(creatingCampaign || editingCampaign) && <CampaignEditor campaign={editingCampaign} preset={editingCampaign ? null : campaignPreset} initialStep={campaignInitialStep} sites={data.sites} areas={data.areas} content={data.content} displays={data.displays} aiCredits={data.aiCredits} canEdit={canEdit} canManageDevices={canManageDevices} onWaitForContentReady={waitForContentReady} onContentCreated={async (id) => {
       const next = await load(false);
       return next?.content.find((item) => item.id === id) || null;
     }} onDraftCreated={() => load(false)} onCreateDisplay={() => setDisplaySetup(true)} onClose={() => { setCreatingCampaign(false); setEditingCampaign(null); setCampaignPreset(null); setCampaignInitialStep(1); void load(false); }} onSaved={() => { if (campaignPreset) setView("displays"); setCreatingCampaign(false); setEditingCampaign(null); setCampaignPreset(null); setCampaignInitialStep(1); void load(); }} />}
@@ -916,7 +929,7 @@ function localDateTime(value?: string): string {
 
 type PlaylistEntry = { contentId: string; durationSeconds: number };
 
-function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, displays, aiCredits, canEdit, canManageDevices, onContentCreated, onDraftCreated, onCreateDisplay, onClose, onSaved }: { campaign: Campaign | null; preset: CampaignPreset | null; initialStep: 1 | 2 | 3 | 4; sites: Site[]; areas: Area[]; content: Content[]; displays: Display[]; aiCredits: AiCredits; canEdit: boolean; canManageDevices: boolean; onContentCreated: (id: string) => Promise<Content | null>; onDraftCreated: () => Promise<PortalData | null>; onCreateDisplay: () => void; onClose: () => void; onSaved: () => void }) {
+function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, displays, aiCredits, canEdit, canManageDevices, onContentCreated, onWaitForContentReady, onDraftCreated, onCreateDisplay, onClose, onSaved }: { campaign: Campaign | null; preset: CampaignPreset | null; initialStep: 1 | 2 | 3 | 4; sites: Site[]; areas: Area[]; content: Content[]; displays: Display[]; aiCredits: AiCredits; canEdit: boolean; canManageDevices: boolean; onContentCreated: (id: string) => Promise<Content | null>; onWaitForContentReady: (id: string) => Promise<Content>; onDraftCreated: () => Promise<PortalData | null>; onCreateDisplay: () => void; onClose: () => void; onSaved: () => void }) {
   const legacyPlaylist = [...(campaign?.content_links || [])].sort((a,b) => a.position - b.position).flatMap((link) => link.content ? [{ contentId: link.content.id, durationSeconds: link.duration_seconds || 10 }] : []);
   const initialTargetPlaylists = Object.fromEntries((campaign?.target_assignments || []).map((assignment) => [assignment.display_id, [...assignment.content_links].sort((a,b) => a.position - b.position).flatMap((link) => link.content ? [{ contentId: link.content.id, durationSeconds: link.duration_seconds || 10 }] : [])])) as Record<string, PlaylistEntry[]>;
   const initialDisplayIds = (campaign?.display_links || []).map((link) => link.display_id);
@@ -947,7 +960,6 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
   const [draftNotice, setDraftNotice] = useState("");
   const [contentDialog, setContentDialog] = useState<"upload" | "ai" | null>(null);
   const [contentNotice, setContentNotice] = useState("");
-  const [pendingCreatedContent, setPendingCreatedContent] = useState<{ id: string; targetId: string } | null>(null);
   const mediaListRef = useRef<HTMLDivElement>(null);
   const isRunning = Boolean(campaign && ["active", "scheduled"].includes(campaign.status));
   const isClosed = Boolean(campaign && ["completed", "archived"].includes(campaign.status));
@@ -1011,43 +1023,12 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
     if (mode === "individual") setTargetPlaylists((current) => ({ ...current, ...Object.fromEntries(chosenDisplays.filter((display) => !current[display.id]).map((display) => [display.id, [...sharedPlaylist]])) }));
     setContentMode(mode);
   }
-  useEffect(() => {
-    if (!pendingCreatedContent) return;
-    const created = content.find((item) => item.id === pendingCreatedContent.id);
-    if (!created) return;
-    if (created.payload?.processingState === "error") {
-      setPendingCreatedContent(null);
-      setContentNotice("");
-      setError(created.payload.processingError || `„${created.title}“ konnte nicht aufbereitet werden.`);
-      return;
-    }
-    if (!contentIsDisplayReady(created)) return;
-    const targetId = pendingCreatedContent.targetId;
-    setPendingCreatedContent(null);
-    void (async () => {
-      try {
-        if (!["approved", "published"].includes(created.status)) {
-          await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id: created.id, status: "approved" }) });
-        }
-        updatePlaylist(targetId, (playlist) => playlist.some((entry) => entry.contentId === created.id) ? playlist : [...playlist, { contentId: created.id, durationSeconds: 10 }]);
-        setContentNotice(`„${created.title}“ ist displaybereit, freigegeben und ausgewählt.`);
-        await onDraftCreated();
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Der neue Inhalt konnte nicht automatisch ausgewählt werden.");
-      }
-    })();
-  }, [content, pendingCreatedContent]);
   async function acceptCreatedContent(id?: string) {
     if (!id) throw new Error("Das neue Motiv konnte nicht übernommen werden.");
     setError("");
     const created = await onContentCreated(id);
     if (!created) throw new Error("Das neue Motiv wurde gespeichert, konnte aber noch nicht geladen werden.");
-    if (!contentIsDisplayReady(created)) {
-      setPendingCreatedContent({ id, targetId: currentTargetId });
-      setContentNotice(`„${created.title}“ wird jetzt aufbereitet und danach automatisch freigegeben und ausgewählt.`);
-      setContentDialog(null);
-      return;
-    }
+    if (!contentIsDisplayReady(created)) throw new Error(`„${created.title}“ ist noch nicht displaybereit.`);
     if (!["approved", "published"].includes(created.status)) {
       await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id, status: "approved" }) });
     }
@@ -1159,7 +1140,7 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
     </div>
     {step === 4 && campaign && chosenDisplays.length > 0 && <div className="campaign-safe-preview"><span><strong>Gerätegetreue Vorschau</strong><small>Öffnet die gespeicherte Kampagne auf dem ersten Zielbildschirm – noch ohne Veröffentlichung.</small></span><a href={`/player?preview=${encodeURIComponent(chosenDisplays[0].id)}&campaign=${encodeURIComponent(campaign.id)}`} target="_blank" rel="noreferrer">Vorschau öffnen</a></div>}
     {error && <div className="form-error">{error}</div>}<footer className="editor-actions"><button className="secondary" onClick={onClose}>Schließen</button>{stepCollapsed ? <button className="primary" onClick={() => setStepCollapsed(false)}>Schritt öffnen</button> : <>{canEdit && isRunning && <button className="secondary danger" onClick={() => void pause()} disabled={busy}>Kampagne pausieren</button>}{step > 1 && <button className="secondary" onClick={() => { setError(""); setStepCollapsed(false); setStep((current) => current - 1); }} disabled={busy}>{previousStepLabels[step - 1]}</button>}{step < 4 && <button className="primary" onClick={nextStep}>{nextStepLabels[step - 1]}</button>}{canEdit && step === 4 && <><button className={isRunning || isClosed ? "primary" : "secondary"} onClick={() => void save(false)} disabled={busy}>{busy ? "Wird gespeichert …" : isRunning ? "Änderungen live übernehmen" : campaign ? "Änderungen speichern" : "Als Entwurf speichern"}</button>{!isRunning && !isClosed && <button className="primary" onClick={() => void save(true)} disabled={busy}>{busy ? "Wird gespeichert …" : startsAt && new Date(startsAt) > new Date() ? "Kampagne planen" : "Kampagne starten"}</button>}</>}</>}</footer>
-  </section></div>{contentDialog === "upload" && <CreateDialog type="content" initialContentType="image" nested onClose={() => setContentDialog(null)} onCreated={acceptCreatedContent}/>} {contentDialog === "ai" && <AiImageDialog credits={aiCredits} canBuy={canManageDevices} checkoutNotice={null} onDismissCheckoutNotice={() => undefined} nested onClose={() => setContentDialog(null)} onCreated={acceptCreatedContent}/>}</>;
+  </section></div>{contentDialog === "upload" && <CreateDialog type="content" initialContentType="image" nested waitUntilReady={onWaitForContentReady} onClose={() => setContentDialog(null)} onCreated={acceptCreatedContent}/>} {contentDialog === "ai" && <AiImageDialog credits={aiCredits} canBuy={canManageDevices} checkoutNotice={null} onDismissCheckoutNotice={() => undefined} nested onClose={() => setContentDialog(null)} onCreated={acceptCreatedContent}/>}</>;
 }
 
 function AiImageDialog({ credits, canBuy, checkoutNotice, onDismissCheckoutNotice, nested = false, onClose, onCreated }: { credits: AiCredits; canBuy: boolean; checkoutNotice: CreditPurchaseNotice | null; onDismissCheckoutNotice: () => void; nested?: boolean; onClose: () => void; onCreated: (id?: string) => void | Promise<void> }) {
@@ -1231,9 +1212,11 @@ function AiImageDialog({ credits, canBuy, checkoutNotice, onDismissCheckoutNotic
   </section></div>;
 }
 
-function CreateDialog({ type, initialContentType = "image", nested = false, onClose, onCreated }: { type: "content" | "campaign"; initialContentType?: string; nested?: boolean; onClose: () => void; onCreated: (id?: string) => void | Promise<void> }) {
+function CreateDialog({ type, initialContentType = "image", nested = false, waitUntilReady, onClose, onCreated }: { type: "content" | "campaign"; initialContentType?: string; nested?: boolean; waitUntilReady?: (id: string) => Promise<Content>; onClose: () => void; onCreated: (id?: string) => void | Promise<void> }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStage, setUploadStage] = useState<"idle" | "preparing" | "uploading" | "processing" | "ready">("idle");
+  const [createdMediaId, setCreatedMediaId] = useState("");
   const [contentType, setContentType] = useState(initialContentType);
   const [inspectionBusy, setInspectionBusy] = useState(false);
   const [inspection, setInspection] = useState<InspectedMedia | null>(null);
@@ -1253,7 +1236,22 @@ function CreateDialog({ type, initialContentType = "image", nested = false, onCl
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(""); setUploadProgress(0); const form = new FormData(event.currentTarget);
+    event.preventDefault(); setBusy(true); setError("");
+    if (createdMediaId && waitUntilReady) {
+      try {
+        setUploadStage("processing");
+        await waitUntilReady(createdMediaId);
+        setUploadStage("ready");
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
+        await onCreated(createdMediaId);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Die Verfügbarkeit konnte nicht geprüft werden.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    setUploadProgress(0); setUploadStage("preparing"); const form = new FormData(event.currentTarget);
     const title = String(form.get("title") || "");
     const body = type === "content" ? { action: "create_content", title, contentType: form.get("contentType"), text: form.get("text") } : { action: "create_campaign", name: title, startsAt: form.get("startsAt") || null, endsAt: form.get("endsAt") || null };
     let preparedId = "";
@@ -1270,6 +1268,7 @@ function CreateDialog({ type, initialContentType = "image", nested = false, onCl
         });
         preparedId = prepared.record.id;
         createdId = prepared.record.id;
+        setUploadStage("uploading");
         if (contentType === "video" && prepared.upload.provider === "mux") {
           await uploadMuxVideo(file, prepared.upload.url, mimeType, setUploadProgress);
         } else if (contentType === "video") {
@@ -1282,6 +1281,13 @@ function CreateDialog({ type, initialContentType = "image", nested = false, onCl
         if (inspected.poster && prepared.posterUpload?.signedUrl) await uploadSignedBlob(inspected.poster, prepared.posterUpload.signedUrl);
         await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "finalize_media_upload", id: prepared.record.id }) });
         preparedId = "";
+        setCreatedMediaId(createdId);
+        if (waitUntilReady) {
+          setUploadStage("processing");
+          await waitUntilReady(createdId);
+        }
+        setUploadStage("ready");
+        if (contentType === "video") await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
       } else {
         const created = await api<{ record?: { id?: string } }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify(body) });
         createdId = created.record?.id || "";
@@ -1294,7 +1300,10 @@ function CreateDialog({ type, initialContentType = "image", nested = false, onCl
     } finally { setBusy(false); }
   }
   const isMedia = contentType === "image" || contentType === "video";
-  return <div className={`dialog-backdrop ${nested ? "campaign-child-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Medien & Vorlagen" : "Anzeigen"}</div><h2>{type === "content" ? "Bild oder Video hochladen" : "Neue Anzeige erstellen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Name der Anzeige"}<input name="title" required autoFocus /></label>{type === "content" ? <><label>Was möchten Sie hinzufügen?<select name="contentType" value={contentType} onChange={(event) => { setContentType(event.target.value); setInspection(null); setError(""); }}><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="text">Textanzeige</option><option value="web">Web-Inhalt</option><option value="composition">Leerer Entwurf (erweitert)</option></select></label>{isMedia ? <><label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm,video/quicktime,video/x-matroska,.mp4,.webm,.mov,.mkv"} onChange={(event) => void inspectSelection(event.target.files?.[0])}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4, WebM oder MOV · wird geprüft und automatisch displayfertig aufbereitet"}</small></label>{inspectionBusy && <div className="media-file-check checking" role="status"><i/><span><strong>Datei wird technisch geprüft …</strong><small>Auflösung, Laufzeit und Abspielbarkeit</small></span></div>}{inspection && <div className="media-file-check ready" role="status"><b>✓</b><span><strong>Technisch lesbar</strong><small>{mediaMetadataLabel(inspection.metadata)}{inspection.poster ? " · Vorschau erstellt" : ""}</small></span></div>}</> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{busy && isMedia && <div className="upload-progress" role="status"><span style={{ width: `${uploadProgress}%` }}/><small>{uploadProgress > 0 ? `${uploadProgress} % übertragen` : "Geprüfter Upload wird vorbereitet …"}</small></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy || inspectionBusy || (isMedia && !inspection)}>{busy ? (isMedia ? `Datei wird übertragen${uploadProgress ? ` · ${uploadProgress} %` : " …"}` : "Wird gespeichert …") : inspectionBusy ? "Datei wird geprüft …" : isMedia ? (nested ? "Hochladen und auswählen" : "Datei hochladen") : "Inhalt speichern"}</button></form></section></div>;
+  const isProcessing = uploadStage === "processing";
+  const progressTitle = uploadStage === "ready" ? "Video ist displaybereit" : isProcessing ? "Video wird für Bildschirme aufbereitet …" : uploadProgress >= 100 ? "Datei vollständig übertragen" : uploadProgress > 0 ? `${uploadProgress} % der Datei übertragen` : "Geprüfter Upload wird vorbereitet …";
+  const progressDetail = isProcessing ? "Upload abgeschlossen · Qualität und Wiedergabe werden geprüft" : uploadStage === "ready" ? "Verarbeitung abgeschlossen" : uploadProgress >= 100 ? "Die Videoaufbereitung startet jetzt" : "Bitte lassen Sie dieses Fenster geöffnet";
+  return <div className={`dialog-backdrop ${nested ? "campaign-child-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Medien & Vorlagen" : "Anzeigen"}</div><h2>{type === "content" ? "Bild oder Video hochladen" : "Neue Anzeige erstellen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Name der Anzeige"}<input name="title" required autoFocus disabled={Boolean(createdMediaId)} /></label>{type === "content" ? <><label>Was möchten Sie hinzufügen?<select name="contentType" value={contentType} disabled={Boolean(createdMediaId)} onChange={(event) => { setContentType(event.target.value); setInspection(null); setError(""); }}><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="text">Textanzeige</option><option value="web">Web-Inhalt</option><option value="composition">Leerer Entwurf (erweitert)</option></select></label>{isMedia ? <><label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required disabled={Boolean(createdMediaId)} accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm,video/quicktime,video/x-matroska,.mp4,.webm,.mov,.mkv"} onChange={(event) => void inspectSelection(event.target.files?.[0])}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4, WebM oder MOV · wird geprüft und automatisch displayfertig aufbereitet"}</small></label>{inspectionBusy && <div className="media-file-check checking" role="status"><i/><span><strong>Datei wird technisch geprüft …</strong><small>Auflösung, Laufzeit und Abspielbarkeit</small></span></div>}{inspection && <div className="media-file-check ready" role="status"><b>✓</b><span><strong>Technisch lesbar</strong><small>{mediaMetadataLabel(inspection.metadata)}{inspection.poster ? " · Vorschau erstellt" : ""}</small></span></div>}</> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{busy && isMedia && <div className={`upload-progress stage-${uploadStage}`} role="status"><span style={isProcessing ? undefined : { width: `${uploadStage === "ready" ? 100 : uploadProgress}%` }}/><small><strong>{progressTitle}</strong><em>{progressDetail}</em></small></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy || inspectionBusy || (isMedia && !inspection)}>{busy ? (isProcessing ? "Video wird aufbereitet …" : uploadStage === "ready" ? "Video ist displaybereit" : isMedia ? (uploadProgress >= 100 ? "Upload abgeschlossen · Verarbeitung startet" : `Datei wird übertragen${uploadProgress ? ` · ${uploadProgress} %` : " …"}`) : "Wird gespeichert …") : createdMediaId ? "Verfügbarkeit erneut prüfen" : inspectionBusy ? "Datei wird geprüft …" : isMedia ? (nested ? "Hochladen und auswählen" : "Datei hochladen") : "Inhalt speichern"}</button></form></section></div>;
 }
 
 function PortalEntry() {

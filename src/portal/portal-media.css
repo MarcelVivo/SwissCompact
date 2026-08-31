@@ -47,7 +47,7 @@
 
 .upload-progress {
   position: relative;
-  height: 2rem;
+  min-height: 3.35rem;
   overflow: hidden;
   border-radius: 0.6rem;
   background: #ececef;
@@ -62,15 +62,47 @@
   transition: width 180ms ease;
 }
 
+.upload-progress.stage-processing > span {
+  width: 38%;
+  min-width: 38%;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 70%, white), transparent);
+  animation: media-processing-progress 1.25s ease-in-out infinite;
+}
+
+.upload-progress.stage-ready > span {
+  background: #24a36b;
+}
+
 .upload-progress small {
   position: relative;
   z-index: 1;
   display: grid;
-  height: 100%;
-  place-items: center;
+  min-height: 3.35rem;
+  align-content: center;
+  justify-items: center;
+  gap: 0.1rem;
+  padding: 0.45rem 0.8rem;
   color: #202024;
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.upload-progress small strong,
+.upload-progress small em {
+  position: relative;
+  z-index: 1;
+  font-style: normal;
+}
+
+.upload-progress small em {
+  color: #5f5f66;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+@keyframes media-processing-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(365%); }
 }
 
 .media-processing-error {
