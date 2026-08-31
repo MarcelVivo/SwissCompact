@@ -1,0 +1,123 @@
+.pairing-scan-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .65rem;
+  width: 100%;
+  margin-top: 1.5rem;
+  border: 1px solid #d90d32 !important;
+  background: transparent !important;
+}
+
+.pairing-scan-button span { font-size: 1.15rem; }
+
+.pairing-divider {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin: 1.25rem 0 -.5rem;
+  color: #68686c;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.pairing-divider::before,
+.pairing-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #29292c;
+}
+
+.qr-scanner-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  background: rgba(0, 0, 0, .88);
+  backdrop-filter: blur(12px);
+}
+
+.qr-scanner-dialog {
+  position: relative;
+  overflow: auto;
+  width: min(34rem, 100%);
+  max-height: 100%;
+  border: 1px solid #29292c;
+  border-radius: 1.5rem;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  background: #111113;
+  box-shadow: 0 2rem 5rem rgba(0, 0, 0, .55);
+}
+
+.qr-scanner-dialog .eyebrow { margin-top: 0; }
+.qr-scanner-dialog h2 { margin: .55rem 0; font-size: clamp(1.8rem, 6vw, 2.8rem); letter-spacing: -.05em; }
+.qr-scanner-dialog p { margin: 0 2rem 1.25rem 0; color: #9b9b9f; line-height: 1.45; }
+.qr-scanner-dialog > small { display: block; margin-top: .8rem; color: #68686c; line-height: 1.4; }
+
+.qr-scanner-close {
+  position: absolute;
+  top: .8rem;
+  right: .9rem;
+  z-index: 2;
+  border: 0;
+  background: transparent;
+  color: #aaa;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.qr-camera {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid #353539;
+  border-radius: 1rem;
+  background: #050506;
+}
+
+.qr-camera video { width: 100%; height: 100%; object-fit: cover; }
+.qr-camera > span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #aaa;
+  font-size: .82rem;
+}
+
+.qr-camera .scan-region-highlight { border: 2px solid #fff !important; border-radius: .9rem; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .25); }
+.qr-camera .code-outline-highlight { stroke: #d90d32 !important; stroke-width: 5 !important; }
+
+.qr-scanner-dialog .error { margin-top: .8rem; }
+
+.qr-image-upload {
+  display: grid;
+  place-items: center;
+  margin-top: .8rem;
+  border: 1px solid #353539;
+  border-radius: 999px;
+  padding: .8rem 1rem;
+  background: #1b1b1e;
+  color: #fff;
+  font-size: .78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.qr-image-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+@media (max-height: 680px) and (orientation: landscape) {
+  .qr-scanner-dialog { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr); gap: .75rem 1.25rem; }
+  .qr-scanner-dialog :is(.eyebrow, h2, p, .error, .qr-image-upload, small) { grid-column: 2; }
+  .qr-scanner-dialog .eyebrow { align-self: end; }
+  .qr-scanner-dialog h2 { margin: 0; }
+  .qr-scanner-dialog p { margin: 0; }
+  .qr-camera { grid-column: 1; grid-row: 1 / span 7; align-self: center; }
+}

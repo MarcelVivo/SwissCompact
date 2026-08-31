@@ -1,9 +1,11 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import QrScanner from "qr-scanner";
 import { registerServiceWorker } from "../pwa/registerServiceWorker";
 import "./player.css";
 import "./player-video.css";
 import "./player-safety.css";
+import "./player-qr.css";
 
 type PlaylistItem = { contentId: string; title: string; contentType: string; payload?: { text?: string }; mediaUrl?: string | null; durationSeconds: number };
 type DeviceConfig = { display: { id: string; name: string }; configurationVersion: number; playlist: PlaylistItem[]; fallback?: PlaylistItem | null; mode?: "live" | "preview" | "test"; generatedAt: string };
@@ -68,6 +70,84 @@ function PlayerDisplayControls() {
     {!isIos && installPrompt && <button type="button" onClick={() => void installPrompt.prompt().then(() => installPrompt.userChoice).then(() => setInstallPrompt(null))}>Player installieren</button>}
     {canFullscreen && <button type="button" onClick={() => void document.documentElement.requestFullscreen()}>Jetzt Vollbild öffnen</button>}
   </aside>;
+}
+
+function parsePairingQr(value: string): { displayId: string; code: string } {
+  let url: URL;
+  try { url = new URL(value); }
+  catch { throw new Error("Dieser QR-Code enthält keine gültige Player-Adresse."); }
+  if (url.origin !== location.origin || url.pathname.replace(/\/$/, "") !== "/player") throw new Error("Dieser QR-Code gehört nicht zum SwissCompact Player.");
+  const displayId = (url.searchParams.get("display") || "").trim();
+  const code = (url.searchParams.get("code") || "").trim().toUpperCase();
+  if (!/^[0-9a-f-]{36}$/i.test(displayId) || !/^[A-Z0-9]{8}$/.test(code)) throw new Error("Im QR-Code fehlen Bildschirm-ID oder Aktivierungscode.");
+  return { displayId, code };
+}
+
+function PairingQrScanner({ onClose, onScanned }: { onClose: () => void; onScanned: (displayId: string, code: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scannerRef = useRef<QrScanner | null>(null);
+  const acceptedRef = useRef(false);
+  const [error, setError] = useState("");
+  const [starting, setStarting] = useState(true);
+
+  const acceptValue = useCallback((value: string) => {
+    if (acceptedRef.current) return;
+    try {
+      const pairing = parsePairingQr(value);
+      acceptedRef.current = true;
+      scannerRef.current?.stop();
+      onScanned(pairing.displayId, pairing.code);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "QR-Code konnte nicht gelesen werden.");
+    }
+  }, [onScanned]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const scanner = new QrScanner(video, (result) => acceptValue(result.data), {
+      preferredCamera: "environment",
+      maxScansPerSecond: 10,
+      highlightScanRegion: true,
+      highlightCodeOutline: true,
+      returnDetailedScanResult: true,
+    });
+    scannerRef.current = scanner;
+    void scanner.start().then(() => setStarting(false)).catch((reason) => {
+      setStarting(false);
+      const message = reason instanceof Error ? reason.name : String(reason);
+      setError(/NotAllowed|Permission/i.test(message)
+        ? "Kamerazugriff wurde nicht erlaubt. Erlauben Sie die Kamera oder wählen Sie unten ein QR-Bild aus."
+        : /NotFound|DevicesNotFound/i.test(message)
+          ? "Auf diesem Gerät wurde keine Kamera gefunden."
+          : "Die Kamera konnte nicht gestartet werden. Wählen Sie alternativ ein QR-Bild aus.");
+    });
+    return () => { scanner.destroy(); scannerRef.current = null; };
+  }, [acceptValue]);
+
+  async function scanFile(file?: File) {
+    if (!file) return;
+    setError("");
+    try {
+      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true, alsoTryWithoutScanRegion: true });
+      acceptValue(result.data);
+    } catch {
+      setError("Auf diesem Bild wurde kein lesbarer SwissCompact QR-Code gefunden.");
+    }
+  }
+
+  return <div className="qr-scanner-backdrop" role="dialog" aria-modal="true" aria-label="Aktivierungs-QR-Code scannen">
+    <section className="qr-scanner-dialog">
+      <button type="button" className="qr-scanner-close" onClick={onClose} aria-label="Scanner schließen">×</button>
+      <div className="eyebrow">Schnell verbinden</div>
+      <h2>QR-Code scannen</h2>
+      <p>Richten Sie die Kamera auf den Aktivierungs-QR-Code im SwissCompact Portal.</p>
+      <div className="qr-camera"><video ref={videoRef} muted playsInline/>{starting && <span>Kamera wird geöffnet …</span>}</div>
+      {error && <div className="error" role="alert">{error}</div>}
+      <label className="qr-image-upload">QR-Bild auswählen<input type="file" accept="image/*" capture="environment" onChange={(event) => void scanFile(event.target.files?.[0])}/></label>
+      <small>Die Kamera wird nur auf diesem Gerät verarbeitet. Es wird keine Aufnahme gespeichert.</small>
+    </section>
+  </div>;
 }
 
 function mediaCacheKey(item: PlaylistItem): string {
@@ -192,6 +272,7 @@ function Pairing({ initialDisplayId, initialCode, autoConnect, onPaired }: { ini
   const [code, setCode] = useState(initialCode);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [scannerOpen, setScannerOpen] = useState(false);
   const attemptedAutomaticConnection = useRef(false);
   const connect = useCallback(async (nextDisplayId: string, nextCode: string) => {
     setBusy(true); setError("");
@@ -211,7 +292,7 @@ function Pairing({ initialDisplayId, initialCode, autoConnect, onPaired }: { ini
     event.preventDefault();
     void connect(displayId, code);
   }
-  return <main className="pairing"><section><div className="brand">Swiss<span>Compact</span></div><div className="eyebrow">Display Player</div><h1>Display aktivieren</h1><p>{autoConnect && busy ? "QR-Code erkannt. Der Bildschirm wird automatisch verbunden …" : "Geben Sie zuerst die Bildschirm-ID und danach den Aktivierungscode aus dem SwissCompact Portal ein."}</p><form onSubmit={pair}><label>1 · Bildschirm-ID<input value={displayId} onChange={(event) => setDisplayId(event.target.value)} required autoComplete="off" /></label><label>2 · Aktivierungscode<input className="code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} required maxLength={8} autoComplete="one-time-code" /></label>{error && <div className="error">{error}</div>}<button disabled={busy}>{busy ? "Wird verbunden …" : "Bildschirm verbinden"}</button></form><small>Der Aktivierungscode ist 30 Minuten gültig und kann nur einmal verwendet werden.</small></section></main>;
+  return <main className="pairing"><section><div className="brand">Swiss<span>Compact</span></div><div className="eyebrow">Display Player</div><h1>Display aktivieren</h1><p>{autoConnect && busy ? "QR-Code erkannt. Der Bildschirm wird automatisch verbunden …" : "Scannen Sie den QR-Code oder geben Sie Bildschirm-ID und Aktivierungscode aus dem Portal ein."}</p><button type="button" className="pairing-scan-button" onClick={() => setScannerOpen(true)} disabled={busy}><span>▣</span> QR-Code scannen</button><div className="pairing-divider"><span>oder manuell eingeben</span></div><form onSubmit={pair}><label>1 · Bildschirm-ID<input value={displayId} onChange={(event) => setDisplayId(event.target.value)} required autoComplete="off" /></label><label>2 · Aktivierungscode<input className="code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} required maxLength={8} autoComplete="one-time-code" /></label>{error && <div className="error">{error}</div>}<button disabled={busy}>{busy ? "Wird verbunden …" : "Bildschirm verbinden"}</button></form><small>Der Aktivierungscode ist 30 Minuten gültig und kann nur einmal verwendet werden.</small></section>{scannerOpen && <PairingQrScanner onClose={() => setScannerOpen(false)} onScanned={(nextDisplayId, nextCode) => { setScannerOpen(false); setDisplayId(nextDisplayId); setCode(nextCode); void connect(nextDisplayId, nextCode); }}/>}</main>;
 }
 
 function Player() {

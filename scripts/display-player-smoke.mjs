@@ -45,6 +45,10 @@ assert.match(player, /config\?\.playlist\.length === 1/, "Ein einzelnes Video wi
 assert.match(player, /searchParams\.get\("pair"\)|query\.get\("pair"\)/, "Direkter Neuverbindungsmodus fehlt");
 assert.match(player, /query\.get\("code"\)/, "Aktivierungscode aus QR-Link wird nicht übernommen");
 assert.match(player, /query\.get\("connect"\).*=== "1"/, "QR-Verbindung wird nicht automatisch gestartet");
+assert.match(player, /new QrScanner/, "Kamera-QR-Scanner fehlt im Player");
+assert.match(player, /preferredCamera: "environment"/, "QR-Scanner verwendet nicht bevorzugt die Rückkamera");
+assert.match(player, /parsePairingQr/, "Gescannte QR-Codes werden nicht sicher validiert");
+assert.match(player, /QR-Bild auswählen/, "QR-Bild-Fallback fehlt");
 assert.match(player, /Aktivierungscode eingeben/, "Manuelle Neuverbindung auf der Leerlaufseite fehlt");
 assert.match(portal, /pair=1/, "Portal-Link öffnet den Player nicht im Neuverbindungsmodus");
 assert.match(portal, /Player öffnen/, "Direkter Player-Button bei Bildschirmen fehlt");
