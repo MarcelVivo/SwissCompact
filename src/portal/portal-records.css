@@ -339,20 +339,6 @@
   cursor: pointer;
 }
 
-.delete-name-copy {
-  margin: -6px 0 15px;
-  border-radius: 10px;
-  padding: 11px 13px;
-  background: #ece9e4;
-  color: #27272a;
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.delete-confirmation-field {
-  margin-bottom: 14px;
-}
-
 .record-edit-dialog {
   width: min(600px, 100%);
   max-height: calc(100svh - 36px);
