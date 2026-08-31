@@ -58,6 +58,8 @@ assert.match(player, /portalPreview=/, "Player lädt die Portal-Vorschau nicht")
 assert.match(portal, /Bildschirm einrichten/);
 assert.match(portal, /Aktivierungscode erstellen/);
 assert.match(portal, /Code wird erstellt/);
+assert.match(portal, /deferredPairings/, "Die Geräteaktivierung wird in der Kampagnenplanung nicht bis zum Abschluss zurückgestellt");
+assert.match(portal, /Der QR-Code zur Geräteverbindung erscheint erst nach dem Abschluss der Kampagne/, "Der verschobene Aktivierungsschritt wird nicht verständlich erklärt");
 assert.match(portal, /role="alert"/);
 assert.match(portal, /Für Bildschirme freigeben/);
 assert.match(safetyMigration, /tenant_display_config_versions/, "Versionierte Displaykonfigurationen fehlen");
