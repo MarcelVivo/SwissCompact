@@ -579,7 +579,7 @@ function Portal() {
       await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id, status: "approved" }) });
       const next = await load(false);
       return next?.content.find((item) => item.id === id) || null;
-    }} onCreateDisplay={() => { setCreatingCampaign(false); setEditingCampaign(null); setCampaignPreset(null); setCampaignInitialStep(1); setView("displays"); setDisplaySetup(true); }} onClose={() => { setCreatingCampaign(false); setEditingCampaign(null); setCampaignPreset(null); setCampaignInitialStep(1); }} onSaved={() => { if (campaignPreset) setView("displays"); setCreatingCampaign(false); setEditingCampaign(null); setCampaignPreset(null); setCampaignInitialStep(1); void load(); }} />}
+    }} onDraftCreated={() => load(false)} onCreateDisplay={() => setDisplaySetup(true)} onClose={() => { setCreatingCampaign(false); setEditingCampaign(null); setCampaignPreset(null); setCampaignInitialStep(1); void load(false); }} onSaved={() => { if (campaignPreset) setView("displays"); setCreatingCampaign(false); setEditingCampaign(null); setCampaignPreset(null); setCampaignInitialStep(1); void load(); }} />}
     {displaySetup && <DisplaySetupDialog sites={data.sites} areas={data.areas} onClose={() => setDisplaySetup(false)} onCreated={(next) => { setDisplaySetup(false); setPairing(next); void load(); }} />}
     {editingDisplay && <DisplayEditDialog display={editingDisplay} sites={data.sites} areas={data.areas} onClose={() => setEditingDisplay(null)} onSaved={() => { setEditingDisplay(null); void load(); }} />}
     {safetyDisplay && <DisplaySafetyDialog display={safetyDisplay} campaigns={data.campaigns} content={data.content} safety={data.displaySafety} canEdit={canEdit} onClose={() => setSafetyDisplay(null)} onChanged={async () => { const next = await load(false); const refreshed = next?.displays.find((item) => item.id === safetyDisplay.id); if (refreshed) setSafetyDisplay(refreshed); }} />}
@@ -721,7 +721,7 @@ function localDateTime(value?: string): string {
 
 type PlaylistEntry = { contentId: string; durationSeconds: number };
 
-function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, displays, aiCredits, canEdit, canManageDevices, onContentCreated, onCreateDisplay, onClose, onSaved }: { campaign: Campaign | null; preset: CampaignPreset | null; initialStep: 1 | 2 | 3 | 4; sites: Site[]; areas: Area[]; content: Content[]; displays: Display[]; aiCredits: AiCredits; canEdit: boolean; canManageDevices: boolean; onContentCreated: (id: string) => Promise<Content | null>; onCreateDisplay: () => void; onClose: () => void; onSaved: () => void }) {
+function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, displays, aiCredits, canEdit, canManageDevices, onContentCreated, onDraftCreated, onCreateDisplay, onClose, onSaved }: { campaign: Campaign | null; preset: CampaignPreset | null; initialStep: 1 | 2 | 3 | 4; sites: Site[]; areas: Area[]; content: Content[]; displays: Display[]; aiCredits: AiCredits; canEdit: boolean; canManageDevices: boolean; onContentCreated: (id: string) => Promise<Content | null>; onDraftCreated: () => Promise<PortalData | null>; onCreateDisplay: () => void; onClose: () => void; onSaved: () => void }) {
   const legacyPlaylist = [...(campaign?.content_links || [])].sort((a,b) => a.position - b.position).flatMap((link) => link.content ? [{ contentId: link.content.id, durationSeconds: link.duration_seconds || 10 }] : []);
   const initialTargetPlaylists = Object.fromEntries((campaign?.target_assignments || []).map((assignment) => [assignment.display_id, [...assignment.content_links].sort((a,b) => a.position - b.position).flatMap((link) => link.content ? [{ contentId: link.content.id, durationSeconds: link.duration_seconds || 10 }] : [])])) as Record<string, PlaylistEntry[]>;
   const initialDisplayIds = (campaign?.display_links || []).map((link) => link.display_id);
@@ -744,10 +744,12 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
   const [startsAt, setStartsAt] = useState(() => localDateTime(campaign?.starts_at || new Date().toISOString()));
   const [endsAt, setEndsAt] = useState(() => preset ? "" : localDateTime(campaign?.ends_at || new Date(Date.now() + 7 * 86_400_000).toISOString()));
   const [priority, setPriority] = useState(campaign?.priority ?? 50);
-  const [step, setStep] = useState<number>(() => campaign ? initialStep : presetContent && defaultDisplayIds.length ? 4 : presetContent ? 2 : presetDisplay ? 3 : initialStep);
+  const [step, setStep] = useState<number>(() => campaign ? initialStep : 1);
   const [stepCollapsed, setStepCollapsed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [draftCampaignId, setDraftCampaignId] = useState(campaign?.id || "");
+  const [draftNotice, setDraftNotice] = useState("");
   const [contentDialog, setContentDialog] = useState<"upload" | "ai" | null>(null);
   const [contentNotice, setContentNotice] = useState("");
   const mediaListRef = useRef<HTMLDivElement>(null);
@@ -772,13 +774,15 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
   const selectedContent = usedContentIds.flatMap((id) => { const item = content.find((candidate) => candidate.id === id); return item ? [item] : []; });
   const hasUnapprovedContent = selectedContent.some((item) => !["approved", "published"].includes(item.status));
   const scopeLabel = scopeAreaId ? areas.find((area) => area.id === scopeAreaId)?.name : scopeSiteId ? sites.find((site) => site.id === scopeSiteId)?.name : "Alle Standorte";
-  const quickHint = presetContent
-    ? defaultDisplayIds.length
-      ? `„${presetContent.title}“ und „${displays.find((display) => display.id === defaultDisplayIds[0])?.name || "Bildschirm"}“ sind ausgewählt. Prüfen Sie kurz und starten Sie die Anzeige.`
-      : `„${presetContent.title}“ ist ausgewählt. Wählen Sie jetzt den gewünschten Bildschirm.`
-    : presetDisplay
-      ? `„${presetDisplay.name}“ ist ausgewählt. Wählen Sie jetzt den Inhalt, der dort erscheinen soll.`
-      : "";
+  const quickHint = step === 1 && (presetContent || presetDisplay)
+    ? `${presetContent ? `„${presetContent.title}“` : `„${presetDisplay?.name}“`} ist vorgemerkt. Geben Sie zuerst der Kampagne einen Namen.`
+    : presetContent
+      ? defaultDisplayIds.length
+        ? `„${presetContent.title}“ und „${displays.find((display) => display.id === defaultDisplayIds[0])?.name || "Bildschirm"}“ sind ausgewählt.`
+        : `„${presetContent.title}“ ist vorgemerkt. Wählen Sie jetzt den gewünschten Bildschirm.`
+      : presetDisplay
+        ? `„${presetDisplay.name}“ ist ausgewählt. Wählen Sie jetzt den Inhalt, der dort erscheinen soll.`
+        : "";
 
   function updatePlaylist(displayId: string, updater: (playlist: PlaylistEntry[]) => PlaylistEntry[]) {
     if (contentMode === "shared") setSharedPlaylist(updater);
@@ -820,7 +824,29 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
     setContentNotice(`„${created.title}“ wurde erstellt, freigegeben und ausgewählt.`);
     setContentDialog(null);
   }
-  function nextStep() {
+  const campaignData = { name, theme: theme || null, priority, scopeSiteId: scopeSiteId || null, scopeAreaId: scopeAreaId || null, startsAt: startsAt ? new Date(startsAt).toISOString() : null, endsAt: endsAt ? new Date(endsAt).toISOString() : null };
+
+  async function ensureCampaignDraft() {
+    if (draftCampaignId) return draftCampaignId;
+    const created = await api<{ record: Campaign }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "create_campaign", ...campaignData }) });
+    setDraftCampaignId(created.record.id);
+    setDraftNotice("Die Kampagne ist als Entwurf gespeichert. Jetzt können Sie Bildschirme hinzufügen.");
+    await onDraftCreated();
+    return created.record.id;
+  }
+
+  async function persistDraftConfiguration(includeContent: boolean, nextStage: "content" | "review") {
+    const campaignId = await ensureCampaignDraft();
+    const targetAssignments = chosenDisplays.map((display) => ({ displayId: display.id, contentItems: includeContent ? playlistFor(display.id) : [] }));
+    await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "configure_campaign", id: campaignId, ...campaignData, targetAssignments }) });
+    setDraftNotice(nextStage === "review"
+      ? "Bildschirme und Inhalte sind gespeichert. Prüfen Sie jetzt alles vor dem Start."
+      : `${chosenDisplays.length} ${chosenDisplays.length === 1 ? "Bildschirm ist" : "Bildschirme sind"} der Kampagne zugeordnet. Jetzt können Sie Inhalte hinzufügen.`);
+    await onDraftCreated();
+  }
+
+  async function nextStep() {
+    if (busy) return;
     setError("");
     if (step === 1 && !name.trim()) { setError("Geben Sie der Kampagne einen kurzen Namen."); return; }
     if (step === 1 && startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) { setError("Das Ende muss nach dem Start liegen."); return; }
@@ -829,8 +855,18 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
       const emptyTarget = chosenDisplays.find((display) => !playlistFor(display.id).length);
       if (emptyTarget) { setError(`Wählen Sie mindestens einen Inhalt für „${emptyTarget.name}“ aus.`); return; }
     }
-    setStepCollapsed(false);
-    setStep((current) => Math.min(4, current + 1));
+    setBusy(true);
+    try {
+      if (step === 1) await ensureCampaignDraft();
+      if (step === 2) await persistDraftConfiguration(true, "content");
+      if (step === 3) await persistDraftConfiguration(true, "review");
+      setStepCollapsed(false);
+      setStep((current) => Math.min(4, current + 1));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Die Kampagne konnte nicht als Entwurf gespeichert werden.");
+    } finally {
+      setBusy(false);
+    }
   }
   async function save(activate = false) {
     setBusy(true); setError("");
@@ -838,11 +874,9 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
       if ((activate || isRunning) && hasUnapprovedContent) {
         await Promise.all(selectedContent.filter((item) => !["approved", "published"].includes(item.status)).map((item) => api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id: item.id, status: "approved" }) })));
       }
-      let campaignId = campaign?.id;
-      const campaignData = { name, theme: theme || null, priority, scopeSiteId: scopeSiteId || null, scopeAreaId: scopeAreaId || null, startsAt: startsAt ? new Date(startsAt).toISOString() : null, endsAt: endsAt ? new Date(endsAt).toISOString() : null };
+      let campaignId = draftCampaignId || campaign?.id;
       if (!campaignId) {
-        const created = await api<{ record: Campaign }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "create_campaign", ...campaignData }) });
-        campaignId = created.record.id;
+        campaignId = await ensureCampaignDraft();
       }
       const targetAssignments = chosenDisplays.map((display) => ({ displayId: display.id, contentItems: playlistFor(display.id) }));
       await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "configure_campaign", id: campaignId, ...campaignData, targetAssignments }) });
@@ -882,9 +916,11 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
     <div className="funnel-progress" aria-hidden="true">{stepLabels.map((label, index) => <i className={`${step === index + 1 ? "active" : ""} ${step > index + 1 ? "complete" : ""}`} key={label}/>)}</div>
     <button type="button" className={`funnel-current-step ${stepCollapsed ? "collapsed" : "expanded"}`} aria-expanded={!stepCollapsed} onClick={() => setStepCollapsed((current) => !current)}><span>{step}</span><span className="funnel-current-copy"><small>Schritt {step} von 4</small><strong>{stepLabels[step - 1]}</strong><em>{stepCollapsed ? stepSummaries[step - 1] : stepGuidance[step - 1]}</em></span><b>{stepCollapsed ? "Öffnen ↓" : "Zuklappen ↑"}</b></button>
     {quickHint && <div className="wizard-success quick-assignment-hint" role="status">✓ {quickHint}</div>}
+    {draftNotice && <div className="wizard-success" role="status">✓ {draftNotice}</div>}
     {isRunning && <div className="wizard-success" role="status">Änderungen an dieser laufenden Kampagne werden beim Speichern direkt auf die betroffenen Bildschirme übertragen.</div>}
     {step === 1 && !stepCollapsed && <label className="campaign-priority">Wenn mehrere Kampagnen gleichzeitig laufen<select value={priority} onChange={(event) => setPriority(Number(event.target.value))} disabled={!canEdit}><option value={25}>Hintergrund – nur wenn nichts Wichtigeres läuft</option><option value={50}>Normal – Standardkampagne</option><option value={75}>Wichtig – hat Vorrang</option><option value={100}>Dringend – höchste Priorität</option></select><small>Kampagnen gleicher Priorität dürfen auf demselben Bildschirm zeitlich nicht kollidieren.</small></label>}
     <div className={`wizard-stage ${stepCollapsed ? "is-collapsed" : ""}`}>
+      {step === 2 && displays.length > 0 && canManageDevices && <div className="wizard-inline-action"><span>Benötigen Sie einen weiteren Bildschirm für diese Kampagne?</span><button type="button" className="secondary compact" onClick={onCreateDisplay}>+ Bildschirm hinzufügen</button></div>}
       {step === 1 && <section><div className="wizard-stage-head"><div><span>Schritt 1</span><h3>Was planen Sie?</h3><p>Name, Thema, organisatorische Einordnung und Laufzeit der Kampagne.</p></div></div><div className="campaign-basics"><label>Name der Kampagne<input value={name} autoFocus onChange={(event) => setName(event.target.value)} disabled={!canEdit} placeholder="z. B. Herbstwochen oder Tagesangebot"/></label><label>Thema <small>Optional</small><input value={theme} onChange={(event) => setTheme(event.target.value)} disabled={!canEdit} placeholder="z. B. Herbstmode, Frühstück oder Sale"/></label><label>Standort / Gebäude<select value={scopeSiteId} onChange={(event) => { setScopeSiteId(event.target.value); setScopeAreaId(""); }} disabled={!canEdit}><option value="">Standortübergreifend</option>{sites.map((site) => <option value={site.id} key={site.id}>{site.name}</option>)}</select></label><label>Stockwerk / Bereich<select value={scopeAreaId} onChange={(event) => setScopeAreaId(event.target.value)} disabled={!canEdit}><option value="">Alle Bereiche</option>{scopeAreas.map((area) => <option value={area.id} key={area.id}>{area.name}</option>)}</select></label></div><div className="wizard-date-pair"><label>Start<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} disabled={!canEdit}/><small>Ab diesem Zeitpunkt darf die Kampagne laufen.</small></label><label>Ende<input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} disabled={!canEdit}/><small>Danach wird sie automatisch beendet.</small></label></div></section>}
       {step === 2 && <section><div className="wizard-stage-head"><div><span>Schritt 2</span><h3>Wo soll die Kampagne erscheinen?</h3><p>Wählen Sie ganze Standorte, Bereiche oder einzelne Bildschirme.</p></div><b>{chosenDisplays.length} gewählt</b></div><div className="target-tree">{siteGroups.map((site) => { const siteIds = site.displays.map((display) => display.id); const allSiteSelected = siteIds.every((id) => selectedDisplays.has(id)); const areaGroups = [...areas.filter((area) => area.site_id === site.id).map((area) => ({ id: area.id, name: area.name, displays: site.displays.filter((display) => display.area_id === area.id) })), { id: `${site.id}-other`, name: "Ohne Bereich", displays: site.displays.filter((display) => !display.area_id) }].filter((group) => group.displays.length); return <article className="target-site" key={site.id}><header><div><strong>{site.name}</strong><small>{site.displays.length} {site.displays.length === 1 ? "Bildschirm" : "Bildschirme"}</small></div><button type="button" onClick={() => setDisplayGroup(siteIds, !allSiteSelected)} disabled={!canEdit}>{allSiteSelected ? "Alle entfernen" : "Alle wählen"}</button></header>{areaGroups.map((area) => <div className="target-area" key={area.id}><div className="target-area-name"><strong>{area.name}</strong><button type="button" onClick={() => setDisplayGroup(area.displays.map((display) => display.id), !area.displays.every((display) => selectedDisplays.has(display.id)))} disabled={!canEdit}>Bereich wählen</button></div><div className="display-selection">{area.displays.map((display) => <label className={selectedDisplays.has(display.id) ? "selected" : ""} key={display.id}><input type="checkbox" checked={selectedDisplays.has(display.id)} onChange={() => toggleDisplay(display.id)} disabled={!canEdit}/><span><strong>{display.name}</strong><small>{labels[display.status] || display.status}</small></span></label>)}</div></div>)}</article>})}{!targetableDisplays.length && <div className="wizard-empty"><strong>{displays.length ? "Keine Bildschirme in dieser Einordnung" : "Noch kein Bildschirm verbunden"}</strong><p>{displays.length ? "Die Kampagne ist auf einen anderen Standort oder Bereich eingeschränkt." : "Richten Sie zuerst Ihre Anzeigefläche ein."}</p>{displays.length > 0 && canEdit && <button type="button" className="secondary" onClick={() => { setScopeSiteId(""); setScopeAreaId(""); }}>Alle vorhandenen Bildschirme anzeigen</button>}{!displays.length && canManageDevices && <button type="button" className="secondary" onClick={onCreateDisplay}>Bildschirm einrichten</button>}</div>}</div></section>}
       {step === 3 && <section><div className="wizard-stage-head"><div><span>Schritt 3</span><h3>Was läuft auf den Ziel-Bildschirmen?</h3><p>Nutzen Sie überall dieselben Inhalte oder stellen Sie je Ziel eine eigene Playlist zusammen.</p></div></div>{chosenDisplays.length > 1 && <div className="content-mode"><button type="button" className={contentMode === "shared" ? "selected" : ""} onClick={() => chooseContentMode("shared")} disabled={!canEdit}><strong>Gleicher Inhalt überall</strong><small>Einfach und schnell</small></button><button type="button" className={contentMode === "individual" ? "selected" : ""} onClick={() => chooseContentMode("individual")} disabled={!canEdit}><strong>Unterschiedlich je Ziel</strong><small>Für Bereiche und Stockwerke</small></button></div>}{canEdit && <div className="motif-source-actions" aria-label="Inhalt auswählen oder erstellen"><button type="button" onClick={() => mediaListRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}><span>✓</span><strong>Vorhandener Inhalt</strong><small>Aus Medien & Vorlagen wählen</small></button><button type="button" onClick={() => { setContentNotice(""); setContentDialog("upload"); }}><span>↑</span><strong>Bild oder Video</strong><small>Eigene Datei hochladen</small></button><button type="button" onClick={() => { setContentNotice(""); setContentDialog("ai"); }}><span>✦</span><strong>KI-Bild erstellen</strong><small>{aiCredits.balance?.available ?? "–"} Credits verfügbar</small></button></div>}{contentNotice && <div className="wizard-success" role="status">✓ {contentNotice}</div>}{contentMode === "individual" && <div className="target-tabs">{chosenDisplays.map((display) => <button type="button" className={currentTargetId === display.id ? "active" : ""} onClick={() => setActiveTargetId(display.id)} key={display.id}><strong>{display.name}</strong><small>{playlistFor(display.id).length} Inhalte</small></button>)}</div>}<div className="content-target-heading"><span>{contentMode === "shared" ? "Playlist für alle Ziele" : `Playlist für ${displays.find((display) => display.id === currentTargetId)?.name || "Ziel"}`}</span><b>{(contentMode === "shared" ? sharedPlaylist : playlistFor(currentTargetId)).length} gewählt</b></div>{contentSelection(contentMode === "shared" ? sharedPlaylist : playlistFor(currentTargetId), currentTargetId)}</section>}
