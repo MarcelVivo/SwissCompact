@@ -23,6 +23,12 @@ type AiCredits = {
   formats: Array<{ id: string; label: string; size: string }>;
   packages: Array<{ id: string; label: string; credits: number; amountMinor: number; currency: string }>;
 };
+type CreditPurchaseNotice = { tone: "success" | "info"; title: string; detail: string };
+type CreditCheckoutResult = {
+  paymentStatus: string;
+  purchase: { package_code: string; credits: number; amount_minor: number; currency: string; status: string };
+  balance: { includedRemaining: number; purchasedBalance: number; available: number } | null;
+};
 type PortalData = { profile: PortalProfile; sites: Site[]; displays: Display[]; content: Content[]; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits };
 type View = "overview" | "content" | "campaigns" | "displays" | "settings";
 
@@ -171,11 +177,12 @@ function Portal() {
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"content" | "campaign" | null>(null);
   const [aiDialog, setAiDialog] = useState(false);
+  const [creditNotice, setCreditNotice] = useState<CreditPurchaseNotice | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [displaySetup, setDisplaySetup] = useState(false);
   const [pairing, setPairing] = useState<PairingInfo | null>(null);
   const [pairingBusyId, setPairingBusyId] = useState("");
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<PortalData | null> => {
     setSession("loading"); setError("");
     try {
       const overview = await api<PortalData>("/api/dashboard/overview?audience=portal");
@@ -183,12 +190,51 @@ function Portal() {
         throw new Error("Das Kundenportal wird gerade eingerichtet. Bitte versuchen Sie es in Kürze erneut.");
       }
       setData(overview); setSession("ready");
+      return overview;
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "Portal nicht erreichbar";
       if (message === "Nicht angemeldet") setSession("guest"); else { setSession("guest"); setError(message); }
+      return null;
     }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const params = new URLSearchParams(location.search);
+      const creditReturn = params.get("credits");
+      if (!creditReturn) { await load(); return; }
+
+      setView("content");
+      setAiDialog(true);
+      let notice: CreditPurchaseNotice;
+      if (creditReturn === "cancelled") {
+        notice = { tone: "info", title: "Kauf abgebrochen", detail: "Es wurden keine Credits berechnet. Sie können jederzeit ein anderes Paket wählen." };
+      } else {
+        const sessionId = params.get("checkout_session");
+        if (sessionId) {
+          try {
+            const result = await api<CreditCheckoutResult>(`/api/dashboard/records?portalAi=credits&checkout_session=${encodeURIComponent(sessionId)}`);
+            notice = result.paymentStatus === "paid"
+              ? { tone: "success", title: `${result.purchase.credits} KI-Credits erfolgreich gekauft`, detail: `Neues Guthaben: ${result.balance?.available ?? "–"} Credits. Sie können direkt ein Bild erstellen.` }
+              : { tone: "info", title: `${result.purchase.credits} KI-Credits werden gutgeschrieben`, detail: "Stripe verarbeitet die Zahlung noch. Das Guthaben erscheint automatisch nach der Bestätigung." };
+          } catch (reason) {
+            notice = { tone: "info", title: "Zahlung wird geprüft", detail: reason instanceof Error ? `${reason.message}. Bitte laden Sie die Seite in Kürze erneut.` : "Bitte laden Sie die Seite in Kürze erneut." };
+          }
+        } else {
+          notice = { tone: "success", title: "Zahlung erfolgreich", detail: "Ihr Credit-Guthaben wurde aktualisiert. Sie können direkt ein Bild erstellen." };
+        }
+      }
+
+      const overview = await load();
+      if (!active) return;
+      if (creditReturn === "success" && !params.get("checkout_session") && overview?.aiCredits.balance) {
+        notice.detail = `Aktuelles Guthaben: ${overview.aiCredits.balance.available} Credits. Sie können direkt ein Bild erstellen.`;
+      }
+      setCreditNotice(notice);
+      history.replaceState({}, "", `${location.pathname}${location.hash}`);
+    })();
+    return () => { active = false; };
+  }, [load]);
   const online = useMemo(() => data?.displays?.filter((display) => display.status === "online").length || 0, [data]);
   if (session === "loading") return <div className="boot"><div className="boot-mark">SC</div><span>Portal wird geladen</span></div>;
   if (session === "guest" || !data) return <><Login onDone={() => void load()} />{error && <div className="global-message">{error}</div>}</>;
@@ -236,7 +282,7 @@ function Portal() {
       {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang und das aktive SwissCompact-Paket.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
     </main>
     {dialog && <CreateDialog type={dialog} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
-    {aiDialog && <AiImageDialog credits={data.aiCredits} canBuy={canManageDevices} onClose={() => setAiDialog(false)} onCreated={() => { setAiDialog(false); void load(); }} />}
+    {aiDialog && <AiImageDialog credits={data.aiCredits} canBuy={canManageDevices} checkoutNotice={creditNotice} onDismissCheckoutNotice={() => setCreditNotice(null)} onClose={() => setAiDialog(false)} onCreated={() => { setAiDialog(false); void load(); }} />}
     {editingCampaign && <CampaignEditor campaign={editingCampaign} content={data.content} displays={data.displays} canEdit={canEdit} onClose={() => setEditingCampaign(null)} onSaved={() => { setEditingCampaign(null); void load(); }} />}
     {displaySetup && <DisplaySetupDialog sites={data.sites} onClose={() => setDisplaySetup(false)} onCreated={(next) => { setDisplaySetup(false); setPairing(next); void load(); }} />}
     {pairing && <PairingDialog pairing={pairing} onClose={() => setPairing(null)} />}
@@ -321,7 +367,7 @@ function CampaignEditor({ campaign, content, displays, canEdit, onClose, onSaved
   </section></div>;
 }
 
-function AiImageDialog({ credits, canBuy, onClose, onCreated }: { credits: AiCredits; canBuy: boolean; onClose: () => void; onCreated: () => void }) {
+function AiImageDialog({ credits, canBuy, checkoutNotice, onDismissCheckoutNotice, onClose, onCreated }: { credits: AiCredits; canBuy: boolean; checkoutNotice: CreditPurchaseNotice | null; onDismissCheckoutNotice: () => void; onClose: () => void; onCreated: () => void }) {
   const [quality, setQuality] = useState("medium");
   const [format, setFormat] = useState("landscape");
   const [headlineEnabled, setHeadlineEnabled] = useState(false);
@@ -377,8 +423,9 @@ function AiImageDialog({ credits, canBuy, onClose, onCreated }: { credits: AiCre
     }
   }
 
-  return <div className="dialog-backdrop ai-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog ai-dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button>
+  return <div className="dialog-backdrop ai-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className={`dialog ai-dialog ${checkoutNotice ? "has-credit-notice" : ""}`} role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button>
     <header className="ai-dialog-head"><div><div className="eyebrow">SwissCompact Bildstudio</div><h2>KI-Bild erstellen</h2><p>Ein displayfertiges Motiv – wahlweise mit präziser Überschrift.</p></div><div className="credit-balance"><span>Guthaben</span><strong>{credits.balance?.available ?? "–"}</strong><small>KI-Credits</small></div></header>
+    {checkoutNotice && <div className={`credit-return-notice ${checkoutNotice.tone}`} role="status"><span aria-hidden="true">{checkoutNotice.tone === "success" ? "✓" : "i"}</span><div><strong>{checkoutNotice.title}</strong><small>{checkoutNotice.detail}</small></div><button type="button" onClick={onDismissCheckoutNotice} aria-label="Kaufhinweis schließen">×</button></div>}
     <div className="ai-dialog-grid"><form onSubmit={generate}><label className="ai-title-field">Inhaltstitel<input name="title" required autoFocus maxLength={180} placeholder="z. B. Herbstaktion"/></label><label className="ai-prompt-field">Bildbeschreibung<textarea name="prompt" required rows={5} maxLength={1200} placeholder="Beschreiben Sie Motiv, Stimmung, Farben und gewünschte Bildwirkung …"/></label>
       <fieldset className="ai-format-field"><legend>Displayformat</legend><div className="ai-options formats">{credits.formats.map((entry) => <label className={format === entry.id ? "selected" : ""} key={entry.id}><input type="radio" name="format" value={entry.id} checked={format === entry.id} onChange={() => setFormat(entry.id)}/><strong>{entry.label}</strong><small>{entry.size}</small></label>)}</div></fieldset>
       <fieldset className="ai-quality-field"><legend>Qualität</legend><div className="ai-options qualities">{credits.qualities.map((entry) => <label className={quality === entry.id ? "selected" : ""} key={entry.id}><input type="radio" name="quality" value={entry.id} checked={quality === entry.id} onChange={() => setQuality(entry.id)}/><strong>{entry.label}</strong><small>{entry.description}</small><b>{entry.credits} {entry.credits === 1 ? "Credit" : "Credits"}</b></label>)}</div></fieldset>

@@ -85,8 +85,8 @@ export async function handleAiCreditsPost(request: Request): Promise<Response> {
         },
       }],
       metadata: { tenantId: profile.tenantId, purchaseId: purchase.data.id, packageCode, credits: String(selected.credits) },
-      success_url: `${origin}/portal?credits=success`,
-      cancel_url: `${origin}/portal?credits=cancelled`,
+      success_url: `${origin}/portal?credits=success&checkout_session={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/portal?credits=cancelled&package=${encodeURIComponent(packageCode)}`,
       allow_promotion_codes: true,
     }, { idempotencyKey: `ai-credit-purchase-${purchase.data.id}` });
     await admin.from("tenant_ai_credit_purchases").update({ stripe_session_id: session.id }).eq("id", purchase.data.id).eq("tenant_id", profile.tenantId);
@@ -95,5 +95,56 @@ export async function handleAiCreditsPost(request: Request): Promise<Response> {
     await admin.from("tenant_ai_credit_purchases").update({ status: "expired" }).eq("id", purchase.data.id).eq("tenant_id", profile.tenantId);
     console.error("stripe checkout:", reason);
     return json({ error: "Stripe Checkout konnte nicht geöffnet werden" }, { status: 502 });
+  }
+}
+
+export async function handleAiCreditsStatusGet(request: Request): Promise<Response> {
+  const authorized = await authorizePortal(request);
+  if (isResponse(authorized)) return authorized;
+  const { profile } = authorized;
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return json({ error: "Stripe ist noch nicht konfiguriert" }, { status: 503 });
+  const admin = dashboardSupabase();
+  if (!admin) return json({ error: "Datenbank nicht konfiguriert" }, { status: 503 });
+
+  const sessionId = cleanText(new URL(request.url).searchParams.get("checkout_session"), 160);
+  if (!sessionId.startsWith("cs_")) return json({ error: "Ungültige Checkout-Sitzung" }, { status: 400 });
+
+  try {
+    const stripe = new Stripe(secretKey);
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.metadata?.tenantId !== profile.tenantId) return json({ error: "Checkout gehört nicht zu diesem Arbeitsbereich" }, { status: 403 });
+    const purchaseId = session.metadata?.purchaseId || "";
+    if (!purchaseId) return json({ error: "Credit-Kauf wurde nicht gefunden" }, { status: 404 });
+
+    const purchase = await admin.from("tenant_ai_credit_purchases")
+      .select("id,package_code,credits,amount_minor,currency,status")
+      .eq("id", purchaseId)
+      .eq("tenant_id", profile.tenantId)
+      .maybeSingle();
+    if (purchase.error || !purchase.data) return json({ error: "Credit-Kauf wurde nicht gefunden" }, { status: 404 });
+
+    if (session.payment_status === "paid" && purchase.data.status !== "paid") {
+      const paymentIntent = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "";
+      const granted = await admin.rpc("grant_ai_credit_purchase", { target_purchase: purchaseId, payment_intent: paymentIntent });
+      if (granted.error) throw granted.error;
+      purchase.data.status = "paid";
+    }
+
+    const account = await admin.from("tenant_ai_credit_accounts")
+      .select("included_remaining,purchased_balance")
+      .eq("tenant_id", profile.tenantId)
+      .maybeSingle();
+    const included = Number(account.data?.included_remaining || 0);
+    const purchased = Number(account.data?.purchased_balance || 0);
+    return json({
+      ok: true,
+      paymentStatus: session.payment_status,
+      purchase: purchase.data,
+      balance: account.data ? { includedRemaining: included, purchasedBalance: purchased, available: included + purchased } : null,
+    });
+  } catch (reason) {
+    console.error("stripe checkout status:", reason);
+    return json({ error: "Die Zahlung konnte noch nicht bestätigt werden" }, { status: 502 });
   }
 }

@@ -5,7 +5,7 @@ import { createQuotePdf } from "../_lib/dashboard/documents.js";
 import { createHash, randomBytes } from "node:crypto";
 import { Resend } from "resend";
 import { getPublicQuote, postPublicQuote } from "../_lib/dashboard/quote-public.js";
-import { handleAiCreditsPost } from "../_lib/portal/ai-credits-handler.js";
+import { handleAiCreditsPost, handleAiCreditsStatusGet } from "../_lib/portal/ai-credits-handler.js";
 import { handleAiImagePost } from "../_lib/portal/ai-image-handler.js";
 import { handleStripeWebhookPost } from "../_lib/portal/stripe-webhook-handler.js";
 
@@ -923,6 +923,7 @@ export async function POST(request: Request): Promise<Response> {
 
 export async function GET(request: Request): Promise<Response> {
   const search = new URL(request.url).searchParams;
+  if (search.get("portalAi") === "credits") return handleAiCreditsStatusGet(request);
   if (search.get("device") === "config") return handleDeviceConfig(request);
   if (search.get("public") === "quote") return getPublicQuote(request);
   return json({ error: "Nicht gefunden" }, { status: 404 });
