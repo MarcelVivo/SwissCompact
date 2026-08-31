@@ -34,6 +34,7 @@ const checks = {
   responsiveCampaignEditor: campaignCss.includes("wizard-date-pair") && campaignCss.includes("minmax(0, 1fr)") && campaignCss.includes("overflow: hidden") && campaignCss.includes("overflow: auto"),
   inWizardMediaCreation: ["Vorhandener Inhalt", "Bild oder Video", "KI-Bild erstellen", "Hochladen und auswählen"].every((label) => portal.includes(label)) && portal.includes("acceptCreatedContent") && portal.includes('status: "approved"') && campaignCss.includes("campaign-child-backdrop"),
   scalableCampaignTargeting: targetingMigration.includes("tenant_areas") && targetingMigration.includes("tenant_campaign_display_content") && targetingMigration.includes("on conflict (campaign_id, display_id, content_id) do nothing") && records.includes("targetAssignments") && records.includes("targetContentByCampaign") && overview.includes("target_assignments") && ["Gleicher Inhalt überall", "Unterschiedlich je Ziel", "Standort / Gebäude", "Stockwerk / Bereich"].every((label) => portal.includes(label)),
+  directDisplayAssignment: ["Auf Bildschirm anzeigen", "Inhalt zuweisen", "CampaignPreset"].every((label) => portal.includes(label)) && portal.includes("presetContent && defaultDisplayIds.length ? 4") && portal.includes("presetDisplay ? 3"),
 };
 
 console.log(JSON.stringify(checks, null, 2));

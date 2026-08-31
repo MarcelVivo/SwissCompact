@@ -112,6 +112,26 @@
   margin-top: 0;
 }
 
+.assign-record-action {
+  grid-column: 1 / -1;
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 14px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  font-size: 12px;
+  cursor: pointer;
+  transition: filter 160ms ease, transform 160ms ease;
+}
+
+.assign-record-action:hover,
+.assign-record-action:focus-visible {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  outline: none;
+}
+
 .delete-record-action {
   border: 1px solid #e5bcc4;
   border-radius: 10px;
