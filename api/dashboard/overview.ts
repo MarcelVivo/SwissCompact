@@ -30,6 +30,14 @@ export async function GET(request: Request): Promise<Response> {
       customerAdmin.from("invoices").select("id,quote_id,project_id,invoice_number,installment,status,amount,currency,issued_on,due_on,paid_at,immutable_pdf_path,created_at,updated_at,project:projects(order_number,title)").eq("client_id", profile.clientId).order("created_at", { ascending: false }).limit(150),
       customerAdmin.from("dashboard_profiles").select("user_id,display_name,email").eq("active", true),
     ]);
+    const [projectBriefings, projectMessages, projectDeliverables, projectVersions, projectReviews, projectRevisions] = await Promise.all([
+      customerAdmin.from("projects").select("id,briefing").eq("client_id", profile.clientId).eq("tenant_id", tenantId).limit(100),
+      customerAdmin.from("project_messages").select("id,project_id,author_type,author_name,body,created_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).eq("visible_to_customer", true).order("created_at").limit(500),
+      customerAdmin.from("project_deliverables").select("id,project_id,title,kind,status,current_version,created_at,updated_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(300),
+      customerAdmin.from("project_deliverable_versions").select("id,deliverable_id,project_id,version,file_name,mime_type,size_bytes,notes,upload_state,submitted_by_type,created_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).eq("upload_state", "ready").order("version", { ascending: false }).limit(500),
+      customerAdmin.from("project_review_decisions").select("id,deliverable_version_id,project_id,decision,feedback,decided_by_name,created_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
+      customerAdmin.from("project_revision_rounds").select("id,project_id,deliverable_id,round_number,status,request_text,response_text,included,additional_cost_chf,approved_at,created_at,updated_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
+    ]);
     const firstError = [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents].find((result) => result.error)?.error;
     if (firstError) {
       console.error("portal overview:", firstError.message);
@@ -40,6 +48,9 @@ export async function GET(request: Request): Promise<Response> {
       console.error("portal customer records:", customerRecordsError.message);
       return json({ error: "Ihre Vorgänge konnten nicht sicher geladen werden" }, { status: 503 });
     }
+    const collaborationResults = [projectBriefings, projectMessages, projectDeliverables, projectVersions, projectReviews, projectRevisions];
+    const collaborationAvailable = collaborationResults.every((result) => !result.error);
+    if (!collaborationAvailable) console.warn("portal project collaboration is not migrated yet");
     const creatorNames = new Map((members.data ?? []).map((member) => [member.user_id, member.display_name || "Portalbenutzer"]));
     const auditedCreators = new Map<string, string>();
     for (const event of creatorEvents.data ?? []) {
@@ -92,6 +103,15 @@ export async function GET(request: Request): Promise<Response> {
         projects: projectsForCustomer,
         invoices: (customerInvoices.data ?? []).map(({ immutable_pdf_path: documentPath, ...invoice }) => ({ ...invoice, document_available: Boolean(documentPath) })),
       },
+      projectCollaboration: {
+        available: collaborationAvailable,
+        briefings: collaborationAvailable ? projectBriefings.data ?? [] : [],
+        messages: collaborationAvailable ? projectMessages.data ?? [] : [],
+        deliverables: collaborationAvailable ? projectDeliverables.data ?? [] : [],
+        versions: collaborationAvailable ? projectVersions.data ?? [] : [],
+        reviews: collaborationAvailable ? projectReviews.data ?? [] : [],
+        revisions: collaborationAvailable ? projectRevisions.data ?? [] : [],
+      },
       campaigns: campaignsWithCreators,
       subscription: subscription.data ?? null,
       members: (members.data ?? []).filter((member) => member.active && member.access_status === "active" && member.verified_at),
@@ -134,6 +154,18 @@ export async function GET(request: Request): Promise<Response> {
     const portalUser = usersById.get(membership.user_id);
     return { ...membership, email: portalUser?.email ?? null, email_confirmed_at: portalUser?.email_confirmed_at ?? null, last_sign_in_at: portalUser?.last_sign_in_at ?? null };
   });
+  const [projectBriefings, projectMessages, projectDeliverables, projectVersions, projectReviews, projectRevisions, projectCampaigns] = await Promise.all([
+    client.from("projects").select("id,tenant_id,briefing").limit(500),
+    client.from("project_messages").select("*").order("created_at").limit(1000),
+    client.from("project_deliverables").select("*").order("updated_at", { ascending: false }).limit(500),
+    client.from("project_deliverable_versions").select("*").order("created_at", { ascending: false }).limit(1000),
+    client.from("project_review_decisions").select("*").order("created_at", { ascending: false }).limit(500),
+    client.from("project_revision_rounds").select("*").order("created_at", { ascending: false }).limit(500),
+    client.from("tenant_campaigns").select("id,tenant_id,name,status").order("updated_at", { ascending: false }).limit(500),
+  ]);
+  const collaborationResults = [projectBriefings, projectMessages, projectDeliverables, projectVersions, projectReviews, projectRevisions, projectCampaigns];
+  const collaborationAvailable = collaborationResults.every((result) => !result.error);
+  if (!collaborationAvailable) console.warn("dashboard project collaboration is not migrated yet");
   return json({
     profile,
     clients: clients.data ?? [],
@@ -150,6 +182,16 @@ export async function GET(request: Request): Promise<Response> {
     profiles: profiles.data ?? [],
     contentRequests: contentRequests.data ?? [],
     portalMemberships: enrichedPortalMemberships,
+    projectCollaboration: {
+      available: collaborationAvailable,
+      briefings: collaborationAvailable ? projectBriefings.data ?? [] : [],
+      messages: collaborationAvailable ? projectMessages.data ?? [] : [],
+      deliverables: collaborationAvailable ? projectDeliverables.data ?? [] : [],
+      versions: collaborationAvailable ? projectVersions.data ?? [] : [],
+      reviews: collaborationAvailable ? projectReviews.data ?? [] : [],
+      revisions: collaborationAvailable ? projectRevisions.data ?? [] : [],
+      campaigns: collaborationAvailable ? projectCampaigns.data ?? [] : [],
+    },
     generatedAt: new Date().toISOString(),
   });
 }

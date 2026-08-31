@@ -1,0 +1,41 @@
+.phase4-project-drawer { width: min(900px, 96vw); padding-bottom: 4rem; }
+.project-workspace-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .45rem; margin: 1.1rem 0; padding: .35rem; border: 1px solid #dedbd7; border-radius: 16px; background: #f4f2ef; }
+.project-workspace-tabs button { min-height: 44px; border: 0; border-radius: 12px; background: transparent; font-weight: 750; color: #706e6b; cursor: pointer; }
+.project-workspace-tabs button.active { background: #111113; color: white; }
+.project-workspace-tabs span { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: .35rem; border-radius: 999px; background: #d5092f; color: white; font-size: .72rem; }
+.workspace-section { display: grid; gap: 1.1rem; padding: 1.25rem; border: 1px solid #dedbd7; border-radius: 20px; background: white; }
+.workspace-intro { display: flex; align-items: flex-start; gap: .9rem; }
+.workspace-intro > span { display: grid; place-items: center; flex: 0 0 38px; height: 38px; border-radius: 50%; background: #d5092f; color: white; font-weight: 850; }
+.workspace-intro h3, .workspace-intro p, .deliverable-upload h4 { margin: 0; }
+.workspace-intro p { margin-top: .25rem; color: #77736f; }
+.workspace-section form { display: grid; gap: .85rem; }
+.workspace-checkbox { display: flex !important; flex-direction: row !important; align-items: center; gap: .65rem; font-weight: 700; }
+.workspace-checkbox input { width: 20px; height: 20px; }
+.project-message-list, .deliverable-list, .revision-list, .version-list { display: grid; gap: .7rem; }
+.project-message-list article, .deliverable-list > article, .revision-list > article { padding: 1rem; border: 1px solid #e2dfdc; border-radius: 15px; background: #faf9f7; }
+.project-message-list article.internal { border-style: dashed; background: #fff8e8; }
+.project-message-list article.customer { border-left: 4px solid #d5092f; }
+.project-message-list header, .deliverable-list article > header, .revision-list article > header { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.project-message-list p, .revision-list p { white-space: pre-wrap; margin-bottom: 0; }
+.version-list { margin-top: .8rem; }
+.version-list button { display: flex; align-items: center; gap: .8rem; width: 100%; padding: .75rem; border: 1px solid #e3e0dd; border-radius: 12px; background: white; text-align: left; cursor: pointer; }
+.version-list button > span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: #111113; color: white; font-weight: 850; }
+.version-list button div { display: grid; gap: .15rem; }
+.publish-row { grid-template-columns: 1fr 1fr auto; margin-top: .8rem; }
+.deliverable-upload { padding: 1rem; border: 1px dashed #d5092f; border-radius: 15px; background: #fff7f8; }
+.workspace-actions { display: flex; justify-content: flex-end; gap: .6rem; }
+.revision-list article form { margin-top: .85rem; padding-top: .85rem; border-top: 1px solid #ddd9d5; }
+.project-payment-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; }
+.project-payment-summary > div { display: flex; align-items: center; gap: .45rem; padding: .8rem; border: 1px solid #dfdcda; border-radius: 12px; }
+.project-payment-summary > div > span { width: 12px; height: 12px; border-radius: 50%; background: #d5d2cf; }
+.project-payment-summary > div.done > span { background: #18a56c; }
+.task-summary { padding-top: 1rem; border-top: 1px solid #e1dedb; }
+.task-summary p { display: flex; justify-content: space-between; gap: 1rem; }
+.task-summary span { color: #77736f; }
+.collaboration-migration { display: flex; gap: 1rem; margin: 1rem 0; padding: 1rem; border: 1px solid #f1cf78; border-radius: 16px; background: #fff8e4; }
+.collaboration-migration p { margin-bottom: 0; }
+@media (max-width: 760px) {
+  .project-workspace-tabs { grid-template-columns: 1fr 1fr; }
+  .publish-row, .project-payment-summary { grid-template-columns: 1fr; }
+  .project-message-list header, .deliverable-list article > header, .revision-list article > header, .task-summary p { align-items: flex-start; flex-direction: column; }
+}

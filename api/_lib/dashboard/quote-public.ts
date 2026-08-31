@@ -108,16 +108,23 @@ export async function postPublicQuote(request: Request): Promise<Response> {
   let project = await client.from("projects").select("*").eq("quote_id", quote.id).maybeSingle();
   if (!project.data) {
     const profiles = await client.from("dashboard_profiles").select("user_id,email").eq("active", true);
-    const created = await client.from("projects").insert({
+    const tenant = await client.from("tenants").select("id").eq("client_id", quote.client_id).maybeSingle();
+    const projectRecord: Record<string, unknown> = {
       quote_id: quote.id,
       opportunity_id: quote.opportunity_id,
       client_id: quote.client_id,
+      ...(tenant.data?.id ? { tenant_id: tenant.data.id } : {}),
       title: opportunity?.title || `Projekt ${quote.quote_number}`,
       status: "planning",
       software_owner: profiles.data?.find((entry) => entry.email === "kontakt@swisscompact.com")?.user_id ?? null,
       hardware_owner: profiles.data?.find((entry) => entry.email === "thomas.peter@swisscompact.com")?.user_id ?? null,
       payment_plan: { deposit: 50, installation: 30, acceptance: 20 },
-    }).select("*").single();
+    };
+    let created = await client.from("projects").insert(projectRecord).select("*").single();
+    if (created.error && tenant.data?.id && /tenant_id|schema cache/i.test(created.error.message || "")) {
+      delete projectRecord.tenant_id;
+      created = await client.from("projects").insert(projectRecord).select("*").single();
+    }
     project = created;
     if (project.error) project = await client.from("projects").select("*").eq("quote_id", quote.id).maybeSingle();
   }

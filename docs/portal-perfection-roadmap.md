@@ -40,13 +40,15 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 - [x] Dokumente sicher herunterladen
 - [x] Automatische, verständliche Statusbenachrichtigungen senden
 
-### 4. Produktion, Freigaben und Kommunikation
+### 4. Produktion, Freigaben und Kommunikation – abgeschlossen
 
-- [ ] Briefing, Dateien und Nachrichten direkt beim Auftrag führen
-- [ ] Entwürfe versionieren
-- [ ] Kundenfreigabe oder Änderungswunsch erfassen
-- [ ] Revisionsrunden und Zusatzkosten nachvollziehbar bestätigen
-- [ ] Nach Abnahme Inhalte direkt in Archiv oder Kampagne übernehmen
+- [x] Briefing, Dateien und Nachrichten direkt beim Auftrag führen
+- [x] Entwürfe versionieren
+- [x] Kundenfreigabe oder Änderungswunsch erfassen
+- [x] Revisionsrunden und Zusatzkosten nachvollziehbar bestätigen
+- [x] Nach Abnahme Inhalte direkt in Archiv oder Kampagne übernehmen
+- [x] Migration `20260904_project_collaboration.sql` in Supabase ausführen und Datenmodell kontrollieren
+- [x] Rückwärtskompatiblen Produktions-Build und automatisierte Ende-zu-Ende-Strukturtests ausführen
 
 ### 5. Sichere Veröffentlichung und Displaybetrieb
 

@@ -21,6 +21,10 @@ const PORTAL_MEDIA_TYPES: Record<string, { type: "image" | "video"; extension: s
   "video/mp4": { type: "video", extension: "mp4", maxBytes: 250 * 1024 * 1024 },
   "video/webm": { type: "video", extension: "webm", maxBytes: 250 * 1024 * 1024 },
 };
+const PROJECT_FILE_TYPES: Record<string, { extension: string; maxBytes: number; kind: "image" | "video" | "document" }> = {
+  ...Object.fromEntries(Object.entries(PORTAL_MEDIA_TYPES).map(([mime, config]) => [mime, { extension: config.extension, maxBytes: config.maxBytes, kind: config.type }])),
+  "application/pdf": { extension: "pdf", maxBytes: 20 * 1024 * 1024, kind: "document" },
+};
 
 function portalSetupUrl(request: Request): string {
   const configured = process.env.SITE_URL;
@@ -116,6 +120,35 @@ async function sendCustomerStatusNotification(
     console.error("Customer status notification failed", reason);
     return false;
   }
+}
+
+async function sendInternalProjectNotification(subject: string, heading: string, message: string): Promise<void> {
+  if (!process.env.RESEND_API_KEY) return;
+  try {
+    const mail = await new Resend(process.env.RESEND_API_KEY).emails.send({
+      from: "SwissCompact Portal <kontakt@swisscompact.com>",
+      to: "kontakt@swisscompact.com",
+      replyTo: "kontakt@swisscompact.com",
+      subject,
+      html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#18181b"><p style="color:#c8102e;font-weight:800;letter-spacing:.12em">SWISSCOMPACT PORTAL</p><h1>${escapeHtml(heading)}</h1><p style="line-height:1.65">${escapeHtml(message)}</p><p><a href="https://www.swisscompact.com/dashboard" style="color:#c8102e;font-weight:700">Projekt im Dashboard öffnen</a></p></div>`,
+    });
+    if (mail.error) throw new Error(mail.error.message);
+  } catch (reason) {
+    console.error("Internal project notification failed", reason);
+  }
+}
+
+async function portalProject(admin: any, profile: { clientId: string; tenantId: string }, projectId: string): Promise<any | null> {
+  const result = await admin.from("projects").select("id,client_id,tenant_id,title,order_number,status").eq("id", projectId).eq("client_id", profile.clientId).eq("tenant_id", profile.tenantId).maybeSingle();
+  return result.data ?? null;
+}
+
+function safeFileName(value: unknown): string {
+  return cleanText(value, 180).replace(/[^a-zA-Z0-9._ -]+/g, "-") || "Datei";
+}
+
+function relatedRecord(value: any): any {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function resumableStorageUrl(signedUploadUrl: string): string {
@@ -302,6 +335,119 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (access.error) return json({ error: "Offerte konnte nicht sicher geöffnet werden" }, { status: 503 });
     await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "quote_opened_from_portal", entity_type: "quote", entity_id: quoteId, metadata: { quoteNumber: quote.data.quote_number, accessId: access.data.id } });
     return json({ ok: true, url: `${new URL(request.url).origin}/offerte/${token}`, expiresAt: expiresAt.toISOString() });
+  }
+
+  if (action === "post_project_message") {
+    const admin = dashboardSupabase();
+    const projectId = cleanText(body.projectId, 80);
+    const message = cleanText(body.message, 5000);
+    if (!admin || !projectId || !message) return json({ error: "Auftrag oder Nachricht fehlt" }, { status: 400 });
+    const project = await portalProject(admin, profile, projectId);
+    if (!project) return json({ error: "Auftrag nicht gefunden" }, { status: 404 });
+    const created = await admin.from("project_messages").insert({ project_id: projectId, client_id: profile.clientId, tenant_id: profile.tenantId, author_user_id: profile.userId, author_type: "customer", author_name: profile.displayName, body: message, visible_to_customer: true }).select("id,project_id,author_type,author_name,body,created_at").single();
+    if (created.error) return json({ error: "Nachricht konnte nicht gespeichert werden" }, { status: 400 });
+    await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "project_message_created", entity_type: "project", entity_id: projectId, metadata: { messageId: created.data.id } });
+    await sendInternalProjectNotification(`Neue Kundennachricht · ${project.order_number}`, "Neue Nachricht im Kundenauftrag", `${profile.displayName} hat beim Auftrag „${project.title}“ eine Nachricht hinterlassen: ${message}`);
+    return json({ ok: true, record: created.data });
+  }
+
+  if (action === "prepare_project_reference_upload") {
+    const admin = dashboardSupabase();
+    const projectId = cleanText(body.projectId, 80);
+    const title = cleanText(body.title, 180);
+    const fileName = safeFileName(body.fileName);
+    const mimeType = cleanText(body.mimeType, 100).toLowerCase();
+    const sizeBytes = Math.max(0, Math.floor(Number(body.sizeBytes) || 0));
+    const fileConfig = PROJECT_FILE_TYPES[mimeType];
+    if (!admin || !projectId || !title || !fileConfig || sizeBytes < 1 || sizeBytes > fileConfig.maxBytes) return json({ error: "Datei, Titel oder Dateigrösse wird nicht unterstützt" }, { status: 400 });
+    const project = await portalProject(admin, profile, projectId);
+    if (!project) return json({ error: "Auftrag nicht gefunden" }, { status: 404 });
+    const deliverable = await admin.from("project_deliverables").insert({ project_id: projectId, client_id: profile.clientId, tenant_id: profile.tenantId, title, kind: "reference", status: "received", current_version: 0, created_by: profile.userId }).select("id").single();
+    if (deliverable.error) return json({ error: "Dateieintrag konnte nicht erstellt werden" }, { status: 400 });
+    const storagePath = `${profile.tenantId}/projects/${projectId}/${deliverable.data.id}/v1-${randomBytes(12).toString("hex")}.${fileConfig.extension}`;
+    const signed = await admin.storage.from(PORTAL_MEDIA_BUCKET).createSignedUploadUrl(storagePath);
+    if (signed.error || !signed.data?.token) return json({ error: "Upload konnte nicht vorbereitet werden" }, { status: 503 });
+    const version = await admin.from("project_deliverable_versions").insert({ deliverable_id: deliverable.data.id, project_id: projectId, client_id: profile.clientId, tenant_id: profile.tenantId, version: 1, storage_path: storagePath, file_name: fileName, mime_type: mimeType, size_bytes: sizeBytes, notes: cleanText(body.notes, 1500) || null, upload_state: "uploading", submitted_by: profile.userId, submitted_by_type: "customer" }).select("id").single();
+    if (version.error) return json({ error: "Dateiversion konnte nicht vorbereitet werden" }, { status: 400 });
+    return json({ ok: true, deliverableId: deliverable.data.id, versionId: version.data.id, upload: { signedUrl: signed.data.signedUrl, path: signed.data.path } });
+  }
+
+  if (action === "finalize_project_reference_upload") {
+    const admin = dashboardSupabase();
+    const versionId = cleanText(body.versionId, 80);
+    if (!admin || !versionId) return json({ error: "Dateiversion fehlt" }, { status: 400 });
+    const version = await admin.from("project_deliverable_versions").select("id,deliverable_id,project_id,storage_path,file_name,upload_state").eq("id", versionId).eq("client_id", profile.clientId).eq("tenant_id", profile.tenantId).eq("submitted_by", profile.userId).maybeSingle();
+    if (!version.data) return json({ error: "Dateiversion nicht gefunden" }, { status: 404 });
+    const project = await portalProject(admin, profile, version.data.project_id);
+    if (!project) return json({ error: "Auftrag nicht gefunden" }, { status: 404 });
+    const parts = version.data.storage_path.split("/"); const file = parts.pop() || ""; const directory = parts.join("/");
+    const stored = await admin.storage.from(PORTAL_MEDIA_BUCKET).list(directory, { limit: 10, search: file });
+    if (stored.error || !stored.data?.some((entry: any) => entry.name === file)) return json({ error: "Datei wurde noch nicht vollständig übertragen" }, { status: 409 });
+    const finalized = await Promise.all([
+      admin.from("project_deliverable_versions").update({ upload_state: "ready" }).eq("id", versionId).eq("upload_state", "uploading"),
+      admin.from("project_deliverables").update({ current_version: 1, status: "received", updated_at: now }).eq("id", version.data.deliverable_id),
+      admin.from("project_messages").insert({ project_id: project.id, client_id: profile.clientId, tenant_id: profile.tenantId, author_type: "system", author_name: "SwissCompact Portal", body: `${profile.displayName} hat die Datei „${version.data.file_name}“ hochgeladen.`, visible_to_customer: true }),
+    ]);
+    if (finalized.some((result) => result.error)) return json({ error: "Die Datei wurde übertragen, konnte aber noch nicht abgeschlossen werden. Bitte erneut versuchen." }, { status: 409 });
+    await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "project_reference_uploaded", entity_type: "project", entity_id: project.id, metadata: { versionId, fileName: version.data.file_name } });
+    await sendInternalProjectNotification(`Neue Datei · ${project.order_number}`, "Kundendatei hochgeladen", `${profile.displayName} hat beim Auftrag „${project.title}“ die Datei „${version.data.file_name}“ bereitgestellt.`);
+    return json({ ok: true });
+  }
+
+  if (action === "review_project_deliverable") {
+    if (!["owner", "admin"].includes(profile.role)) return json({ error: "Nur Inhaber oder Administratoren dürfen Entwürfe freigeben" }, { status: 403 });
+    const admin = dashboardSupabase();
+    const versionId = cleanText(body.versionId, 80);
+    const decision = body.decision === "approved" ? "approved" : body.decision === "changes_requested" ? "changes_requested" : "";
+    const feedback = cleanText(body.feedback, 3000);
+    if (!admin || !versionId || !decision || (decision === "changes_requested" && !feedback)) return json({ error: "Entscheidung oder Änderungswunsch fehlt" }, { status: 400 });
+    const version = await admin.from("project_deliverable_versions").select("id,deliverable_id,project_id,version,file_name,upload_state").eq("id", versionId).eq("client_id", profile.clientId).eq("tenant_id", profile.tenantId).eq("upload_state", "ready").maybeSingle();
+    if (!version.data) return json({ error: "Entwurf nicht gefunden" }, { status: 404 });
+    const project = await portalProject(admin, profile, version.data.project_id);
+    const deliverable = await admin.from("project_deliverables").select("id,title,status,current_version").eq("id", version.data.deliverable_id).eq("client_id", profile.clientId).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (!project || !deliverable.data || deliverable.data.current_version !== version.data.version || deliverable.data.status !== "customer_review") return json({ error: "Dieser Entwurf ist nicht mehr zur Entscheidung offen" }, { status: 409 });
+    const review = await admin.from("project_review_decisions").insert({ deliverable_version_id: versionId, project_id: project.id, client_id: profile.clientId, tenant_id: profile.tenantId, decision, feedback: feedback || null, decided_by: profile.userId, decided_by_name: profile.displayName, decided_by_email: profile.email }).select("id").single();
+    if (review.error) return json({ error: "Diese Version wurde bereits entschieden" }, { status: 409 });
+    let revisionId: string | null = null;
+    if (decision === "changes_requested") {
+      const rounds = await admin.from("project_revision_rounds").select("round_number").eq("deliverable_id", deliverable.data.id).order("round_number", { ascending: false }).limit(1);
+      const roundNumber = Number(rounds.data?.[0]?.round_number || 0) + 1;
+      const revision = await admin.from("project_revision_rounds").insert({ project_id: project.id, deliverable_id: deliverable.data.id, client_id: profile.clientId, tenant_id: profile.tenantId, round_number: roundNumber, status: "requested", request_text: feedback, requested_by: profile.userId }).select("id").single();
+      if (revision.error) {
+        await admin.from("project_review_decisions").delete().eq("id", review.data.id);
+        return json({ error: "Der Änderungswunsch konnte nicht vollständig gespeichert werden" }, { status: 409 });
+      }
+      revisionId = revision.data.id;
+    }
+    const statusUpdate = await admin.from("project_deliverables").update({ status: decision, updated_at: now }).eq("id", deliverable.data.id).eq("current_version", version.data.version).eq("status", "customer_review").select("id").maybeSingle();
+    if (!statusUpdate.data) {
+      if (revisionId) await admin.from("project_revision_rounds").delete().eq("id", revisionId);
+      await admin.from("project_review_decisions").delete().eq("id", review.data.id);
+      return json({ error: "Der Entwurf wurde gleichzeitig geändert. Bitte laden Sie die Seite neu." }, { status: 409 });
+    }
+    await admin.from("project_messages").insert({ project_id: project.id, client_id: profile.clientId, tenant_id: profile.tenantId, author_user_id: profile.userId, author_type: "customer", author_name: profile.displayName, body: decision === "approved" ? `Version ${version.data.version} von „${deliverable.data.title}“ wurde freigegeben.` : `Änderungen für Version ${version.data.version} von „${deliverable.data.title}“ wurden angefordert: ${feedback}`, visible_to_customer: true });
+    await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: decision === "approved" ? "project_version_approved" : "project_changes_requested", entity_type: "project", entity_id: project.id, metadata: { deliverableId: deliverable.data.id, versionId, version: version.data.version, reviewId: review.data.id } });
+    await sendInternalProjectNotification(`Kundenentscheid · ${project.order_number}`, decision === "approved" ? "Entwurf freigegeben" : "Änderungswunsch eingegangen", `${profile.displayName} hat „${deliverable.data.title}“ ${decision === "approved" ? "freigegeben" : `mit folgender Rückmeldung zurückgegeben: ${feedback}`}.`);
+    return json({ ok: true, decision });
+  }
+
+  if (action === "decide_project_revision_cost") {
+    if (!["owner", "admin"].includes(profile.role)) return json({ error: "Nur Inhaber oder Administratoren dürfen Zusatzkosten bestätigen" }, { status: 403 });
+    const admin = dashboardSupabase();
+    const revisionId = cleanText(body.revisionId, 80);
+    const decision = body.decision === "approved" ? "approved" : body.decision === "declined" ? "declined" : "";
+    if (!admin || !revisionId || !decision) return json({ error: "Entscheidung fehlt" }, { status: 400 });
+    const revision = await admin.from("project_revision_rounds").select("id,project_id,deliverable_id,round_number,additional_cost_chf,status").eq("id", revisionId).eq("client_id", profile.clientId).eq("tenant_id", profile.tenantId).eq("status", "customer_approval").maybeSingle();
+    if (!revision.data) return json({ error: "Kostenfreigabe ist nicht mehr offen" }, { status: 409 });
+    const project = await portalProject(admin, profile, revision.data.project_id);
+    if (!project) return json({ error: "Auftrag nicht gefunden" }, { status: 404 });
+    const updated = await admin.from("project_revision_rounds").update({ status: decision, approved_by: profile.userId, approved_at: now, updated_at: now }).eq("id", revisionId).eq("status", "customer_approval").select("id").maybeSingle();
+    if (!updated.data) return json({ error: "Kostenfreigabe wurde gleichzeitig verarbeitet" }, { status: 409 });
+    const cost = new Intl.NumberFormat("de-CH", { style: "currency", currency: "CHF" }).format(Number(revision.data.additional_cost_chf || 0));
+    await admin.from("project_messages").insert({ project_id: project.id, client_id: profile.clientId, tenant_id: profile.tenantId, author_user_id: profile.userId, author_type: "customer", author_name: profile.displayName, body: `Zusatzkosten für Korrekturrunde ${revision.data.round_number} (${cost}) wurden ${decision === "approved" ? "bestätigt" : "abgelehnt"}.`, visible_to_customer: true });
+    await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: decision === "approved" ? "project_revision_cost_approved" : "project_revision_cost_declined", entity_type: "project", entity_id: project.id, metadata: { revisionId, roundNumber: revision.data.round_number, additionalCostChf: revision.data.additional_cost_chf } });
+    await sendInternalProjectNotification(`Kostenentscheid · ${project.order_number}`, `Korrekturrunde ${revision.data.round_number} ${decision === "approved" ? "bestätigt" : "abgelehnt"}`, `${profile.displayName} hat die Zusatzkosten von ${cost} beim Auftrag „${project.title}“ ${decision === "approved" ? "bestätigt" : "abgelehnt"}.`);
+    return json({ ok: true, decision });
   }
 
   if (action === "prepare_media_upload") {
@@ -889,6 +1035,24 @@ async function handlePortalDocument(request: Request): Promise<Response> {
   return json({ ok: true, url: signed.data.signedUrl, expiresIn: 600 });
 }
 
+async function handlePortalProjectFile(request: Request): Promise<Response> {
+  const authorized = await authorizePortal(request);
+  if (isResponse(authorized)) return authorized;
+  const { profile } = authorized;
+  const admin = dashboardSupabase();
+  if (!admin) return json({ error: "Dateiservice ist nicht konfiguriert" }, { status: 503 });
+  const versionId = cleanText(new URL(request.url).searchParams.get("portalProjectFile"), 80);
+  if (!versionId) return json({ error: "Dateiversion fehlt" }, { status: 400 });
+  const version = await admin.from("project_deliverable_versions").select("id,project_id,storage_path,file_name,upload_state").eq("id", versionId).eq("client_id", profile.clientId).eq("tenant_id", profile.tenantId).eq("upload_state", "ready").maybeSingle();
+  if (!version.data) return json({ error: "Datei nicht gefunden" }, { status: 404 });
+  const project = await portalProject(admin, profile, version.data.project_id);
+  if (!project) return json({ error: "Auftrag nicht gefunden" }, { status: 404 });
+  const signed = await admin.storage.from(PORTAL_MEDIA_BUCKET).createSignedUrl(version.data.storage_path, 10 * 60, { download: version.data.file_name });
+  if (signed.error || !signed.data?.signedUrl) return json({ error: "Datei konnte nicht geöffnet werden" }, { status: 503 });
+  await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "project_file_opened", entity_type: "project", entity_id: project.id, metadata: { versionId, fileName: version.data.file_name } });
+  return json({ ok: true, url: signed.data.signedUrl, expiresIn: 600 });
+}
+
 function amount(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.round(Math.min(parsed, 1_000_000_000) * 100) / 100) : 0;
@@ -1386,16 +1550,23 @@ export async function POST(request: Request): Promise<Response> {
     if (profiles.error) return json({ error: profiles.error.message }, { status: 400 });
     const marcel = profiles.data?.find((entry) => entry.email === "kontakt@swisscompact.com")?.user_id ?? null;
     const thomas = profiles.data?.find((entry) => entry.email === "thomas.peter@swisscompact.com")?.user_id ?? null;
-    const project = await client.from("projects").insert({
+    const tenant = await client.from("tenants").select("id").eq("client_id", opportunity.data.client_id).maybeSingle();
+    const projectRecord: Record<string, unknown> = {
       opportunity_id: opportunityId,
       client_id: opportunity.data.client_id,
+      ...(tenant.data?.id ? { tenant_id: tenant.data.id } : {}),
       title: opportunity.data.title,
       status: "planning",
       software_owner: marcel,
       hardware_owner: thomas,
       starts_on: typeof body.startsOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.startsOn) ? body.startsOn : null,
       target_completion: typeof body.targetCompletion === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.targetCompletion) ? body.targetCompletion : null,
-    }).select("*").single();
+    };
+    let project = await client.from("projects").insert(projectRecord).select("*").single();
+    if (project.error && tenant.data?.id && /tenant_id|schema cache/i.test(project.error.message || "")) {
+      delete projectRecord.tenant_id;
+      project = await client.from("projects").insert(projectRecord).select("*").single();
+    }
     if (project.error) return json({ error: project.error.message }, { status: 400 });
     await Promise.all([
       client.from("opportunities").update({ stage: "deposit_50", updated_at: new Date().toISOString() }).eq("id", opportunityId),
@@ -1426,8 +1597,8 @@ export async function POST(request: Request): Promise<Response> {
       status,
       software_owner: softwareOwner,
       hardware_owner: hardwareOwner,
-      starts_on: typeof body.startsOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.startsOn) ? body.startsOn : null,
-      target_completion: typeof body.targetCompletion === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.targetCompletion) ? body.targetCompletion : null,
+      starts_on: body.startsOn === undefined ? previous.data.starts_on : typeof body.startsOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.startsOn) ? body.startsOn : null,
+      target_completion: body.targetCompletion === undefined ? previous.data.target_completion : typeof body.targetCompletion === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.targetCompletion) ? body.targetCompletion : null,
       updated_at: new Date().toISOString(),
     };
     if (!update.title) return json({ error: "Projekttitel fehlt" }, { status: 400 });
@@ -1447,6 +1618,161 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
     return json({ ok: true, record: result.data });
+  }
+
+  if (action === "update_project_briefing") {
+    const projectId = cleanText(body.projectId, 80);
+    if (!projectId) return json({ error: "Projekt fehlt" }, { status: 400 });
+    const previous = await client.from("projects").select("id,client_id,tenant_id,title,briefing").eq("id", projectId).single();
+    if (previous.error || !previous.data.tenant_id) return json({ error: "Projekt ist noch keiner Portalakte zugeordnet" }, { status: 409 });
+    const briefing = {
+      objective: cleanText(body.objective, 3000),
+      audience: cleanText(body.audience, 1500),
+      keyMessage: cleanText(body.keyMessage, 1500),
+      formats: cleanText(body.formats, 1500),
+      notes: cleanText(body.notes, 3000),
+      updatedAt: new Date().toISOString(),
+      updatedBy: profile.displayName,
+    };
+    const result = await client.from("projects").update({ briefing, updated_at: new Date().toISOString() }).eq("id", projectId).select("id,briefing").single();
+    if (result.error) return json({ error: "Briefing konnte nicht gespeichert werden" }, { status: 400 });
+    await writeAudit(client, profile, "update", "project_briefing", projectId, previous.data.briefing, briefing);
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "post_dashboard_project_message") {
+    const projectId = cleanText(body.projectId, 80);
+    const message = cleanText(body.message, 5000);
+    const visibleToCustomer = body.visibleToCustomer !== false;
+    if (!projectId || !message) return json({ error: "Projekt oder Nachricht fehlt" }, { status: 400 });
+    const project = await client.from("projects").select("id,client_id,tenant_id,title,order_number").eq("id", projectId).single();
+    if (project.error || !project.data.client_id || !project.data.tenant_id) return json({ error: "Projekt ist noch keiner Portalakte zugeordnet" }, { status: 409 });
+    const result = await client.from("project_messages").insert({ project_id: projectId, client_id: project.data.client_id, tenant_id: project.data.tenant_id, author_user_id: profile.userId, author_type: "swisscompact", author_name: profile.displayName, body: message, visible_to_customer: visibleToCustomer }).select("*").single();
+    if (result.error) return json({ error: "Nachricht konnte nicht gespeichert werden" }, { status: 400 });
+    await writeAudit(client, profile, "create", "project_message", result.data.id, undefined, { projectId, visibleToCustomer });
+    if (visibleToCustomer) await sendCustomerStatusNotification(client, project.data.client_id, `Neue Nachricht zu ${project.data.order_number}`, "Neue Nachricht von SwissCompact", `Beim Auftrag „${project.data.title}“ gibt es eine neue Nachricht: ${message}`);
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "prepare_project_deliverable_upload") {
+    const projectId = cleanText(body.projectId, 80);
+    const existingDeliverableId = cleanText(body.deliverableId, 80);
+    const title = cleanText(body.title, 180);
+    const fileName = safeFileName(body.fileName);
+    const mimeType = cleanText(body.mimeType, 100).toLowerCase();
+    const sizeBytes = Math.max(0, Math.floor(Number(body.sizeBytes) || 0));
+    const fileConfig = PROJECT_FILE_TYPES[mimeType];
+    if (!projectId || !title || !fileConfig || sizeBytes < 1 || sizeBytes > fileConfig.maxBytes) return json({ error: "Datei, Titel oder Dateigrösse wird nicht unterstützt" }, { status: 400 });
+    const project = await client.from("projects").select("id,client_id,tenant_id,title,order_number").eq("id", projectId).single();
+    if (project.error || !project.data.client_id || !project.data.tenant_id) return json({ error: "Projekt ist noch keiner Portalakte zugeordnet" }, { status: 409 });
+    let deliverable: any;
+    if (existingDeliverableId) {
+      const existing = await client.from("project_deliverables").select("*").eq("id", existingDeliverableId).eq("project_id", projectId).eq("client_id", project.data.client_id).eq("tenant_id", project.data.tenant_id).maybeSingle();
+      if (!existing.data || ["archived", "published"].includes(existing.data.status)) return json({ error: "Dieser Entwurf kann nicht mehr versioniert werden" }, { status: 409 });
+      deliverable = existing.data;
+    } else {
+      const kind = ["image", "video", "design", "document", "campaign"].includes(String(body.kind)) ? body.kind : fileConfig.kind;
+      const created = await client.from("project_deliverables").insert({ project_id: projectId, client_id: project.data.client_id, tenant_id: project.data.tenant_id, title, kind, status: "draft", current_version: 0, created_by: profile.userId }).select("*").single();
+      if (created.error) return json({ error: "Entwurf konnte nicht erstellt werden" }, { status: 400 });
+      deliverable = created.data;
+    }
+    const versionNumber = Number(deliverable.current_version || 0) + 1;
+    const storagePath = `${project.data.tenant_id}/projects/${projectId}/${deliverable.id}/v${versionNumber}-${randomBytes(12).toString("hex")}.${fileConfig.extension}`;
+    const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUploadUrl(storagePath);
+    if (signed.error || !signed.data?.token) return json({ error: "Upload konnte nicht vorbereitet werden" }, { status: 503 });
+    const version = await client.from("project_deliverable_versions").insert({ deliverable_id: deliverable.id, project_id: projectId, client_id: project.data.client_id, tenant_id: project.data.tenant_id, version: versionNumber, storage_path: storagePath, file_name: fileName, mime_type: mimeType, size_bytes: sizeBytes, notes: cleanText(body.notes, 1500) || null, upload_state: "uploading", submitted_by: profile.userId, submitted_by_type: "swisscompact" }).select("id").single();
+    if (version.error) return json({ error: "Dateiversion konnte nicht vorbereitet werden" }, { status: 400 });
+    return json({ ok: true, deliverableId: deliverable.id, versionId: version.data.id, version: versionNumber, upload: { signedUrl: signed.data.signedUrl, path: signed.data.path } });
+  }
+
+  if (action === "finalize_project_deliverable_upload") {
+    const versionId = cleanText(body.versionId, 80);
+    if (!versionId) return json({ error: "Dateiversion fehlt" }, { status: 400 });
+    const version = await client.from("project_deliverable_versions").select("*").eq("id", versionId).eq("submitted_by", profile.userId).maybeSingle();
+    if (!version.data) return json({ error: "Dateiversion nicht gefunden" }, { status: 404 });
+    const project = await client.from("projects").select("id,client_id,tenant_id,title,order_number").eq("id", version.data.project_id).single();
+    const deliverable = await client.from("project_deliverables").select("id,title,current_version,status").eq("id", version.data.deliverable_id).single();
+    if (project.error || deliverable.error || !project.data.tenant_id || Number(deliverable.data.current_version) + 1 !== Number(version.data.version)) return json({ error: "Die Versionsfolge wurde zwischenzeitlich geändert" }, { status: 409 });
+    const parts = version.data.storage_path.split("/"); const file = parts.pop() || ""; const directory = parts.join("/");
+    const stored = await client.storage.from(PORTAL_MEDIA_BUCKET).list(directory, { limit: 10, search: file });
+    if (stored.error || !stored.data?.some((entry) => entry.name === file)) return json({ error: "Datei wurde noch nicht vollständig übertragen" }, { status: 409 });
+    const finalized = await Promise.all([
+      client.from("project_deliverable_versions").update({ upload_state: "ready" }).eq("id", versionId).eq("upload_state", "uploading"),
+      client.from("project_deliverables").update({ current_version: version.data.version, status: "customer_review", updated_at: new Date().toISOString() }).eq("id", deliverable.data.id).eq("current_version", deliverable.data.current_version),
+      client.from("project_messages").insert({ project_id: project.data.id, client_id: project.data.client_id, tenant_id: project.data.tenant_id, author_type: "system", author_name: "SwissCompact", body: `Version ${version.data.version} von „${deliverable.data.title}“ ist zur Kundenprüfung bereit.`, visible_to_customer: true }),
+    ]);
+    if (finalized.some((result) => result.error)) return json({ error: "Die Datei wurde übertragen, konnte aber noch nicht zur Prüfung freigegeben werden" }, { status: 409 });
+    await writeAudit(client, profile, "version_created", "project_deliverable", deliverable.data.id, undefined, { versionId, version: version.data.version, projectId: project.data.id });
+    await sendCustomerStatusNotification(client, project.data.client_id, `Entwurf zur Prüfung · ${project.data.order_number}`, "Ein neuer Entwurf ist bereit", `Version ${version.data.version} von „${deliverable.data.title}“ kann jetzt im Kundenportal geprüft, freigegeben oder mit einem Änderungswunsch zurückgegeben werden.`);
+    return json({ ok: true });
+  }
+
+  if (action === "scope_project_revision") {
+    const revisionId = cleanText(body.revisionId, 80);
+    const responseText = cleanText(body.responseText, 3000);
+    const included = body.included === true;
+    const additionalCost = included ? 0 : amount(body.additionalCostChf);
+    if (!revisionId || !responseText) return json({ error: "Korrekturrunde oder Antwort fehlt" }, { status: 400 });
+    if (!included && additionalCost <= 0) return json({ error: "Zusatzkosten müssen klar ausgewiesen werden oder als enthalten markiert sein" }, { status: 400 });
+    const revision = await client.from("project_revision_rounds").select("*,project:projects(title,order_number)").eq("id", revisionId).in("status", ["requested", "scoping"]).maybeSingle();
+    if (!revision.data) return json({ error: "Korrekturrunde wurde bereits bearbeitet" }, { status: 409 });
+    const status = included ? "approved" : "customer_approval";
+    const result = await client.from("project_revision_rounds").update({ response_text: responseText, included, additional_cost_chf: additionalCost, status, updated_at: new Date().toISOString() }).eq("id", revisionId).in("status", ["requested", "scoping"]).select("*").single();
+    if (result.error) return json({ error: "Korrekturrunde konnte nicht kalkuliert werden" }, { status: 400 });
+    await writeAudit(client, profile, "revision_scoped", "project_revision", revisionId, revision.data, result.data);
+    if (!included) await sendCustomerStatusNotification(client, revision.data.client_id, `Kostenfreigabe · ${relatedRecord(revision.data.project)?.order_number || "Auftrag"}`, "Korrekturrunde zur Bestätigung", `Für Korrekturrunde ${revision.data.round_number} wurden Zusatzkosten von ${new Intl.NumberFormat("de-CH", { style: "currency", currency: "CHF" }).format(additionalCost)} ausgewiesen. Bitte prüfen und entscheiden Sie im Kundenportal.`);
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "update_project_revision_status") {
+    const revisionId = cleanText(body.revisionId, 80);
+    const status = cleanText(body.status, 40);
+    if (!revisionId || !["in_progress", "completed"].includes(status)) return json({ error: "Korrekturstatus ist ungültig" }, { status: 400 });
+    const previous = await client.from("project_revision_rounds").select("*").eq("id", revisionId).maybeSingle();
+    if (!previous.data || (status === "in_progress" && previous.data.status !== "approved") || (status === "completed" && previous.data.status !== "in_progress")) return json({ error: "Dieser Statuswechsel ist nicht möglich" }, { status: 409 });
+    const result = await client.from("project_revision_rounds").update({ status, updated_at: new Date().toISOString() }).eq("id", revisionId).eq("status", previous.data.status).select("*").single();
+    if (result.error) return json({ error: "Korrekturstatus konnte nicht gespeichert werden" }, { status: 400 });
+    await writeAudit(client, profile, "status_change", "project_revision", revisionId, previous.data, result.data);
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "publish_project_deliverable") {
+    const deliverableId = cleanText(body.deliverableId, 80);
+    const destination = ["library", "archive", "campaign"].includes(String(body.destination)) ? String(body.destination) : "library";
+    const campaignId = cleanText(body.campaignId, 80);
+    if (!deliverableId || (destination === "campaign" && !campaignId)) return json({ error: "Entwurf oder Ziel fehlt" }, { status: 400 });
+    const deliverable = await client.from("project_deliverables").select("*").eq("id", deliverableId).in("status", ["approved", "delivered"]).maybeSingle();
+    if (!deliverable.data) return json({ error: "Nur freigegebene Entwürfe können übernommen werden" }, { status: 409 });
+    const version = await client.from("project_deliverable_versions").select("*").eq("deliverable_id", deliverableId).eq("version", deliverable.data.current_version).eq("upload_state", "ready").maybeSingle();
+    if (!version.data || !["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"].includes(version.data.mime_type)) return json({ error: "Nur freigegebene Bilder oder Videos können als Bildschirmmedium übernommen werden" }, { status: 409 });
+    if (destination === "campaign") {
+      const campaign = await client.from("tenant_campaigns").select("id").eq("id", campaignId).eq("tenant_id", deliverable.data.tenant_id).maybeSingle();
+      if (!campaign.data) return json({ error: "Zielkampagne nicht gefunden" }, { status: 404 });
+    }
+    const content = await client.from("tenant_content").insert({ tenant_id: deliverable.data.tenant_id, title: deliverable.data.title, content_type: version.data.mime_type.startsWith("video/") ? "video" : "image", status: destination === "archive" ? "archived" : "approved", asset_path: version.data.storage_path, payload: { uploadState: "ready", source: "project_deliverable", projectId: deliverable.data.project_id, deliverableId, version: version.data.version, mimeType: version.data.mime_type }, created_by: profile.userId, updated_by: profile.userId }).select("id").single();
+    if (content.error) return json({ error: "Medium konnte nicht übernommen werden" }, { status: 400 });
+    if (destination === "campaign") {
+      const existingLinks = await client.from("tenant_campaign_content").select("position").eq("campaign_id", campaignId).order("position", { ascending: false }).limit(1);
+      const position = Number(existingLinks.data?.[0]?.position || -1) + 1;
+      await client.from("tenant_campaign_content").insert({ campaign_id: campaignId, content_id: content.data.id, position, duration_seconds: 10 });
+      const targets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", campaignId);
+      if (targets.data?.length) await client.from("tenant_campaign_display_content").insert(targets.data.map((target) => ({ tenant_id: deliverable.data.tenant_id, campaign_id: campaignId, display_id: target.display_id, content_id: content.data.id, position, duration_seconds: 10 })));
+      await bumpDisplayConfigurations(client, (targets.data ?? []).map((target) => target.display_id));
+    }
+    await client.from("project_deliverables").update({ status: destination === "archive" ? "archived" : "published", updated_at: new Date().toISOString() }).eq("id", deliverableId);
+    await writeAudit(client, profile, "publish", "project_deliverable", deliverableId, deliverable.data, { contentId: content.data.id, destination, campaignId: campaignId || null });
+    return json({ ok: true, contentId: content.data.id });
+  }
+
+  if (action === "project_file_url") {
+    const versionId = cleanText(body.versionId, 80);
+    if (!versionId) return json({ error: "Dateiversion fehlt" }, { status: 400 });
+    const version = await client.from("project_deliverable_versions").select("id,storage_path,file_name,upload_state").eq("id", versionId).eq("upload_state", "ready").maybeSingle();
+    if (!version.data) return json({ error: "Datei nicht gefunden" }, { status: 404 });
+    const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUrl(version.data.storage_path, 10 * 60, { download: version.data.file_name });
+    if (signed.error || !signed.data?.signedUrl) return json({ error: "Datei konnte nicht geöffnet werden" }, { status: 503 });
+    await writeAudit(client, profile, "document_opened", "project_version", versionId, undefined, { fileName: version.data.file_name });
+    return json({ ok: true, url: signed.data.signedUrl });
   }
 
   if (action === "request_project_payment_approval" || action === "approve_project_payment") {
@@ -1597,5 +1923,6 @@ export async function GET(request: Request): Promise<Response> {
   if (search.get("device") === "config") return handleDeviceConfig(request);
   if (search.get("public") === "quote") return getPublicQuote(request);
   if (search.get("portalDocument")) return handlePortalDocument(request);
+  if (search.get("portalProjectFile")) return handlePortalProjectFile(request);
   return json({ error: "Nicht gefunden" }, { status: 404 });
 }
