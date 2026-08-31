@@ -31,6 +31,7 @@ const checks = {
   logicalWorkflow: portal.includes('[["overview","Übersicht"],["campaigns","Anzeigen"],["content","Medien & Vorlagen"],["displays","Bildschirme"]') && portal.includes("Anzeige in vier Schritten erstellen") && ["Motiv auswählen", "Bildschirm wählen", "Zeitraum festlegen", "Prüfen & starten"].every((label) => portal.includes(label)),
   simpleCampaignWizard: ["Was möchten Sie zeigen?", "Wo soll die Anzeige erscheinen?", "Wann soll die Anzeige laufen?", "Alles bereit?"].every((label) => portal.includes(label)) && portal.includes('action: "create_campaign"') && portal.includes('action: "configure_campaign"'),
   responsiveCampaignEditor: campaignCss.includes("wizard-date-pair") && campaignCss.includes("minmax(0, 1fr)") && campaignCss.includes("overflow: hidden") && campaignCss.includes("overflow: auto"),
+  inWizardMediaCreation: ["Vorhandenes Motiv", "Bild oder Video", "KI-Bild erstellen", "Hochladen und auswählen"].every((label) => portal.includes(label)) && portal.includes("acceptCreatedContent") && portal.includes('status: "approved"') && campaignCss.includes("campaign-child-backdrop"),
 };
 
 console.log(JSON.stringify(checks, null, 2));

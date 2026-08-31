@@ -1,4 +1,4 @@
-import React, { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DetailedError, Upload } from "tus-js-client";
 import "./portal.css";
@@ -188,8 +188,9 @@ function Portal() {
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  const load = useCallback(async (): Promise<PortalData | null> => {
-    setSession("loading"); setError("");
+  const load = useCallback(async (showBoot = true): Promise<PortalData | null> => {
+    if (showBoot) setSession("loading");
+    setError("");
     try {
       const overview = await api<PortalData>("/api/dashboard/overview?audience=portal");
       if (!overview.profile || !Array.isArray(overview.displays) || !Array.isArray(overview.content) || !Array.isArray(overview.campaigns)) {
@@ -308,7 +309,11 @@ function Portal() {
     </main>
     {dialog && <CreateDialog type={dialog} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
     {aiDialog && <AiImageDialog credits={data.aiCredits} canBuy={canManageDevices} checkoutNotice={creditNotice} onDismissCheckoutNotice={() => setCreditNotice(null)} onClose={() => setAiDialog(false)} onCreated={() => { setAiDialog(false); void load(); }} />}
-    {(creatingCampaign || editingCampaign) && <CampaignEditor campaign={editingCampaign} content={data.content} displays={data.displays} canEdit={canEdit} canManageDevices={canManageDevices} onCreateContent={() => { setCreatingCampaign(false); setEditingCampaign(null); setView("content"); setDialog("content"); }} onCreateDisplay={() => { setCreatingCampaign(false); setEditingCampaign(null); setView("displays"); setDisplaySetup(true); }} onClose={() => { setCreatingCampaign(false); setEditingCampaign(null); }} onSaved={() => { setCreatingCampaign(false); setEditingCampaign(null); void load(); }} />}
+    {(creatingCampaign || editingCampaign) && <CampaignEditor campaign={editingCampaign} content={data.content} displays={data.displays} aiCredits={data.aiCredits} canEdit={canEdit} canManageDevices={canManageDevices} onContentCreated={async (id) => {
+      await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id, status: "approved" }) });
+      const next = await load(false);
+      return next?.content.find((item) => item.id === id) || null;
+    }} onCreateDisplay={() => { setCreatingCampaign(false); setEditingCampaign(null); setView("displays"); setDisplaySetup(true); }} onClose={() => { setCreatingCampaign(false); setEditingCampaign(null); }} onSaved={() => { setCreatingCampaign(false); setEditingCampaign(null); void load(); }} />}
     {displaySetup && <DisplaySetupDialog sites={data.sites} onClose={() => setDisplaySetup(false)} onCreated={(next) => { setDisplaySetup(false); setPairing(next); void load(); }} />}
     {pairing && <PairingDialog pairing={pairing} onClose={() => setPairing(null)} />}
     {deleteTarget && <DeleteDialog target={deleteTarget} busy={deleteBusy} error={deleteError} onCancel={() => !deleteBusy && setDeleteTarget(null)} onConfirm={() => void confirmDelete()} />}
@@ -360,7 +365,7 @@ function localDateTime(value?: string): string {
   return local.toISOString().slice(0, 16);
 }
 
-function CampaignEditor({ campaign, content, displays, canEdit, canManageDevices, onCreateContent, onCreateDisplay, onClose, onSaved }: { campaign: Campaign | null; content: Content[]; displays: Display[]; canEdit: boolean; canManageDevices: boolean; onCreateContent: () => void; onCreateDisplay: () => void; onClose: () => void; onSaved: () => void }) {
+function CampaignEditor({ campaign, content, displays, aiCredits, canEdit, canManageDevices, onContentCreated, onCreateDisplay, onClose, onSaved }: { campaign: Campaign | null; content: Content[]; displays: Display[]; aiCredits: AiCredits; canEdit: boolean; canManageDevices: boolean; onContentCreated: (id: string) => Promise<Content | null>; onCreateDisplay: () => void; onClose: () => void; onSaved: () => void }) {
   const initialContent = [...(campaign?.content_links || [])].sort((a,b) => a.position - b.position).flatMap((link) => link.content ? [{ contentId: link.content.id, durationSeconds: link.duration_seconds || 10 }] : []);
   const [playlist, setPlaylist] = useState(initialContent);
   const [selectedDisplays, setSelectedDisplays] = useState(() => new Set((campaign?.display_links || []).map((link) => link.display_id)));
@@ -370,6 +375,9 @@ function CampaignEditor({ campaign, content, displays, canEdit, canManageDevices
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [contentDialog, setContentDialog] = useState<"upload" | "ai" | null>(null);
+  const [contentNotice, setContentNotice] = useState("");
+  const mediaListRef = useRef<HTMLDivElement>(null);
   const locked = Boolean(campaign && ["active", "scheduled", "completed", "archived"].includes(campaign.status));
   const availableContent = content.filter((item) => item.payload?.uploadState !== "uploading");
   const selectedContent = playlist.flatMap((entry) => {
@@ -387,6 +395,15 @@ function CampaignEditor({ campaign, content, displays, canEdit, canManageDevices
   }
   function toggleDisplay(displayId: string) {
     setSelectedDisplays((current) => { const next = new Set(current); if (next.has(displayId)) next.delete(displayId); else next.add(displayId); return next; });
+  }
+  async function acceptCreatedContent(id?: string) {
+    if (!id) throw new Error("Das neue Motiv konnte nicht übernommen werden.");
+    setError("");
+    const created = await onContentCreated(id);
+    if (!created) throw new Error("Das neue Motiv wurde gespeichert, konnte aber noch nicht geladen werden.");
+    setPlaylist((current) => current.some((entry) => entry.contentId === id) ? current : [...current, { contentId: id, durationSeconds: 10 }]);
+    setContentNotice(`„${created.title}“ wurde erstellt, freigegeben und ausgewählt.`);
+    setContentDialog(null);
   }
   function nextStep() {
     setError("");
@@ -416,20 +433,20 @@ function CampaignEditor({ campaign, content, displays, canEdit, canManageDevices
     catch (reason) { setError(reason instanceof Error ? reason.message : "Anzeige konnte nicht pausiert werden"); } finally { setBusy(false); }
   }
   const stepLabels = ["Motiv", "Bildschirm", "Zeitraum", "Vorschau & Start"];
-  return <div className="dialog-backdrop campaign-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="dialog campaign-editor" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} aria-label="Schließen">×</button><div className="campaign-editor-head"><div><div className="eyebrow">Anzeige erstellen</div><h2>{name || "Neue Anzeige"}</h2></div>{campaign && <Status value={campaign.status}/>}</div>
+  return <><div className="dialog-backdrop campaign-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !contentDialog && onClose()}><section className="dialog campaign-editor" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} aria-label="Schließen">×</button><div className="campaign-editor-head"><div><div className="eyebrow">Anzeige erstellen</div><h2>{name || "Neue Anzeige"}</h2></div>{campaign && <Status value={campaign.status}/>}</div>
     <div className="wizard-progress" aria-label={`Schritt ${step} von 4`}>{stepLabels.map((label, index) => <div className={`${step === index + 1 ? "active" : ""} ${step > index + 1 ? "complete" : ""}`} key={label}><span>{step > index + 1 ? "✓" : index + 1}</span><strong>{label}</strong></div>)}</div>
     {locked && <div className="editor-notice">Diese Anzeige läuft bereits. Pausieren Sie sie, bevor Sie Motiv, Bildschirm oder Zeitraum ändern.</div>}
     <div className="wizard-stage">
-      {step === 1 && <section><div className="wizard-stage-head"><div><span>Schritt 1</span><h3>Was möchten Sie zeigen?</h3><p>Geben Sie der Anzeige einen Namen und wählen Sie mindestens ein Motiv.</p></div></div><label className="wizard-name">Name der Anzeige<input value={name} autoFocus onChange={(event) => setName(event.target.value)} disabled={!canEdit || locked} placeholder="z. B. Sonntagsbrunch oder Sommeraktion"/></label><div className="selection-list media-selection">{availableContent.map((item) => { const index = playlist.findIndex((entry) => entry.contentId === item.id); const selected = index >= 0; return <div className={`selection-row ${selected ? "selected" : ""}`} key={item.id}><label><input type="checkbox" checked={selected} onChange={() => toggleContent(item.id)} disabled={!canEdit || locked}/><span><strong>{item.title}</strong><small>{item.content_type.toUpperCase()} · {labels[item.status] || item.status}</small></span></label>{selected && <div className="playlist-controls"><button type="button" aria-label="Nach oben" onClick={() => move(index,-1)} disabled={index === 0 || locked}>↑</button><button type="button" aria-label="Nach unten" onClick={() => move(index,1)} disabled={index === playlist.length-1 || locked}>↓</button><label><input type="number" min="5" max="3600" value={playlist[index].durationSeconds} onChange={(event) => setPlaylist((current) => current.map((entry,i) => i === index ? {...entry,durationSeconds:Number(event.target.value)} : entry))} disabled={!canEdit || locked}/><span>Sek.</span></label></div>}</div>})}{!availableContent.length && <div className="wizard-empty"><strong>Noch kein Motiv vorhanden</strong><p>Fügen Sie ein Bild, Video oder KI-Motiv hinzu und beginnen Sie danach erneut.</p>{canEdit && <button type="button" className="secondary" onClick={onCreateContent}>Motiv hinzufügen</button>}</div>}</div></section>}
+      {step === 1 && <section><div className="wizard-stage-head"><div><span>Schritt 1</span><h3>Was möchten Sie zeigen?</h3><p>Wählen Sie ein vorhandenes Motiv oder erstellen Sie hier direkt ein neues.</p></div></div><label className="wizard-name">Name der Anzeige<input value={name} autoFocus onChange={(event) => setName(event.target.value)} disabled={!canEdit || locked} placeholder="z. B. Sonntagsbrunch oder Sommeraktion"/></label>{canEdit && !locked && <div className="motif-source-actions" aria-label="Motiv auswählen oder erstellen"><button type="button" onClick={() => mediaListRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}><span>✓</span><strong>Vorhandenes Motiv</strong><small>Aus Medien & Vorlagen wählen</small></button><button type="button" onClick={() => { setContentNotice(""); setContentDialog("upload"); }}><span>↑</span><strong>Bild oder Video</strong><small>Eigene Datei hochladen</small></button><button type="button" onClick={() => { setContentNotice(""); setContentDialog("ai"); }}><span>✦</span><strong>KI-Bild erstellen</strong><small>{aiCredits.balance?.available ?? "–"} Credits verfügbar</small></button></div>}{contentNotice && <div className="wizard-success" role="status">✓ {contentNotice}</div>}<div className="selection-list media-selection" ref={mediaListRef}>{availableContent.map((item) => { const index = playlist.findIndex((entry) => entry.contentId === item.id); const selected = index >= 0; return <div className={`selection-row ${selected ? "selected" : ""}`} key={item.id}><label><input type="checkbox" checked={selected} onChange={() => toggleContent(item.id)} disabled={!canEdit || locked}/><span><strong>{item.title}</strong><small>{item.content_type.toUpperCase()} · {labels[item.status] || item.status}</small></span></label>{selected && <div className="playlist-controls"><button type="button" aria-label="Nach oben" onClick={() => move(index,-1)} disabled={index === 0 || locked}>↑</button><button type="button" aria-label="Nach unten" onClick={() => move(index,1)} disabled={index === playlist.length-1 || locked}>↓</button><label><input type="number" min="5" max="3600" value={playlist[index].durationSeconds} onChange={(event) => setPlaylist((current) => current.map((entry,i) => i === index ? {...entry,durationSeconds:Number(event.target.value)} : entry))} disabled={!canEdit || locked}/><span>Sek.</span></label></div>}</div>})}{!availableContent.length && <div className="wizard-empty"><strong>Noch kein Motiv vorhanden</strong><p>Laden Sie oben ein Bild oder Video hoch oder erstellen Sie ein KI-Bild. Danach wird es hier automatisch ausgewählt.</p></div>}</div></section>}
       {step === 2 && <section><div className="wizard-stage-head"><div><span>Schritt 2</span><h3>Wo soll die Anzeige erscheinen?</h3><p>Wählen Sie einen oder mehrere Bildschirme.</p></div><b>{selectedDisplays.size} gewählt</b></div><div className="selection-list display-selection">{displays.map((display) => <label className={selectedDisplays.has(display.id) ? "selected" : ""} key={display.id}><input type="checkbox" checked={selectedDisplays.has(display.id)} onChange={() => toggleDisplay(display.id)} disabled={!canEdit || locked}/><span><strong>{display.name}</strong><small>{display.site?.name || "Ohne Standort"} · {labels[display.status] || display.status}</small></span></label>)}{!displays.length && <div className="wizard-empty"><strong>Noch kein Bildschirm verbunden</strong><p>Verbinden Sie zuerst Ihre Anzeigefläche und beginnen Sie danach erneut.</p>{canManageDevices && <button type="button" className="secondary" onClick={onCreateDisplay}>Bildschirm einrichten</button>}</div>}</div></section>}
       {step === 3 && <section><div className="wizard-stage-head"><div><span>Schritt 3</span><h3>Wann soll die Anzeige laufen?</h3><p>Der vorgeschlagene Zeitraum beträgt sieben Tage und kann frei geändert werden.</p></div></div><div className="wizard-date-pair"><label>Start<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} disabled={!canEdit || locked}/><small>Ab diesem Zeitpunkt wird die Anzeige sichtbar.</small></label><label>Ende<input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} disabled={!canEdit || locked}/><small>Danach wird die Anzeige automatisch beendet.</small></label></div></section>}
       {step === 4 && <section><div className="wizard-stage-head"><div><span>Schritt 4</span><h3>Alles bereit?</h3><p>Prüfen Sie die Zusammenfassung und starten Sie die Anzeige.</p></div></div><div className="wizard-review"><div className="wizard-preview">{selectedContent[0]?.preview_url && selectedContent[0].content_type === "image" ? <img src={selectedContent[0].preview_url} alt="Vorschau des gewählten Motivs"/> : selectedContent[0]?.preview_url && selectedContent[0].content_type === "video" ? <video src={selectedContent[0].preview_url} muted playsInline/> : <div><span>Vorschau</span><strong>{selectedContent[0]?.title || "Kein Motiv"}</strong></div>}</div><div className="wizard-summary"><div><span>Anzeige</span><strong>{name || "Ohne Namen"}</strong></div><div><span>Motiv</span><strong>{selectedContent.map((item) => item.title).join(", ") || "Nicht gewählt"}</strong></div><div><span>Bildschirm</span><strong>{chosenDisplays.map((item) => item.name).join(", ") || "Nicht gewählt"}</strong></div><div><span>Zeitraum</span><strong>{startsAt ? new Date(startsAt).toLocaleString("de-CH", { dateStyle: "medium", timeStyle: "short" }) : "Sofort"} – {endsAt ? new Date(endsAt).toLocaleString("de-CH", { dateStyle: "medium", timeStyle: "short" }) : "Offen"}</strong></div></div></div>{hasUnapprovedContent && <div className="editor-notice">Mindestens ein Motiv ist noch nicht freigegeben. Speichern Sie den Entwurf und geben Sie das Motiv unter „Medien & Vorlagen“ frei.</div>}</section>}
     </div>
     {error && <div className="form-error">{error}</div>}<footer className="editor-actions"><button className="secondary" onClick={onClose}>Schließen</button>{canEdit && campaign && (campaign.status === "active" || campaign.status === "scheduled") && <button className="secondary danger" onClick={() => void pause()} disabled={busy}>Anzeige pausieren</button>}{step > 1 && <button className="secondary" onClick={() => { setError(""); setStep((current) => current - 1); }} disabled={busy}>Zurück</button>}{step < 4 && <button className="primary" onClick={nextStep}>Weiter</button>}{canEdit && !locked && step === 4 && <><button className="secondary" onClick={() => void save(false)} disabled={busy}>Als Entwurf speichern</button><button className="primary" onClick={() => void save(true)} disabled={busy || hasUnapprovedContent}>{busy ? "Wird gespeichert …" : startsAt && new Date(startsAt) > new Date() ? "Anzeige planen" : "Jetzt anzeigen"}</button></>}</footer>
-  </section></div>;
+  </section></div>{contentDialog === "upload" && <CreateDialog type="content" initialContentType="image" nested onClose={() => setContentDialog(null)} onCreated={acceptCreatedContent}/>} {contentDialog === "ai" && <AiImageDialog credits={aiCredits} canBuy={canManageDevices} checkoutNotice={null} onDismissCheckoutNotice={() => undefined} nested onClose={() => setContentDialog(null)} onCreated={acceptCreatedContent}/>}</>;
 }
 
-function AiImageDialog({ credits, canBuy, checkoutNotice, onDismissCheckoutNotice, onClose, onCreated }: { credits: AiCredits; canBuy: boolean; checkoutNotice: CreditPurchaseNotice | null; onDismissCheckoutNotice: () => void; onClose: () => void; onCreated: () => void }) {
+function AiImageDialog({ credits, canBuy, checkoutNotice, onDismissCheckoutNotice, nested = false, onClose, onCreated }: { credits: AiCredits; canBuy: boolean; checkoutNotice: CreditPurchaseNotice | null; onDismissCheckoutNotice: () => void; nested?: boolean; onClose: () => void; onCreated: (id?: string) => void | Promise<void> }) {
   const [quality, setQuality] = useState("medium");
   const [format, setFormat] = useState("landscape");
   const [headlineEnabled, setHeadlineEnabled] = useState(false);
@@ -463,12 +480,12 @@ function AiImageDialog({ credits, canBuy, checkoutNotice, onDismissCheckoutNotic
           headline: { enabled: headlineEnabled, text: headline, position: headlinePosition, align: headlineAlign, color: headlineColor, backdrop: headlineBackdrop },
         }),
       });
-      const result = await response.json().catch(() => ({})) as { error?: string };
+      const result = await response.json().catch(() => ({})) as { error?: string; record?: { id?: string } };
       if (!response.ok) {
         if (response.status !== 409) setGenerationKey(crypto.randomUUID());
         throw new Error(result.error || "Das Bild konnte nicht erstellt werden");
       }
-      onCreated();
+      await onCreated(result.record?.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Das Bild konnte nicht erstellt werden");
     } finally { setBusy(false); }
@@ -486,7 +503,7 @@ function AiImageDialog({ credits, canBuy, checkoutNotice, onDismissCheckoutNotic
     }
   }
 
-  return <div className="dialog-backdrop ai-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && !buying && onClose()}><section className={`dialog ai-dialog ${checkoutNotice ? "has-credit-notice" : ""}`} role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy || Boolean(buying)} aria-label="Schließen">×</button>
+  return <div className={`dialog-backdrop ai-backdrop ${nested ? "campaign-child-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !busy && !buying && onClose()}><section className={`dialog ai-dialog ${checkoutNotice ? "has-credit-notice" : ""}`} role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy || Boolean(buying)} aria-label="Schließen">×</button>
     <header className="ai-dialog-head"><div><div className="eyebrow">SwissCompact Bildstudio</div><h2>KI-Bild erstellen</h2><p>Ein displayfertiges Motiv – wahlweise mit präziser Überschrift.</p></div><div className="credit-balance"><span>Guthaben</span><strong>{credits.balance?.available ?? "–"}</strong><small>KI-Credits</small></div></header>
     {checkoutNotice && <div className={`credit-return-notice ${checkoutNotice.tone}`} role="status"><span aria-hidden="true">{checkoutNotice.tone === "success" ? "✓" : "i"}</span><div><strong>{checkoutNotice.title}</strong><small>{checkoutNotice.detail}</small></div><button type="button" onClick={onDismissCheckoutNotice} aria-label="Kaufhinweis schließen">×</button></div>}
     <div className="ai-dialog-grid"><form onSubmit={generate}><label className="ai-title-field">Inhaltstitel<input name="title" required autoFocus maxLength={180} placeholder="z. B. Herbstaktion"/></label><label className="ai-prompt-field">Bildbeschreibung<textarea name="prompt" required rows={5} maxLength={1200} placeholder="Beschreiben Sie Motiv, Stimmung, Farben und gewünschte Bildwirkung …"/></label>
@@ -498,15 +515,16 @@ function AiImageDialog({ credits, canBuy, checkoutNotice, onDismissCheckoutNotic
   </section></div>;
 }
 
-function CreateDialog({ type, onClose, onCreated }: { type: "content" | "campaign"; onClose: () => void; onCreated: () => void }) {
+function CreateDialog({ type, initialContentType = "composition", nested = false, onClose, onCreated }: { type: "content" | "campaign"; initialContentType?: string; nested?: boolean; onClose: () => void; onCreated: (id?: string) => void | Promise<void> }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [contentType, setContentType] = useState("composition");
+  const [contentType, setContentType] = useState(initialContentType);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setUploadProgress(0); const form = new FormData(event.currentTarget);
     const title = String(form.get("title") || "");
     const body = type === "content" ? { action: "create_content", title, contentType: form.get("contentType"), text: form.get("text") } : { action: "create_campaign", name: title, startsAt: form.get("startsAt") || null, endsAt: form.get("endsAt") || null };
     let preparedId = "";
+    let createdId = "";
     try {
       const file = form.get("file");
       if (type === "content" && (contentType === "image" || contentType === "video")) {
@@ -517,6 +535,7 @@ function CreateDialog({ type, onClose, onCreated }: { type: "content" | "campaig
           body: JSON.stringify({ action: "prepare_media_upload", title, mimeType, sizeBytes: file.size }),
         });
         preparedId = prepared.record.id;
+        createdId = prepared.record.id;
         if (contentType === "video") {
           await uploadVideo(file, prepared, mimeType, setUploadProgress);
         } else {
@@ -531,10 +550,12 @@ function CreateDialog({ type, onClose, onCreated }: { type: "content" | "campaig
           setUploadProgress(100);
         }
         await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "finalize_media_upload", id: prepared.record.id }) });
+        preparedId = "";
       } else {
-        await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify(body) });
+        const created = await api<{ record?: { id?: string } }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify(body) });
+        createdId = created.record?.id || "";
       }
-      onCreated();
+      await onCreated(createdId || undefined);
     }
     catch (reason) {
       if (preparedId) await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "cancel_media_upload", id: preparedId }) }).catch(() => undefined);
@@ -542,7 +563,7 @@ function CreateDialog({ type, onClose, onCreated }: { type: "content" | "campaig
     } finally { setBusy(false); }
   }
   const isMedia = contentType === "image" || contentType === "video";
-  return <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Medien & Vorlagen" : "Anzeigen"}</div><h2>{type === "content" ? "Neues Medium hinzufügen" : "Neue Anzeige erstellen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Name der Anzeige"}<input name="title" required autoFocus /></label>{type === "content" ? <><label>Medientyp<select name="contentType" value={contentType} onChange={(event) => setContentType(event.target.value)}><option value="composition">Komposition</option><option value="text">Text</option><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="web">Web-Inhalt</option></select></label>{isMedia ? <label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm,.mp4,.webm"}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4 (H.264) oder WebM · maximal 250 MB"}</small></label> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{busy && isMedia && <div className="upload-progress" role="status"><span style={{ width: `${uploadProgress}%` }}/><small>{uploadProgress > 0 ? `${uploadProgress} % übertragen` : "Upload wird vorbereitet …"}</small></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy}>{busy ? (isMedia ? `Datei wird übertragen${uploadProgress ? ` · ${uploadProgress} %` : " …"}` : "Wird gespeichert …") : "Als Entwurf speichern"}</button></form></section></div>;
+  return <div className={`dialog-backdrop ${nested ? "campaign-child-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Medien & Vorlagen" : "Anzeigen"}</div><h2>{type === "content" ? "Neues Medium hinzufügen" : "Neue Anzeige erstellen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Name der Anzeige"}<input name="title" required autoFocus /></label>{type === "content" ? <><label>Medientyp<select name="contentType" value={contentType} onChange={(event) => setContentType(event.target.value)}><option value="composition">Komposition</option><option value="text">Text</option><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="web">Web-Inhalt</option></select></label>{isMedia ? <label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm,.mp4,.webm"}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4 (H.264) oder WebM · maximal 250 MB"}</small></label> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{busy && isMedia && <div className="upload-progress" role="status"><span style={{ width: `${uploadProgress}%` }}/><small>{uploadProgress > 0 ? `${uploadProgress} % übertragen` : "Upload wird vorbereitet …"}</small></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy}>{busy ? (isMedia ? `Datei wird übertragen${uploadProgress ? ` · ${uploadProgress} %` : " …"}` : "Wird gespeichert …") : nested ? "Hochladen und auswählen" : "Als Entwurf speichern"}</button></form></section></div>;
 }
 
 createRoot(document.getElementById("portal-root")!).render(<Portal />);
