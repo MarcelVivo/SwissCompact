@@ -1740,25 +1740,24 @@ button {
   content: "";
 }
 
+/* The whole card is already clickable (mountCardLinks in cardLinks.ts),
+   so the "Mehr erfahren" text is redundant visual clutter — kept in the
+   DOM only as the card's sole focusable/accessible element, positioned
+   near its old spot so keyboard focus doesn't jump somewhere unexpected. */
 .business-platform__card-link {
-  display: inline-block;
-  margin-top: 22px;
-  color: var(--red);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 15px;
-  text-decoration: none;
+  position: absolute;
+  bottom: 34px;
+  left: clamp(22px, 2vw, 32px);
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.business-platform__card-link span {
-  display: inline-block;
-  margin-left: 6px;
-  transition: transform 200ms ease;
-}
-
-.business-platform__card-link:hover span,
-.business-platform__card-link:focus-visible span {
-  transform: translate(2px, -2px);
+.business-platform__card:has(.business-platform__card-link:focus-visible) {
+  outline: 2px solid var(--red);
+  outline-offset: -2px;
 }
 
 .business-platform__service {
