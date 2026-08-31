@@ -97,7 +97,11 @@ for (const viewport of viewports) {
   const heroVideo = await page.evaluate(() => {
     const video = document.querySelector(".intro__scroll-video--forward");
     if (!(video instanceof HTMLVideoElement)) return null;
-    const funnel = document.querySelector(".showroom-funnel__trigger")?.getBoundingClientRect();
+    // The room-configurator trigger is intentionally the small icon-only
+    // control on mobile; the sales-assistant trigger is the wide, prominent
+    // CTA pill — this measures whichever one is expected to span most of
+    // the viewport width.
+    const wideTrigger = document.querySelector(".sales-assistant__trigger")?.getBoundingClientRect();
     const scale = Math.min(
       window.innerWidth / video.videoWidth,
       window.innerHeight / video.videoHeight,
@@ -110,11 +114,11 @@ for (const viewport of viewports) {
       naturalHeight: video.videoHeight,
       renderedContentWidth: video.videoWidth * scale,
       viewportWidth: window.innerWidth,
-      funnel: funnel && {
-        left: funnel.left,
-        right: funnel.right,
-        width: funnel.width,
-        text: document.querySelector(".showroom-funnel__trigger")?.textContent?.trim(),
+      wideTrigger: wideTrigger && {
+        left: wideTrigger.left,
+        right: wideTrigger.right,
+        width: wideTrigger.width,
+        text: document.querySelector(".sales-assistant__trigger")?.textContent?.trim(),
       },
     };
   });
@@ -239,7 +243,7 @@ for (const viewport of viewports) {
     && initial.heroTextClearsBand
     && initial.introBackgroundIsGradient
     && heroVideo?.objectFit === "cover"
-    && heroVideo.funnel?.width >= heroVideo.viewportWidth - 100
+    && heroVideo.wideTrigger?.width >= heroVideo.viewportWidth - 100
     && lateHeroVideo?.transform === "none"
     && lateHeroVideo.mediaWidth >= lateHeroVideo.viewportWidth - 1
     && lateHeroVideo.renderedContentWidth >= lateHeroVideo.viewportWidth - 1

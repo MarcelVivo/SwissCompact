@@ -696,6 +696,30 @@ button {
   border-color: rgba(255, 255, 255, 0.62);
 }
 
+/* Tablet range (past the dedicated phone treatment below, short of desktop's
+   wider images/more forgiving contrast): station headlines/copy sit directly
+   on full-bleed photos without any legibility boost here otherwise, since
+   the phone-only text-shadow rule further down doesn't reach this width. */
+@media (min-width: 641px) and (max-width: 1200px) {
+  .station h1,
+  .station h2 {
+    text-shadow: 0 3px 24px rgba(0, 0, 0, 0.72);
+  }
+
+  .station p {
+    text-shadow: 0 2px 15px rgba(0, 0, 0, 0.86);
+  }
+}
+
+/* Short tablet-landscape viewports put the hero's own action buttons close
+   to the fixed room-configurator/assistant triggers in the bottom corners;
+   trimming this gap buys a bit more breathing room without repositioning
+   the whole hero block (which would push its eyebrow further up instead). */
+@media (min-width: 641px) and (max-height: 900px) {
+  .hero-actions {
+    margin-top: 16px;
+  }
+}
 
 .station__kicker {
   margin-bottom: 16px;
@@ -5853,6 +5877,7 @@ button {
 
 .project-cta h2 {
   font-size: clamp(52px, 7.6vw, 118px);
+  text-wrap: balance;
 }
 
 .project-cta__actions p {
@@ -6202,7 +6227,14 @@ button {
   }
 
   .media-wall {
-    min-height: 620px;
+    min-height: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: 300px repeat(2, minmax(190px, 1fr));
+  }
+
+  .media-tile--hero {
+    grid-column: 1 / -1;
+    grid-row: auto;
   }
 }
 
@@ -16684,7 +16716,7 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   bottom: 88px;
   z-index: 160;
   width: min(430px, calc(100vw - 32px));
-  max-height: min(680px, calc(100vh - 96px));
+  max-height: min(680px, calc(100vh - 190px));
   display: flex;
   flex-direction: column;
   background: var(--showroom-surface);
