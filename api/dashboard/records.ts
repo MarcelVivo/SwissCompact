@@ -8,21 +8,25 @@ import { getPublicQuote, postPublicQuote } from "../_lib/dashboard/quote-public.
 import { handleAiCreditsPost, handleAiCreditsStatusGet } from "../_lib/portal/ai-credits-handler.js";
 import { handleAiImagePost } from "../_lib/portal/ai-image-handler.js";
 import { handleStripeWebhookPost } from "../_lib/portal/stripe-webhook-handler.js";
+import { createMuxDirectUpload, deleteMuxAsset, deleteMuxDirectUpload, getMuxDirectUpload, muxSignedPlaybackUrl, muxVideoEnabled } from "../_lib/portal/mux-video.js";
 
 export const config = { runtime: "nodejs", maxDuration: 180 };
 
 type Payload = Record<string, unknown>;
 
 const PORTAL_MEDIA_BUCKET = "swisscompact-media";
+const MUX_VIDEO_MAX_BYTES = 5 * 1024 * 1024 * 1024;
 const PORTAL_MEDIA_TYPES: Record<string, { type: "image" | "video"; extension: string; maxBytes: number }> = {
   "image/jpeg": { type: "image", extension: "jpg", maxBytes: 20 * 1024 * 1024 },
   "image/png": { type: "image", extension: "png", maxBytes: 20 * 1024 * 1024 },
   "image/webp": { type: "image", extension: "webp", maxBytes: 20 * 1024 * 1024 },
   "video/mp4": { type: "video", extension: "mp4", maxBytes: 250 * 1024 * 1024 },
   "video/webm": { type: "video", extension: "webm", maxBytes: 250 * 1024 * 1024 },
+  "video/quicktime": { type: "video", extension: "mov", maxBytes: MUX_VIDEO_MAX_BYTES },
+  "video/x-matroska": { type: "video", extension: "mkv", maxBytes: MUX_VIDEO_MAX_BYTES },
 };
 const PROJECT_FILE_TYPES: Record<string, { extension: string; maxBytes: number; kind: "image" | "video" | "document" }> = {
-  ...Object.fromEntries(Object.entries(PORTAL_MEDIA_TYPES).map(([mime, config]) => [mime, { extension: config.extension, maxBytes: config.maxBytes, kind: config.type }])),
+  ...Object.fromEntries(Object.entries(PORTAL_MEDIA_TYPES).map(([mime, config]) => [mime, { extension: config.extension, maxBytes: Math.min(config.maxBytes, 250 * 1024 * 1024), kind: config.type }])),
   "application/pdf": { extension: "pdf", maxBytes: 20 * 1024 * 1024, kind: "document" },
 };
 
@@ -48,6 +52,23 @@ function normalizedMediaMetadata(value: unknown, type: "image" | "video"): Recor
 
 function mediaPayloadIsReady(payload: Record<string, unknown> | null | undefined): boolean {
   return payload?.uploadState === "ready" && (!payload.processingState || payload.processingState === "ready");
+}
+
+function mediaUsesMux(payload: Record<string, any> | null | undefined): boolean {
+  return payload?.mediaProvider === "mux" && payload?.mux && typeof payload.mux === "object";
+}
+
+async function materializeMediaUrl(client: any, content: { asset_path?: string | null; payload?: Record<string, any> }, expiresInSeconds = 6 * 60 * 60): Promise<string | null> {
+  if (mediaUsesMux(content.payload)) {
+    const playbackId = cleanText(content.payload?.mux?.playbackId, 180);
+    const renditionName = cleanText(content.payload?.mux?.renditionName, 180) || "highest.mp4";
+    if (!playbackId || !mediaPayloadIsReady(content.payload)) return null;
+    try { return muxSignedPlaybackUrl(playbackId, renditionName, expiresInSeconds); }
+    catch (reason) { console.error("Mux playback URL failed", reason); return null; }
+  }
+  if (!content.asset_path) return null;
+  const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUrl(content.asset_path, expiresInSeconds);
+  return signed.data?.signedUrl ?? null;
 }
 
 async function storageObjectExists(client: any, path: string): Promise<boolean> {
@@ -447,11 +468,7 @@ async function buildDisplayConfig(client: any, display: any, updateDeviceState =
       const content = linkedContent as { id: string; title: string; content_type: string; status: string; payload: Record<string, unknown>; asset_path?: string | null } | null;
       if (!content || !["approved", "published"].includes(content.status)) continue;
       if (["image", "video"].includes(content.content_type) && (!content.asset_path || !mediaPayloadIsReady(content.payload))) continue;
-      let mediaUrl: string | null = null;
-      if (content.asset_path) {
-        const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUrl(content.asset_path, 6 * 60 * 60);
-        mediaUrl = signed.data?.signedUrl ?? null;
-      }
+      const mediaUrl = await materializeMediaUrl(client, content);
       playlist.push({ campaignId: campaign.id, campaignName: campaign.name, contentId: content.id, title: content.title, contentType: content.content_type, payload: content.payload, mediaUrl, durationSeconds: Math.min(3600, Math.max(5, Number(link.duration_seconds) || 10)) });
     }
   }
@@ -466,11 +483,7 @@ async function materializeFallback(client: any, display: any, configuredFallback
   const fallback = await client.from("tenant_content").select("id,title,content_type,status,payload,asset_path").eq("id", fallbackId).eq("tenant_id", display.tenant_id).in("status", ["approved", "published"]).maybeSingle();
   if (!fallback.data) return null;
   if (["image", "video"].includes(fallback.data.content_type) && (!fallback.data.asset_path || !mediaPayloadIsReady(fallback.data.payload))) return null;
-  let mediaUrl: string | null = null;
-  if (fallback.data.asset_path) {
-    const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUrl(fallback.data.asset_path, 6 * 60 * 60);
-    mediaUrl = signed.data?.signedUrl ?? null;
-  }
+  const mediaUrl = await materializeMediaUrl(client, fallback.data);
   return { contentId: fallback.data.id, title: fallback.data.title, contentType: fallback.data.content_type, payload: fallback.data.payload, mediaUrl, durationSeconds: 3600 };
 }
 
@@ -641,19 +654,24 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const mimeType = cleanText(body.mimeType, 80).toLowerCase();
     const sizeBytes = Math.max(0, Math.floor(Number(body.sizeBytes) || 0));
     const media = PORTAL_MEDIA_TYPES[mimeType];
+    const useMux = media?.type === "video" && muxVideoEnabled();
+    const maxBytes = useMux ? MUX_VIDEO_MAX_BYTES : media?.maxBytes || 0;
     if (!title) return json({ error: "Titel fehlt" }, { status: 400 });
-    if (!media || sizeBytes < 1 || sizeBytes > media.maxBytes) {
+    if (!media || sizeBytes < 1 || sizeBytes > maxBytes) {
       return json({ error: "Dateityp oder Dateigrösse wird nicht unterstützt" }, { status: 400 });
+    }
+    if (media.type === "video" && !useMux && !["video/mp4", "video/webm"].includes(mimeType)) {
+      return json({ error: "MOV- und MKV-Videos benötigen die aktivierte automatische Videoaufbereitung" }, { status: 503 });
     }
     const mediaMetadata = normalizedMediaMetadata(body.mediaMetadata, media.type);
     if (!mediaMetadata) return json({ error: "Die Datei wurde noch nicht technisch geprüft. Bitte laden Sie die Seite neu und wählen Sie die Datei erneut aus." }, { status: 400 });
     if (media.type === "video" && body.createPoster !== true) return json({ error: "Für das Video fehlt das automatisch erzeugte Vorschaubild" }, { status: 400 });
     const month = now.slice(0, 7);
     const assetKey = randomBytes(16).toString("hex");
-    const assetPath = `${profile.tenantId}/${month}/${assetKey}.${media.extension}`;
+    const assetPath = useMux ? null : `${profile.tenantId}/${month}/${assetKey}.${media.extension}`;
     const posterPath = media.type === "video" ? `${profile.tenantId}/${month}/${assetKey}-poster.jpg` : null;
-    const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUploadUrl(assetPath);
-    if (signed.error || !signed.data?.token) return json({ error: `Upload konnte nicht vorbereitet werden${signed.error?.message ? `: ${signed.error.message}` : ""}` }, { status: 503 });
+    const signed = assetPath ? await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUploadUrl(assetPath) : null;
+    if (assetPath && (signed?.error || !signed?.data?.token)) return json({ error: `Upload konnte nicht vorbereitet werden${signed?.error?.message ? `: ${signed.error.message}` : ""}` }, { status: 503 });
     const posterSigned = posterPath ? await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUploadUrl(posterPath) : null;
     if (posterPath && (posterSigned?.error || !posterSigned?.data?.token)) return json({ error: "Die Videovorschau konnte nicht vorbereitet werden" }, { status: 503 });
     const result = await client.from("tenant_content").insert({
@@ -662,20 +680,46 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       content_type: media.type,
       status: "draft",
       asset_path: assetPath,
-      payload: { mimeType, sizeBytes, uploadState: "uploading", processingState: "validated", compatibilityStatus: "browser_verified", mediaMetadata, posterPath },
+      payload: { mimeType, sizeBytes, uploadState: "uploading", processingState: useMux ? "awaiting_upload" : "validated", compatibilityStatus: useMux ? "normalization_pending" : "browser_verified", mediaProvider: useMux ? "mux" : "supabase", mediaMetadata, posterPath, ...(useMux ? { mux: {} } : {}) },
       created_by: profile.userId,
       updated_by: profile.userId,
     }).select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
     if (result.error) return json({ error: result.error.message }, { status: 400 });
+    if (useMux) {
+      try {
+        const muxUpload = await createMuxDirectUpload(new URL(request.url).origin, result.data.id, title);
+        const payload = { ...result.data.payload, mux: { uploadId: muxUpload.id, playbackPolicy: "signed" } };
+        const linked = await client.from("tenant_content").update({ asset_path: `mux://${muxUpload.id}`, payload, updated_at: now }).eq("id", result.data.id).eq("tenant_id", profile.tenantId).select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
+        if (linked.error) {
+          await deleteMuxDirectUpload(muxUpload.id).catch(() => undefined);
+          await client.from("tenant_content").delete().eq("id", result.data.id);
+          return json({ error: "Der sichere Videoupload konnte nicht verknüpft werden" }, { status: 503 });
+        }
+        await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "mux_upload_prepared", entity_type: "content", entity_id: result.data.id, metadata: { mimeType, sizeBytes, uploadId: muxUpload.id } });
+        return json({
+          ok: true,
+          provider: "mux",
+          record: linked.data,
+          upload: { provider: "mux", url: muxUpload.url },
+          posterUpload: posterSigned?.data ? { signedUrl: posterSigned.data.signedUrl, token: posterSigned.data.token, path: posterSigned.data.path } : null,
+        });
+      } catch (reason) {
+        await client.from("tenant_content").delete().eq("id", result.data.id);
+        console.error("Mux upload preparation failed", reason);
+        return json({ error: "Die automatische Videoaufbereitung ist vorübergehend nicht erreichbar" }, { status: 503 });
+      }
+    }
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "upload_prepared", entity_type: "content", entity_id: result.data.id, metadata: { mimeType, sizeBytes } });
     return json({
       ok: true,
+      provider: "supabase",
       record: result.data,
       upload: {
-        signedUrl: signed.data.signedUrl,
-        token: signed.data.token,
-        path: signed.data.path,
-        resumableUrl: resumableStorageUrl(signed.data.signedUrl),
+        provider: "supabase",
+        signedUrl: signed!.data!.signedUrl,
+        token: signed!.data!.token,
+        path: signed!.data!.path,
+        resumableUrl: resumableStorageUrl(signed!.data!.signedUrl),
       },
       posterUpload: posterSigned?.data ? { signedUrl: posterSigned.data.signedUrl, token: posterSigned.data.token, path: posterSigned.data.path } : null,
     });
@@ -686,9 +730,34 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (!id) return json({ error: "Inhalt fehlt" }, { status: 400 });
     const existing = await client.from("tenant_content").select("id,asset_path,payload").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (existing.error || !existing.data?.asset_path) return json({ error: "Inhalt nicht gefunden" }, { status: 404 });
-    if (!await storageObjectExists(client, existing.data.asset_path)) return json({ error: "Die Datei wurde noch nicht vollständig übertragen" }, { status: 409 });
     const posterPath = typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : "";
     if (posterPath && !await storageObjectExists(client, posterPath)) return json({ error: "Die Videovorschau wurde noch nicht vollständig übertragen" }, { status: 409 });
+    if (mediaUsesMux(existing.data.payload)) {
+      const uploadId = cleanText(existing.data.payload?.mux?.uploadId, 180);
+      if (!uploadId) return json({ error: "Die Videoaufbereitung ist nicht vollständig verknüpft" }, { status: 409 });
+      try {
+        const upload = await getMuxDirectUpload(uploadId);
+        if (["errored", "cancelled", "timed_out"].includes(upload.status || "")) return json({ error: "Der Videoupload ist fehlgeschlagen. Bitte versuchen Sie es erneut." }, { status: 409 });
+      } catch (reason) {
+        console.error("Mux upload verification failed", reason);
+        return json({ error: "Der Videoupload konnte noch nicht bestätigt werden" }, { status: 503 });
+      }
+      const result = await client.from("tenant_content").update({
+        payload: {
+          ...(existing.data.payload || {}),
+          uploadState: "ready",
+          processingState: existing.data.payload?.processingState === "ready" ? "ready" : "processing",
+          compatibilityStatus: existing.data.payload?.processingState === "ready" ? "display_ready" : "normalizing",
+          uploadedAt: now,
+        },
+        updated_by: profile.userId,
+        updated_at: now,
+      }).eq("id", id).eq("tenant_id", profile.tenantId).select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
+      if (result.error) return json({ error: result.error.message }, { status: 400 });
+      await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "mux_upload_completed", entity_type: "content", entity_id: result.data.id, metadata: { uploadId } });
+      return json({ ok: true, processing: true, record: result.data });
+    }
+    if (!await storageObjectExists(client, existing.data.asset_path)) return json({ error: "Die Datei wurde noch nicht vollständig übertragen" }, { status: 409 });
     const result = await client.from("tenant_content").update({
       payload: { ...(existing.data.payload || {}), uploadState: "ready", processingState: "ready", compatibilityStatus: "display_ready", processedAt: now },
       updated_by: profile.userId,
@@ -706,7 +775,11 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (existing.error || !existing.data || existing.data.payload?.uploadState !== "uploading") {
       return json({ error: "Upload nicht gefunden" }, { status: 404 });
     }
-    const uploadPaths = [existing.data.asset_path, typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : ""].filter(Boolean);
+    if (mediaUsesMux(existing.data.payload)) {
+      const uploadId = cleanText(existing.data.payload?.mux?.uploadId, 180);
+      if (uploadId) await deleteMuxDirectUpload(uploadId).catch((reason) => console.error("Mux upload cancellation failed", reason));
+    }
+    const uploadPaths = [mediaUsesMux(existing.data.payload) ? "" : existing.data.asset_path, typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : ""].filter(Boolean);
     if (uploadPaths.length) await client.storage.from(PORTAL_MEDIA_BUCKET).remove(uploadPaths);
     const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
     if (removed.error) return json({ error: removed.error.message }, { status: 400 });
@@ -896,10 +969,21 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (existing.data.status !== "archived") return json({ error: "Inhalte können nur aus dem Archiv endgültig gelöscht werden" }, { status: 409 });
     if (cleanText(body.confirmationName, 180) !== existing.data.title) return json({ error: "Der eingegebene Name stimmt nicht überein" }, { status: 409 });
     const usage = await contentUsage(client, profile.tenantId, id);
+    if (mediaUsesMux(existing.data.payload)) {
+      const assetId = cleanText(existing.data.payload?.mux?.assetId, 180);
+      const uploadId = cleanText(existing.data.payload?.mux?.uploadId, 180);
+      try {
+        if (assetId) await deleteMuxAsset(assetId);
+        else if (uploadId) await deleteMuxDirectUpload(uploadId);
+      } catch (reason) {
+        console.error("Mux content cleanup failed", reason);
+        return json({ error: "Das Video konnte beim Videodienst noch nicht endgültig gelöscht werden. Bitte versuchen Sie es erneut." }, { status: 503 });
+      }
+    }
     const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
     if (removed.error) return json({ error: "Inhalt konnte nicht gelöscht werden" }, { status: 400 });
     await bumpDisplayConfigurations(client, usage.displayIds);
-    const storagePaths = [existing.data.asset_path, typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : ""].filter(Boolean);
+    const storagePaths = [mediaUsesMux(existing.data.payload) ? "" : existing.data.asset_path, typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : ""].filter(Boolean);
     if (storagePaths.length) {
       const storageRemoval = await client.storage.from(PORTAL_MEDIA_BUCKET).remove(storagePaths);
       if (storageRemoval.error) console.error("content asset cleanup:", storageRemoval.error.message);

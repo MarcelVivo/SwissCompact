@@ -73,6 +73,11 @@
   font-weight: 700;
 }
 
+.media-processing-error {
+  color: #bd0b2b !important;
+  font-weight: 700;
+}
+
 .media-file-check {
   display: flex;
   align-items: center;

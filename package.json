@@ -74,6 +74,7 @@
     "test:plattform-pages": "node scripts/plattform-smoke.mjs"
   },
   "dependencies": {
+    "@mux/upchunk": "^3.5.0",
     "@react-three/fiber": "^9.6.1",
     "@supabase/supabase-js": "^2.108.1",
     "@types/node": "^24.13.3",

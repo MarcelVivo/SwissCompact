@@ -1,6 +1,7 @@
 import { authorizeDashboard, authorizePortal, dashboardSupabase, isResponse } from "../_lib/dashboard/auth.js";
 import { json } from "../_lib/assistant/security.js";
 import { publicAiConfiguration } from "../_lib/portal/ai-config.js";
+import { muxVideoEnabled } from "../_lib/portal/mux-video.js";
 
 export const config = { runtime: "nodejs", maxDuration: 15 };
 
@@ -80,11 +81,14 @@ export async function GET(request: Request): Promise<Response> {
     const creatorName = (userId?: string | null) => userId ? creatorNames.get(userId) || "Ehemaliger Benutzer" : "Nicht erfasst";
     const contentWithPreviews = await Promise.all((content.data ?? []).map(async (item) => {
       const enriched = { ...item, creator_name: creatorName(item.created_by || auditedCreators.get(`content:${item.id}`)) };
-      if (!item.asset_path || item.payload?.uploadState !== "ready" || (item.payload?.processingState && item.payload.processingState !== "ready")) return { ...enriched, preview_url: null, poster_url: null };
-      const preview = await client.storage.from("swisscompact-media").createSignedUrl(item.asset_path, 60 * 60);
       const posterPath = typeof item.payload?.posterPath === "string" ? item.payload.posterPath : "";
       const poster = posterPath ? await client.storage.from("swisscompact-media").createSignedUrl(posterPath, 60 * 60) : null;
-      return { ...enriched, preview_url: preview.data?.signedUrl ?? null, poster_url: poster?.data?.signedUrl ?? null };
+      const ready = item.payload?.uploadState === "ready" && (!item.payload?.processingState || item.payload.processingState === "ready");
+      const muxVideo = item.payload?.mediaProvider === "mux";
+      const preview = ready && item.asset_path && !muxVideo
+        ? await client.storage.from("swisscompact-media").createSignedUrl(item.asset_path, 60 * 60)
+        : null;
+      return { ...enriched, preview_url: preview?.data?.signedUrl ?? null, poster_url: poster?.data?.signedUrl ?? null };
     }));
     const displayHealthCutoff = Date.now() - 90_000;
     const deliveryStateByDisplay = new Map((displayDeliveryState.data ?? []).map((entry) => [entry.id, entry]));
@@ -150,6 +154,7 @@ export async function GET(request: Request): Promise<Response> {
         ...publicAiConfiguration(),
         balance: aiBalance.error ? null : (Array.isArray(aiBalance.data) ? aiBalance.data[0] ?? null : aiBalance.data),
       },
+      mediaPipeline: { muxVideoEnabled: muxVideoEnabled(), maxVideoBytes: muxVideoEnabled() ? 5 * 1024 * 1024 * 1024 : 250 * 1024 * 1024 },
       generatedAt: new Date().toISOString(),
     });
   }
