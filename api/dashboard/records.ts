@@ -172,17 +172,46 @@ function newPairingCode(): string {
   return Array.from(randomBytes(8), (value) => alphabet[value % alphabet.length]).join("");
 }
 
-async function bumpDisplayConfigurations(client: any, displayIds: string[]): Promise<void> {
+async function displayConfigurationBlueprint(client: any, displayId: string, forcedCampaignId?: string): Promise<Record<string, unknown>> {
+  const display = await client.from("tenant_displays").select("id,tenant_id,fallback_content_id").eq("id", displayId).maybeSingle();
+  if (!display.data) return { campaignIds: [], fallbackContentId: null };
+  const targets = await client.from("tenant_campaign_displays").select("campaign_id").eq("display_id", displayId);
+  let campaignIds = forcedCampaignId ? [forcedCampaignId] : (targets.data ?? []).map((entry: { campaign_id: string }) => entry.campaign_id);
+  if (!forcedCampaignId && campaignIds.length) {
+    const campaigns = await client.from("tenant_campaigns").select("id,status").in("id", campaignIds).in("status", ["active", "scheduled"]);
+    campaignIds = (campaigns.data ?? []).map((campaign: { id: string }) => campaign.id);
+  }
+  const assignments = campaignIds.length
+    ? await client.from("tenant_campaign_display_content").select("campaign_id,content_id,position,duration_seconds").eq("tenant_id", display.data.tenant_id).eq("display_id", displayId).in("campaign_id", campaignIds).order("position")
+    : { data: [] };
+  return {
+    campaignIds,
+    assignments: (assignments.data ?? []).map((entry: any) => ({ campaignId: entry.campaign_id, contentId: entry.content_id, position: entry.position, durationSeconds: entry.duration_seconds })),
+    fallbackContentId: display.data.fallback_content_id ?? null,
+  };
+}
+
+async function bumpDisplayConfigurations(client: any, displayIds: string[], source = "system", campaignId?: string): Promise<void> {
   const ids = [...new Set(displayIds.filter(Boolean))];
   if (!ids.length) return;
-  const current = await client.from("tenant_displays").select("id,configuration_version").in("id", ids);
-  await Promise.all((current.data ?? []).map((display: { id: string; configuration_version?: number }) => client.from("tenant_displays").update({ configuration_version: Number(display.configuration_version || 1) + 1, updated_at: new Date().toISOString() }).eq("id", display.id)));
+  await Promise.all(ids.map(async (displayId) => {
+    const blueprint = await displayConfigurationBlueprint(client, displayId);
+    const version = await client.rpc("create_display_configuration_version", {
+      target_display: displayId,
+      next_configuration: blueprint,
+      version_source: source,
+      source_campaign: campaignId || null,
+      version_state: "active",
+    });
+    if (version.error) throw new Error(version.error.message);
+  }));
 }
 
 async function contentUsage(client: any, tenantId: string, contentId: string): Promise<{ campaignIds: string[]; displayIds: string[] }> {
-  const [legacyLinks, targetLinks] = await Promise.all([
+  const [legacyLinks, targetLinks, fallbackDisplays] = await Promise.all([
     client.from("tenant_campaign_content").select("campaign_id").eq("content_id", contentId),
     client.from("tenant_campaign_display_content").select("display_id").eq("content_id", contentId).eq("tenant_id", tenantId),
+    client.from("tenant_displays").select("id").eq("tenant_id", tenantId).eq("fallback_content_id", contentId),
   ]);
   const campaignIds = [...new Set<string>((legacyLinks.data ?? []).map((link: { campaign_id: string }) => link.campaign_id))];
   const campaignTargets = campaignIds.length
@@ -190,7 +219,7 @@ async function contentUsage(client: any, tenantId: string, contentId: string): P
     : { data: [] as Array<{ display_id: string }> };
   return {
     campaignIds,
-    displayIds: [...new Set<string>([...(targetLinks.data ?? []).map((link: { display_id: string }) => link.display_id), ...(campaignTargets.data ?? []).map((link: { display_id: string }) => link.display_id)])],
+    displayIds: [...new Set<string>([...(targetLinks.data ?? []).map((link: { display_id: string }) => link.display_id), ...(campaignTargets.data ?? []).map((link: { display_id: string }) => link.display_id), ...(fallbackDisplays.data ?? []).map((display: { id: string }) => display.id)])],
   };
 }
 
@@ -208,13 +237,34 @@ async function validCampaignScope(client: any, tenantId: string, siteId: string 
   return true;
 }
 
+function schedulesOverlap(a: { starts_at?: string | null; ends_at?: string | null }, b: { starts_at?: string | null; ends_at?: string | null }): boolean {
+  const aStart = a.starts_at ? new Date(a.starts_at).getTime() : Number.NEGATIVE_INFINITY;
+  const aEnd = a.ends_at ? new Date(a.ends_at).getTime() : Number.POSITIVE_INFINITY;
+  const bStart = b.starts_at ? new Date(b.starts_at).getTime() : Number.NEGATIVE_INFINITY;
+  const bEnd = b.ends_at ? new Date(b.ends_at).getTime() : Number.POSITIVE_INFINITY;
+  return aStart < bEnd && bStart < aEnd;
+}
+
+async function campaignConflicts(client: any, campaign: any): Promise<Array<{ campaignId: string; campaignName: string; displayId: string; displayName: string }>> {
+  const targets = await client.from("tenant_campaign_displays").select("display_id,display:tenant_displays(name)").eq("campaign_id", campaign.id);
+  const displayIds = (targets.data ?? []).map((entry: any) => entry.display_id);
+  if (!displayIds.length) return [];
+  const links = await client.from("tenant_campaign_displays").select("campaign_id,display_id,display:tenant_displays(name),campaign:tenant_campaigns(id,name,status,priority,starts_at,ends_at)").in("display_id", displayIds).neq("campaign_id", campaign.id);
+  return (links.data ?? []).flatMap((link: any) => {
+    const other = relatedRecord(link.campaign);
+    const display = relatedRecord(link.display);
+    if (!other || !["active", "scheduled"].includes(other.status) || Number(other.priority || 50) !== Number(campaign.priority || 50) || !schedulesOverlap(campaign, other)) return [];
+    return [{ campaignId: other.id, campaignName: other.name, displayId: link.display_id, displayName: display?.name || "Bildschirm" }];
+  });
+}
+
 async function deviceRecord(request: Request) {
   const token = deviceToken(request);
   if (token.length < 32) return null;
   const client = dashboardSupabase();
   if (!client) return null;
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  const display = await client.from("tenant_displays").select("id,tenant_id,name,status,configuration_version,device_token_hash").eq("device_token_hash", tokenHash).maybeSingle();
+  const display = await client.from("tenant_displays").select("id,tenant_id,name,status,configuration_version,last_acknowledged_version,fallback_content_id,device_token_hash").eq("device_token_hash", tokenHash).maybeSingle();
   return display.data ? { client, display: display.data } : null;
 }
 
@@ -247,22 +297,100 @@ async function handleDevicePost(request: Request, mode: string): Promise<Respons
   if (!authorized) return json({ error: "Ungültiger Gerätetoken" }, { status: 401 });
   if (mode === "heartbeat") {
     const now = new Date().toISOString();
-    const result = await authorized.client.from("tenant_displays").update({ status: cleanText(body.health, 30) === "maintenance" ? "maintenance" : "online", last_seen_at: now, software_version: cleanText(body.softwareVersion, 80) || null, last_error: cleanText(body.lastError, 1000) || null, updated_at: now }).eq("id", authorized.display.id);
+    const heartbeatError = cleanText(body.lastError, 1000) || null;
+    const result = await authorized.client.from("tenant_displays").update({ status: cleanText(body.health, 30) === "maintenance" ? "maintenance" : "online", last_seen_at: now, software_version: cleanText(body.softwareVersion, 80) || null, last_error: heartbeatError, delivery_status: heartbeatError ? "error" : Number(authorized.display.last_acknowledged_version || 0) === Number(authorized.display.configuration_version || 0) ? "delivered" : "pending", last_delivery_error: heartbeatError, updated_at: now }).eq("id", authorized.display.id);
     if (result.error) return json({ error: "Status konnte nicht aktualisiert werden" }, { status: 400 });
     return json({ ok: true, configurationVersion: authorized.display.configuration_version });
+  }
+  if (mode === "ack") {
+    const acknowledgedVersion = Math.max(0, Math.round(Number(body.configurationVersion) || 0));
+    if (!acknowledgedVersion || acknowledgedVersion > Number(authorized.display.configuration_version || 0)) return json({ error: "Ungültige Konfigurationsversion" }, { status: 409 });
+    const deliveryError = cleanText(body.error, 1000) || null;
+    const now = new Date().toISOString();
+    const result = await authorized.client.from("tenant_displays").update({
+      last_acknowledged_version: acknowledgedVersion,
+      last_delivery_at: now,
+      delivery_status: deliveryError ? "error" : "delivered",
+      last_delivery_error: deliveryError,
+      last_error: deliveryError,
+      updated_at: now,
+    }).eq("id", authorized.display.id);
+    if (result.error) return json({ error: "Auslieferung konnte nicht bestätigt werden" }, { status: 400 });
+    if (deliveryError) {
+      await authorized.client.from("tenant_display_alerts").upsert({
+        tenant_id: authorized.display.tenant_id,
+        display_id: authorized.display.id,
+        kind: "delivery_error",
+        severity: "error",
+        status: "open",
+        message: deliveryError,
+        last_seen_at: now,
+        resolved_at: null,
+      }, { onConflict: "display_id,kind" });
+    } else {
+      await authorized.client.from("tenant_display_alerts").update({ status: "resolved", resolved_at: now, last_seen_at: now }).eq("display_id", authorized.display.id).in("kind", ["delivery_error", "cache_error"]).neq("status", "resolved");
+    }
+    return json({ ok: true, configurationVersion: acknowledgedVersion });
   }
   return json({ error: "Unbekannte Geräteaktion" }, { status: 404 });
 }
 
-async function buildDisplayConfig(client: any, display: any, updateDeviceState = true): Promise<Response> {
+async function expireDisplayTest(client: any, display: any): Promise<void> {
+  const activeTest = await client.from("tenant_display_test_publications").select("id,previous_version,expires_at").eq("display_id", display.id).eq("status", "active").maybeSingle();
+  if (!activeTest.data || new Date(activeTest.data.expires_at).getTime() > Date.now()) return;
+  const previous = activeTest.data.previous_version
+    ? await client.from("tenant_display_config_versions").select("configuration").eq("display_id", display.id).eq("version", activeTest.data.previous_version).maybeSingle()
+    : { data: null };
+  const blueprint = previous.data?.configuration ?? await displayConfigurationBlueprint(client, display.id);
+  await client.rpc("create_display_configuration_version", {
+    target_display: display.id,
+    next_configuration: blueprint,
+    version_source: "rollback",
+    source_campaign: null,
+    version_state: "rolled_back",
+  });
+  await client.from("tenant_display_test_publications").update({ status: "expired", completed_at: new Date().toISOString() }).eq("id", activeTest.data.id);
+}
+
+async function buildDisplayConfig(client: any, display: any, updateDeviceState = true, forcedCampaignId = ""): Promise<Response> {
+  if (updateDeviceState) {
+    await expireDisplayTest(client, display);
+    const refreshed = await client.from("tenant_displays").select("id,tenant_id,name,status,configuration_version,fallback_content_id").eq("id", display.id).maybeSingle();
+    if (refreshed.data) display = refreshed.data;
+  }
   const targets = await client.from("tenant_campaign_displays").select("campaign_id").eq("display_id", display.id);
-  const campaignIds = (targets.data ?? []).map((entry: { campaign_id: string }) => entry.campaign_id);
-  if (!campaignIds.length) return json({ display: { id: display.id, name: display.name }, configurationVersion: display.configuration_version, campaigns: [], playlist: [], generatedAt: new Date().toISOString() });
-  const campaigns = await client.from("tenant_campaigns").select("id,name,status,starts_at,ends_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,payload,asset_path))").in("id", campaignIds).in("status", ["active", "scheduled"]).order("starts_at", { ascending: true, nullsFirst: true });
+  let campaignIds = forcedCampaignId ? [forcedCampaignId] : (targets.data ?? []).map((entry: { campaign_id: string }) => entry.campaign_id);
+  let versionConfiguration: Record<string, any> | null = null;
+  let deliveryMode: "live" | "preview" | "test" = forcedCampaignId ? "preview" : "live";
+  if (!forcedCampaignId) {
+    const currentVersion = await client.from("tenant_display_config_versions").select("configuration,source,state").eq("display_id", display.id).eq("version", display.configuration_version).maybeSingle();
+    versionConfiguration = currentVersion.data?.configuration ?? null;
+    const versionCampaignIds = currentVersion.data?.configuration?.campaignIds;
+    if (Array.isArray(versionCampaignIds)) campaignIds = versionCampaignIds.filter((id: unknown): id is string => typeof id === "string");
+    if (currentVersion.data?.source === "test" || currentVersion.data?.state === "test") deliveryMode = "test";
+  }
+  const emptyConfig = async () => {
+    const fallback = await materializeFallback(client, display, versionConfiguration?.fallbackContentId);
+    return json({ display: { id: display.id, name: display.name }, configurationVersion: display.configuration_version, campaigns: [], playlist: [], fallback, mode: deliveryMode, generatedAt: new Date().toISOString() });
+  };
+  if (!campaignIds.length) return emptyConfig();
+  let campaignsQuery = client.from("tenant_campaigns").select("id,name,status,priority,starts_at,ends_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,payload,asset_path))").in("id", campaignIds);
+  if (!forcedCampaignId) campaignsQuery = campaignsQuery.in("status", ["active", "scheduled"]);
+  const campaigns = await campaignsQuery.order("priority", { ascending: false }).order("starts_at", { ascending: true, nullsFirst: true });
   if (campaigns.error) return json({ error: "Konfiguration konnte nicht geladen werden" }, { status: 503 });
-  const targetContent = await client.from("tenant_campaign_display_content")
-    .select("campaign_id,position,duration_seconds,content:tenant_content(id,title,content_type,status,payload,asset_path)")
-    .eq("tenant_id", display.tenant_id).eq("display_id", display.id).in("campaign_id", campaignIds).order("position");
+  let targetContent: { data: any[] | null; error: any };
+  if (!forcedCampaignId && Array.isArray(versionConfiguration?.assignments)) {
+    const assignmentContentIds = [...new Set<string>(versionConfiguration.assignments.map((entry: any) => cleanText(entry.contentId, 80)).filter(Boolean))];
+    const contentRecords = assignmentContentIds.length
+      ? await client.from("tenant_content").select("id,title,content_type,status,payload,asset_path").eq("tenant_id", display.tenant_id).in("id", assignmentContentIds)
+      : { data: [], error: null };
+    const byId = new Map((contentRecords.data ?? []).map((entry: any) => [entry.id, entry]));
+    targetContent = { error: contentRecords.error, data: versionConfiguration.assignments.map((entry: any) => ({ campaign_id: entry.campaignId, position: entry.position, duration_seconds: entry.durationSeconds, content: byId.get(entry.contentId) ?? null })) };
+  } else {
+    targetContent = await client.from("tenant_campaign_display_content")
+      .select("campaign_id,position,duration_seconds,content:tenant_content(id,title,content_type,status,payload,asset_path)")
+      .eq("tenant_id", display.tenant_id).eq("display_id", display.id).in("campaign_id", campaignIds).order("position");
+  }
   if (targetContent.error) return json({ error: "Die zielbezogenen Kampagneninhalte konnten nicht geladen werden" }, { status: 503 });
   const targetContentByCampaign = new Map<string, typeof targetContent.data>();
   for (const link of targetContent.data ?? []) {
@@ -271,7 +399,11 @@ async function buildDisplayConfig(client: any, display: any, updateDeviceState =
     targetContentByCampaign.set(link.campaign_id, links);
   }
   const now = Date.now();
-  const activeCampaigns = (campaigns.data ?? []).filter((campaign: any) => (!campaign.starts_at || new Date(campaign.starts_at).getTime() <= now) && (!campaign.ends_at || new Date(campaign.ends_at).getTime() > now));
+  let activeCampaigns = (campaigns.data ?? []).filter((campaign: any) => forcedCampaignId || ((!campaign.starts_at || new Date(campaign.starts_at).getTime() <= now) && (!campaign.ends_at || new Date(campaign.ends_at).getTime() > now)));
+  if (!forcedCampaignId && activeCampaigns.length) {
+    const highestPriority = Math.max(...activeCampaigns.map((campaign: any) => Number(campaign.priority || 50)));
+    activeCampaigns = activeCampaigns.filter((campaign: any) => Number(campaign.priority || 50) === highestPriority);
+  }
   const playlist = [] as Array<Record<string, unknown>>;
   for (const campaign of activeCampaigns) {
     if (updateDeviceState && campaign.status === "scheduled") await client.from("tenant_campaigns").update({ status: "active", updated_at: new Date().toISOString() }).eq("id", campaign.id);
@@ -290,7 +422,21 @@ async function buildDisplayConfig(client: any, display: any, updateDeviceState =
     }
   }
   if (updateDeviceState) await client.from("tenant_displays").update({ last_config_at: new Date().toISOString() }).eq("id", display.id);
-  return json({ display: { id: display.id, name: display.name }, configurationVersion: display.configuration_version, campaigns: activeCampaigns.map((campaign: any) => ({ id: campaign.id, name: campaign.name, status: campaign.status, starts_at: campaign.starts_at, ends_at: campaign.ends_at, updated_at: campaign.updated_at })), playlist, generatedAt: new Date().toISOString() });
+  const fallback = await materializeFallback(client, display, versionConfiguration?.fallbackContentId);
+  return json({ display: { id: display.id, name: display.name }, configurationVersion: display.configuration_version, campaigns: activeCampaigns.map((campaign: any) => ({ id: campaign.id, name: campaign.name, status: campaign.status, priority: campaign.priority, starts_at: campaign.starts_at, ends_at: campaign.ends_at, updated_at: campaign.updated_at })), playlist, fallback, mode: deliveryMode, generatedAt: new Date().toISOString() });
+}
+
+async function materializeFallback(client: any, display: any, configuredFallbackId?: string | null): Promise<Record<string, unknown> | null> {
+  const fallbackId = configuredFallbackId === undefined ? display.fallback_content_id : configuredFallbackId;
+  if (!fallbackId) return null;
+  const fallback = await client.from("tenant_content").select("id,title,content_type,status,payload,asset_path").eq("id", fallbackId).eq("tenant_id", display.tenant_id).in("status", ["approved", "published"]).maybeSingle();
+  if (!fallback.data) return null;
+  let mediaUrl: string | null = null;
+  if (fallback.data.asset_path) {
+    const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUrl(fallback.data.asset_path, 6 * 60 * 60);
+    mediaUrl = signed.data?.signedUrl ?? null;
+  }
+  return { contentId: fallback.data.id, title: fallback.data.title, contentType: fallback.data.content_type, payload: fallback.data.payload, mediaUrl, durationSeconds: 3600 };
 }
 
 async function handleDeviceConfig(request: Request): Promise<Response> {
@@ -303,10 +449,15 @@ async function handlePortalPlayerPreview(request: Request, displayId: string): P
   const authorized = await authorizePortal(request);
   if (isResponse(authorized)) return authorized;
   const display = await authorized.client.from("tenant_displays")
-    .select("id,tenant_id,name,status,configuration_version")
+    .select("id,tenant_id,name,status,configuration_version,fallback_content_id")
     .eq("id", displayId).eq("tenant_id", authorized.profile.tenantId).maybeSingle();
   if (display.error || !display.data) return json({ error: "Bildschirm nicht gefunden" }, { status: 404 });
-  return buildDisplayConfig(authorized.client, display.data, false);
+  const campaignId = cleanText(new URL(request.url).searchParams.get("campaign"), 80);
+  if (campaignId) {
+    const campaign = await authorized.client.from("tenant_campaigns").select("id").eq("id", campaignId).eq("tenant_id", authorized.profile.tenantId).maybeSingle();
+    if (!campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
+  }
+  return buildDisplayConfig(authorized.client, display.data, false, campaignId);
 }
 
 async function handlePortalRecords(request: Request): Promise<Response> {
@@ -621,6 +772,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       .select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
     if (result.error) return json({ error: "Inhalt nicht gefunden oder Zugriff verweigert" }, { status: 404 });
     const usage = await contentUsage(client, profile.tenantId, id);
+    if (!["approved", "published"].includes(status)) await client.from("tenant_displays").update({ fallback_content_id: null, updated_at: now }).eq("tenant_id", profile.tenantId).eq("fallback_content_id", id);
     await bumpDisplayConfigurations(client, usage.displayIds);
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "status_change", entity_type: "content", entity_id: result.data.id, metadata: { status } });
     return json({ ok: true, record: result.data });
@@ -662,6 +814,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       client.from("tenant_campaign_display_content").delete().eq("content_id", id).eq("tenant_id", profile.tenantId),
     ]);
     if (legacyLinks.error || targetLinks.error) console.error("content archive link cleanup:", legacyLinks.error?.message || targetLinks.error?.message);
+    await client.from("tenant_displays").update({ fallback_content_id: null, updated_at: now }).eq("tenant_id", profile.tenantId).eq("fallback_content_id", id);
     await bumpDisplayConfigurations(client, usage.displayIds);
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "archive", entity_type: "content", entity_id: id, metadata: { title: existing.data.title, removedFromCampaigns: usage.campaignIds.length } });
     return json({ ok: true, record: archived.data });
@@ -710,6 +863,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const theme = cleanText(body.theme, 180) || null;
     const scopeSiteId = cleanText(body.scopeSiteId, 80) || null;
     const scopeAreaId = cleanText(body.scopeAreaId, 80) || null;
+    const priority = Math.min(100, Math.max(0, Math.round(Number(body.priority) || 50)));
     const startsAt = optionalDate(body.startsAt);
     const endsAt = optionalDate(body.endsAt);
     if (!name) return json({ error: "Name der Kampagne fehlt" }, { status: 400 });
@@ -720,12 +874,13 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       name,
       status: "draft",
       theme,
+      priority,
       scope_site_id: scopeSiteId,
       scope_area_id: scopeAreaId,
       starts_at: startsAt,
       ends_at: endsAt,
       created_by: profile.userId,
-    }).select("id,name,theme,status,scope_site_id,scope_area_id,starts_at,ends_at,schedule,created_at,updated_at").single();
+    }).select("id,name,theme,status,priority,scope_site_id,scope_area_id,starts_at,ends_at,schedule,created_at,updated_at").single();
     if (result.error) return json({ error: result.error.message }, { status: 400 });
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "create", entity_type: "campaign", entity_id: result.data.id });
     return json({ ok: true, record: result.data });
@@ -829,6 +984,81 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true });
   }
 
+  if (action === "set_display_fallback") {
+    const displayId = cleanText(body.displayId, 80);
+    const contentId = cleanText(body.contentId, 80) || null;
+    if (!displayId) return json({ error: "Bildschirm fehlt" }, { status: 400 });
+    if (contentId) {
+      const content = await client.from("tenant_content").select("id,status").eq("id", contentId).eq("tenant_id", profile.tenantId).in("status", ["approved", "published"]).maybeSingle();
+      if (!content.data) return json({ error: "Wählen Sie einen freigegebenen Ersatzinhalt" }, { status: 409 });
+    }
+    const updated = await client.from("tenant_displays").update({ fallback_content_id: contentId, updated_at: now }).eq("id", displayId).eq("tenant_id", profile.tenantId).select("id,name,fallback_content_id").maybeSingle();
+    if (!updated.data) return json({ error: "Bildschirm nicht gefunden" }, { status: 404 });
+    await bumpDisplayConfigurations(client, [displayId], "fallback");
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "fallback_changed", entity_type: "display", entity_id: displayId, metadata: { contentId } });
+    return json({ ok: true, record: updated.data });
+  }
+
+  if (action === "test_publish_campaign") {
+    const displayId = cleanText(body.displayId, 80);
+    const campaignId = cleanText(body.campaignId, 80);
+    const durationMinutes = Math.min(60, Math.max(5, Math.round(Number(body.durationMinutes) || 10)));
+    if (!displayId || !campaignId) return json({ error: "Bildschirm oder Kampagne fehlt" }, { status: 400 });
+    const [display, campaign, target, targetContent] = await Promise.all([
+      client.from("tenant_displays").select("id,name,configuration_version").eq("id", displayId).eq("tenant_id", profile.tenantId).maybeSingle(),
+      client.from("tenant_campaigns").select("id,name,status").eq("id", campaignId).eq("tenant_id", profile.tenantId).maybeSingle(),
+      client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", campaignId).eq("display_id", displayId).maybeSingle(),
+      client.from("tenant_campaign_display_content").select("content:tenant_content(status)").eq("tenant_id", profile.tenantId).eq("campaign_id", campaignId).eq("display_id", displayId),
+    ]);
+    if (!display.data || !campaign.data || !target.data) return json({ error: "Die Kampagne ist diesem Bildschirm nicht vollständig zugeordnet" }, { status: 404 });
+    if (!targetContent.data?.length || targetContent.data.some((entry: any) => !["approved", "published"].includes(relatedRecord(entry.content)?.status))) return json({ error: "Geben Sie zuerst alle Testinhalte frei" }, { status: 409 });
+    const currentActive = await client.from("tenant_display_test_publications").select("id").eq("display_id", displayId).eq("status", "active").maybeSingle();
+    if (currentActive.data) return json({ error: "Auf diesem Bildschirm läuft bereits eine Testveröffentlichung" }, { status: 409 });
+    let previousVersion = Number(display.data.configuration_version || 0);
+    let previousSnapshot = previousVersion ? await client.from("tenant_display_config_versions").select("version").eq("display_id", displayId).eq("version", previousVersion).maybeSingle() : { data: null };
+    if (!previousSnapshot.data) {
+      const baseline = await client.rpc("create_display_configuration_version", { target_display: displayId, next_configuration: await displayConfigurationBlueprint(client, displayId), version_source: "system", source_campaign: null, version_state: "active" });
+      if (baseline.error) return json({ error: baseline.error.message }, { status: 400 });
+      previousVersion = Number(baseline.data);
+    }
+    const testVersion = await client.rpc("create_display_configuration_version", { target_display: displayId, next_configuration: await displayConfigurationBlueprint(client, displayId, campaignId), version_source: "test", source_campaign: campaignId, version_state: "test" });
+    if (testVersion.error) return json({ error: testVersion.error.message }, { status: 400 });
+    const expiresAt = new Date(Date.now() + durationMinutes * 60_000).toISOString();
+    const publication = await client.from("tenant_display_test_publications").insert({ tenant_id: profile.tenantId, display_id: displayId, campaign_id: campaignId, configuration_version: Number(testVersion.data), previous_version: previousVersion || null, expires_at: expiresAt, created_by: profile.userId }).select("id,configuration_version,expires_at").single();
+    if (publication.error) return json({ error: publication.error.message }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "test_publish", entity_type: "display", entity_id: displayId, metadata: { campaignId, testVersion: testVersion.data, previousVersion, expiresAt } });
+    return json({ ok: true, publication: publication.data });
+  }
+
+  if (action === "rollback_display" || action === "cancel_display_test") {
+    const displayId = cleanText(body.displayId, 80);
+    if (!displayId) return json({ error: "Bildschirm fehlt" }, { status: 400 });
+    let targetVersion = Math.max(0, Math.round(Number(body.version) || 0));
+    let testId = "";
+    if (action === "cancel_display_test") {
+      const activeTest = await client.from("tenant_display_test_publications").select("id,previous_version").eq("display_id", displayId).eq("tenant_id", profile.tenantId).eq("status", "active").maybeSingle();
+      if (!activeTest.data) return json({ error: "Es läuft keine Testveröffentlichung" }, { status: 409 });
+      targetVersion = Number(activeTest.data.previous_version || 0);
+      testId = activeTest.data.id;
+    }
+    const snapshot = targetVersion
+      ? await client.from("tenant_display_config_versions").select("version,configuration").eq("display_id", displayId).eq("tenant_id", profile.tenantId).eq("version", targetVersion).maybeSingle()
+      : { data: null };
+    if (!snapshot.data) return json({ error: "Die gewünschte frühere Konfiguration ist nicht mehr verfügbar" }, { status: 404 });
+    const rollback = await client.rpc("create_display_configuration_version", { target_display: displayId, next_configuration: snapshot.data.configuration, version_source: "rollback", source_campaign: null, version_state: "rolled_back" });
+    if (rollback.error) return json({ error: rollback.error.message }, { status: 400 });
+    if (testId) await client.from("tenant_display_test_publications").update({ status: "cancelled", completed_at: now }).eq("id", testId);
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "rollback", entity_type: "display", entity_id: displayId, metadata: { restoredVersion: targetVersion, newVersion: rollback.data } });
+    return json({ ok: true, configurationVersion: Number(rollback.data) });
+  }
+
+  if (action === "acknowledge_display_alert") {
+    const alertId = cleanText(body.alertId, 80);
+    const result = await client.from("tenant_display_alerts").update({ status: "acknowledged", last_seen_at: now }).eq("id", alertId).eq("tenant_id", profile.tenantId).neq("status", "resolved").select("id").maybeSingle();
+    if (!result.data) return json({ error: "Warnung nicht gefunden" }, { status: 404 });
+    return json({ ok: true });
+  }
+
   if (action === "update_display") {
     if (!["owner", "admin"].includes(profile.role)) return json({ error: "Nur Inhaber oder Admins können Bildschirme bearbeiten" }, { status: 403 });
     const id = cleanText(body.id, 80);
@@ -865,6 +1095,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const theme = cleanText(body.theme, 180) || null;
     const scopeSiteId = cleanText(body.scopeSiteId, 80) || null;
     const scopeAreaId = cleanText(body.scopeAreaId, 80) || null;
+    const priority = Math.min(100, Math.max(0, Math.round(Number(body.priority) || 50)));
     const startsAt = optionalDate(body.startsAt);
     const endsAt = optionalDate(body.endsAt);
     const rawAssignments = Array.isArray(body.targetAssignments) ? body.targetAssignments : [];
@@ -932,8 +1163,8 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       const inserted = await client.from("tenant_campaign_display_content").insert(assignments.flatMap((assignment) => assignment.contentItems.map((item) => ({ tenant_id: profile.tenantId, campaign_id: id, display_id: assignment.displayId, content_id: item.contentId, position: item.position, duration_seconds: item.durationSeconds }))));
       if (inserted.error) return json({ error: inserted.error.message }, { status: 400 });
     }
-    await client.from("tenant_campaigns").update({ name, theme, scope_site_id: scopeSiteId, scope_area_id: scopeAreaId, starts_at: startsAt, ends_at: endsAt, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId);
-    await bumpDisplayConfigurations(client, [...(previousTargets.data ?? []).map((entry) => entry.display_id), ...displayIds]);
+    await client.from("tenant_campaigns").update({ name, theme, priority, scope_site_id: scopeSiteId, scope_area_id: scopeAreaId, starts_at: startsAt, ends_at: endsAt, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId);
+    await bumpDisplayConfigurations(client, [...(previousTargets.data ?? []).map((entry) => entry.display_id), ...displayIds], "campaign", id);
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "configure", entity_type: "campaign", entity_id: id, metadata: { contentCount: contentIds.length, displayCount: displayIds.length, targetedContentCount: totalContentItems } });
     return json({ ok: true });
   }
@@ -941,7 +1172,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   if (action === "activate_campaign") {
     const id = cleanText(body.id, 80);
     if (!id) return json({ error: "Kampagne fehlt" }, { status: 400 });
-    const campaign = await client.from("tenant_campaigns").select("id,status,starts_at,ends_at").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    const campaign = await client.from("tenant_campaigns").select("id,name,status,priority,starts_at,ends_at").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
     if (["completed", "archived"].includes(campaign.data.status)) return json({ error: "Diese Kampagne ist abgeschlossen" }, { status: 409 });
     const [contentLinks, displayLinks, targetContentLinks] = await Promise.all([
@@ -965,11 +1196,19 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     });
     if (unapprovedTargetContent) return json({ error: "Geben Sie alle zielbezogenen Motive vor dem Start frei" }, { status: 409 });
     if (campaign.data.ends_at && new Date(campaign.data.ends_at).getTime() <= Date.now()) return json({ error: "Das Enddatum liegt bereits in der Vergangenheit" }, { status: 409 });
+    const campaignRecord = campaign.data;
+    const conflicts = await campaignConflicts(client, campaignRecord);
+    if (conflicts.length) {
+      const first = conflicts[0];
+      await Promise.all([...new Set(conflicts.map((conflict) => conflict.displayId))].map((displayId) => client.from("tenant_display_alerts").upsert({ tenant_id: profile.tenantId, display_id: displayId, kind: "campaign_conflict", severity: "warning", status: "open", message: `Zeitkonflikt zwischen „${campaignRecord.name}“ und einer Kampagne gleicher Priorität.`, metadata: { campaignId: id, conflicts }, last_seen_at: now, resolved_at: null }, { onConflict: "display_id,kind" })));
+      return json({ error: `Auf „${first.displayName}“ läuft im gleichen Zeitraum bereits „${first.campaignName}“ mit derselben Priorität. Ändern Sie Zeitraum oder Priorität.`, conflicts }, { status: 409 });
+    }
+    await client.from("tenant_display_alerts").update({ status: "resolved", resolved_at: now, last_seen_at: now }).in("display_id", (displayLinks.data ?? []).map((link) => link.display_id)).eq("kind", "campaign_conflict").neq("status", "resolved");
     const nextStatus = campaign.data.starts_at && new Date(campaign.data.starts_at).getTime() > Date.now() ? "scheduled" : "active";
     const result = await client.from("tenant_campaigns").update({ status: nextStatus, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId).select("id,status").single();
     if (result.error) return json({ error: result.error.message }, { status: 400 });
     const targets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
-    await bumpDisplayConfigurations(client, (targets.data ?? []).map((entry) => entry.display_id));
+    await bumpDisplayConfigurations(client, (targets.data ?? []).map((entry) => entry.display_id), "campaign", id);
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: nextStatus === "active" ? "activate" : "schedule", entity_type: "campaign", entity_id: id });
     return json({ ok: true, record: result.data });
   }

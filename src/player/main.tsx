@@ -2,13 +2,19 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./player.css";
 import "./player-video.css";
+import "./player-safety.css";
 
 type PlaylistItem = { contentId: string; title: string; contentType: string; payload?: { text?: string }; mediaUrl?: string | null; durationSeconds: number };
-type DeviceConfig = { display: { id: string; name: string }; configurationVersion: number; playlist: PlaylistItem[]; generatedAt: string };
+type DeviceConfig = { display: { id: string; name: string }; configurationVersion: number; playlist: PlaylistItem[]; fallback?: PlaylistItem | null; mode?: "live" | "preview" | "test"; generatedAt: string };
 const TOKEN_KEY = "swisscompact_device_token";
 const DISPLAY_KEY = "swisscompact_display_id";
 const CONFIG_KEY = "swisscompact_device_config";
 const PLAYER_VERSION = "1.0.0-web";
+const MEDIA_CACHE = "swisscompact-player-media-v1";
+
+function mediaCacheKey(item: PlaylistItem): string {
+  return new URL(`/player-cache/${encodeURIComponent(item.contentId)}`, location.origin).toString();
+}
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -17,7 +23,49 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-function PlayerVideo({ item, loop }: { item: PlaylistItem; loop: boolean }) {
+async function cacheMedia(items: PlaylistItem[]): Promise<{ cached: string[]; errors: string[] }> {
+  if (!("caches" in window)) return { cached: [], errors: [] };
+  const cache = await caches.open(MEDIA_CACHE);
+  const cached: string[] = [];
+  const errors: string[] = [];
+  await Promise.all(items.flatMap((item) => item.mediaUrl ? [item] : []).map(async (item) => {
+    try {
+      const cacheKey = mediaCacheKey(item);
+      const existing = await cache.match(cacheKey);
+      if (!existing) {
+        const response = await fetch(item.mediaUrl!, { mode: "cors" });
+        if (!response.ok) throw new Error(String(response.status));
+        await cache.put(cacheKey, response.clone());
+      }
+      cached.push(item.contentId);
+    } catch { errors.push(item.title); }
+  }));
+  if (!errors.length) {
+    const activeUrls = new Set(items.flatMap((item) => item.mediaUrl ? [mediaCacheKey(item)] : []));
+    const keys = await cache.keys();
+    await Promise.all(keys.filter((entry) => !activeUrls.has(entry.url)).map((entry) => cache.delete(entry)));
+  }
+  return { cached, errors };
+}
+
+function usePlayableUrl(item?: PlaylistItem): string | null {
+  const [url, setUrl] = useState<string | null>(item?.mediaUrl || null);
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    setUrl(item?.mediaUrl || null);
+    if (!item?.mediaUrl || !("caches" in window)) return;
+    void caches.open(MEDIA_CACHE).then((cache) => cache.match(mediaCacheKey(item))).then(async (response) => {
+      if (!active || !response) return;
+      objectUrl = URL.createObjectURL(await response.blob());
+      if (active) setUrl(objectUrl);
+    }).catch(() => undefined);
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [item?.contentId, item?.mediaUrl]);
+  return url;
+}
+
+function PlayerVideo({ source, loop, onFailure }: { source: string | null; loop: boolean; onFailure: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const retryTimer = useRef<number | null>(null);
   const [playback, setPlayback] = useState<"loading" | "playing" | "waiting" | "blocked" | "error">("loading");
@@ -47,7 +95,7 @@ function PlayerVideo({ item, loop }: { item: PlaylistItem; loop: boolean }) {
     setPlayback("loading");
     retryTimer.current = window.setTimeout(() => void start(), 350);
     return () => { if (retryTimer.current) window.clearTimeout(retryTimer.current); };
-  }, [item.mediaUrl, start]);
+  }, [source, start]);
 
   useEffect(() => {
     if (playback !== "error") return;
@@ -58,7 +106,7 @@ function PlayerVideo({ item, loop }: { item: PlaylistItem; loop: boolean }) {
   return <>
     <video
       ref={videoRef}
-      src={item.mediaUrl || undefined}
+      src={source || undefined}
       autoPlay
       muted
       loop={loop}
@@ -70,7 +118,7 @@ function PlayerVideo({ item, loop }: { item: PlaylistItem; loop: boolean }) {
       onPlaying={() => setPlayback("playing")}
       onWaiting={() => setPlayback("waiting")}
       onStalled={() => setPlayback("waiting")}
-      onError={() => setPlayback("error")}
+      onError={() => { setPlayback("error"); onFailure(); }}
     />
     {playback !== "playing" && <div className={`video-status video-status-${playback}`} role="status">
       <span className="video-spinner" aria-hidden="true"></span>
@@ -113,28 +161,33 @@ function Player() {
   const queryActivationCode = (query.get("code") || "").toUpperCase();
   const autoConnectPairing = query.get("connect") === "1";
   const previewDisplayId = query.get("preview") || "";
+  const previewCampaignId = query.get("campaign") || "";
   const forcePairing = query.get("pair") === "1";
   const [token, setToken] = useState(() => forcePairing || previewDisplayId ? "" : localStorage.getItem(TOKEN_KEY) || "");
   const [config, setConfig] = useState<DeviceConfig | null>(() => { if (forcePairing || previewDisplayId) return null; try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || "null"); } catch { return null; } });
   const [index, setIndex] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [message, setMessage] = useState("Konfiguration wird geladen …");
+  const [mediaFailed, setMediaFailed] = useState(false);
 
   const loadConfig = useCallback(async (activeToken = token) => {
     if (!activeToken && !previewDisplayId) return;
     try {
       const next = previewDisplayId
-        ? await request<DeviceConfig>(`/api/dashboard/records?portalPreview=${encodeURIComponent(previewDisplayId)}`)
+        ? await request<DeviceConfig>(`/api/dashboard/records?portalPreview=${encodeURIComponent(previewDisplayId)}${previewCampaignId ? `&campaign=${encodeURIComponent(previewCampaignId)}` : ""}`)
         : await request<DeviceConfig>("/api/dashboard/records?device=config", { headers: { Authorization: `Bearer ${activeToken}` } });
+      const cached = await cacheMedia([...next.playlist, ...(next.fallback ? [next.fallback] : [])]);
       setConfig(next);
+      setMediaFailed(false);
       if (!previewDisplayId) localStorage.setItem(CONFIG_KEY, JSON.stringify(next));
+      if (!previewDisplayId) await request("/api/dashboard/records?device=ack", { method: "POST", headers: { Authorization: `Bearer ${activeToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ configurationVersion: next.configurationVersion, cachedContentIds: cached.cached, error: cached.errors.length ? `Nicht offline gespeichert: ${cached.errors.join(", ")}` : null }) });
       setOnline(true); setMessage(next.playlist.length ? "" : "Noch keine aktive Kampagne für dieses Display.");
     } catch (reason) {
       setOnline(false);
       if (!previewDisplayId && reason instanceof Error && /Gerätetoken/.test(reason.message)) { localStorage.removeItem(TOKEN_KEY); setToken(""); }
       else setMessage("Keine Verbindung. Erneuter Versuch läuft …");
     }
-  }, [token, previewDisplayId]);
+  }, [token, previewDisplayId, previewCampaignId]);
 
   useEffect(() => {
     if (previewDisplayId) {
@@ -169,6 +222,11 @@ function Player() {
     setToken("");
   }
 
+  const scheduledItem = config?.playlist[index % Math.max(1, config.playlist.length)];
+  const usingFallback = Boolean(config?.fallback && (!scheduledItem || mediaFailed));
+  const item = usingFallback ? config?.fallback || undefined : scheduledItem;
+  const playableUrl = usePlayableUrl(item);
+
   if (!previewDisplayId && !token) return <Pairing initialDisplayId={queryDisplayId || localStorage.getItem(DISPLAY_KEY) || ""} initialCode={queryActivationCode} autoConnect={autoConnectPairing} onPaired={(nextToken, displayId) => {
     localStorage.setItem(TOKEN_KEY, nextToken);
     localStorage.setItem(DISPLAY_KEY, displayId);
@@ -180,8 +238,7 @@ function Player() {
     setToken(nextToken);
     void loadConfig(nextToken);
   }} />;
-  const item = config?.playlist[index % Math.max(1, config.playlist.length)];
-  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}`}>{item.contentType === "image" && item.mediaUrl ? <img src={item.mediaUrl} alt=""/> : item.contentType === "video" && item.mediaUrl ? <PlayerVideo item={item} loop={config?.playlist.length === 1}/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p>{!previewDisplayId && <button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button>}</section>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
+  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}-${usingFallback ? "fallback" : "scheduled"}`}>{item.contentType === "image" && playableUrl ? <img src={playableUrl} alt="" onError={() => setMediaFailed(true)}/> : item.contentType === "video" && playableUrl ? <PlayerVideo source={playableUrl} loop={usingFallback || config?.playlist.length === 1} onFailure={() => setMediaFailed(true)}/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p>{!previewDisplayId && <button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button>}</section>}{usingFallback && <div className="player-mode fallback">Ersatzinhalt</div>}{config?.mode === "test" && <div className="player-mode test">Testbetrieb</div>}{previewDisplayId && <div className="player-mode preview">Gerätevorschau</div>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
 }
 
 createRoot(document.getElementById("player-root")!).render(<Player/>);

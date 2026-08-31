@@ -1,0 +1,19 @@
+.player-mode {
+  position: fixed;
+  left: 1.25rem;
+  top: 1.25rem;
+  z-index: 20;
+  padding: .55rem .8rem;
+  border-radius: 999px;
+  background: rgba(15, 15, 17, .86);
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  backdrop-filter: blur(10px);
+}
+
+.player-mode.fallback { background: rgba(194, 120, 0, .92); }
+.player-mode.test { background: rgba(24, 105, 177, .92); }
+.player-mode.preview { left: auto; right: 1.25rem; background: rgba(200, 16, 46, .92); }

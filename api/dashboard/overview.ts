@@ -12,17 +12,21 @@ export async function GET(request: Request): Promise<Response> {
     const tenantId = profile.tenantId;
     const customerAdmin = dashboardSupabase();
     if (!customerAdmin) return json({ error: "Kundenvorgänge sind noch nicht konfiguriert" }, { status: 503 });
-    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance] = await Promise.all([
+    await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
+    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayVersions, displayTests, displayAlerts] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
-      client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,last_seen_at,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
+      client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,last_seen_at,configuration_version,last_acknowledged_version,last_delivery_at,delivery_status,last_delivery_error,fallback_content_id,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
       client.from("tenant_content").select("id,title,content_type,status,payload,asset_path,created_by,created_at,updated_at").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
-      client.from("tenant_campaigns").select("id,name,theme,status,starts_at,ends_at,schedule,scope_site_id,scope_area_id,created_by,created_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,preview_path:asset_path)),display_links:tenant_campaign_displays(display_id,display:tenant_displays(id,name,status,site:tenant_sites(name),area:tenant_areas(id,name,kind)))").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
+      client.from("tenant_campaigns").select("id,name,theme,status,priority,starts_at,ends_at,schedule,scope_site_id,scope_area_id,created_by,created_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,preview_path:asset_path)),display_links:tenant_campaign_displays(display_id,display:tenant_displays(id,name,status,site:tenant_sites(name),area:tenant_areas(id,name,kind)))").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
       client.from("tenant_campaign_display_content").select("campaign_id,display_id,position,duration_seconds,content:tenant_content(id,title,content_type,status)").eq("tenant_id", tenantId).order("position"),
       client.from("tenant_subscriptions").select("package_code,status,starts_on,minimum_ends_on,monthly_amount_chf,included_ai_credits").eq("tenant_id", tenantId).in("status", ["trial","active","past_due","paused"]).maybeSingle(),
       client.from("tenant_memberships").select("id,role,display_name,user_id,active,access_status,invited_at,accepted_at,verified_at").eq("tenant_id", tenantId),
       client.from("tenant_audit_log").select("entity_type,entity_id,actor_user_id,created_at").eq("tenant_id", tenantId).eq("action", "create").in("entity_type", ["display", "content", "campaign"]).order("created_at", { ascending: true }),
       client.rpc("get_ai_credit_balance", { target_tenant: tenantId }),
+      client.from("tenant_display_config_versions").select("id,display_id,version,source,campaign_id,state,previous_version,created_at").eq("tenant_id", tenantId).order("version", { ascending: false }).limit(500),
+      client.from("tenant_display_test_publications").select("id,display_id,campaign_id,configuration_version,previous_version,status,expires_at,created_at").eq("tenant_id", tenantId).eq("status", "active").limit(100),
+      client.from("tenant_display_alerts").select("id,display_id,kind,severity,status,message,metadata,first_seen_at,last_seen_at,resolved_at").eq("tenant_id", tenantId).neq("status", "resolved").order("last_seen_at", { ascending: false }).limit(200),
     ]);
     const [customerQuotes, customerProjects, customerInvoices, responsibleProfiles] = await Promise.all([
       customerAdmin.from("quotes").select("id,quote_number,opportunity_id,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at,opportunity:opportunities(title)").eq("client_id", profile.clientId).in("status", ["sent", "viewed", "accepted", "declined", "expired"]).order("updated_at", { ascending: false }).limit(100),
@@ -38,7 +42,7 @@ export async function GET(request: Request): Promise<Response> {
       customerAdmin.from("project_review_decisions").select("id,deliverable_version_id,project_id,decision,feedback,decided_by_name,created_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
       customerAdmin.from("project_revision_rounds").select("id,project_id,deliverable_id,round_number,status,request_text,response_text,included,additional_cost_chf,approved_at,created_at,updated_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
     ]);
-    const firstError = [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents].find((result) => result.error)?.error;
+    const firstError = [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, displayVersions, displayTests, displayAlerts].find((result) => result.error)?.error;
     if (firstError) {
       console.error("portal overview:", firstError.message);
       return json({ error: "Das Kundenportal-Datenmodell ist noch nicht eingerichtet" }, { status: 503 });
@@ -111,6 +115,11 @@ export async function GET(request: Request): Promise<Response> {
         versions: collaborationAvailable ? projectVersions.data ?? [] : [],
         reviews: collaborationAvailable ? projectReviews.data ?? [] : [],
         revisions: collaborationAvailable ? projectRevisions.data ?? [] : [],
+      },
+      displaySafety: {
+        versions: displayVersions.data ?? [],
+        tests: displayTests.data ?? [],
+        alerts: displayAlerts.data ?? [],
       },
       campaigns: campaignsWithCreators,
       subscription: subscription.data ?? null,

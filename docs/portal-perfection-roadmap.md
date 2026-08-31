@@ -50,14 +50,16 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 - [x] Migration `20260904_project_collaboration.sql` in Supabase ausführen und Datenmodell kontrollieren
 - [x] Rückwärtskompatiblen Produktions-Build und automatisierte Ende-zu-Ende-Strukturtests ausführen
 
-### 5. Sichere Veröffentlichung und Displaybetrieb
+### 5. Sichere Veröffentlichung und Displaybetrieb – umgesetzt, Praxistest ausstehend
 
-- [ ] Gerätegetreue Vorschau vor Veröffentlichung
-- [ ] Testveröffentlichung auf genau einem Bildschirm
-- [ ] Letzte funktionierende Konfiguration und Rollback
-- [ ] Offline-Cache und definierter Ersatzinhalt
-- [ ] Warnungen bei offline gegangenen Displays und fehlerhaften Auslieferungen
-- [ ] Konfliktregeln für gleichzeitig aktive Kampagnen
+- [x] Gerätegetreue Vorschau vor Veröffentlichung
+- [x] Testveröffentlichung auf genau einem Bildschirm
+- [x] Letzte funktionierende Konfiguration und Rollback
+- [x] Offline-Cache und definierter Ersatzinhalt
+- [x] Warnungen bei offline gegangenen Displays und fehlerhaften Auslieferungen
+- [x] Konfliktregeln für gleichzeitig aktive Kampagnen
+- [x] Migration `20260905_safe_display_delivery.sql` in Supabase ausführen und kontrollieren
+- [ ] Vorschau, Einzelbildschirm-Test, Offline-Ersatz und Rollback mit einem echten Player prüfen
 
 ### 6. Medien- und Unternehmensskalierung
 
