@@ -1,0 +1,162 @@
+:root {
+  --state-confirmed: #16875d;
+  --state-confirmed-dark: #087548;
+  --state-confirmed-border: #8fd4b5;
+  --state-confirmed-bg: #edf9f4;
+  --state-current: #18181b;
+  --state-focus-ring: rgb(22 135 93 / 16%);
+}
+
+/* Rot bleibt Marken- und Fehlerfarbe. Neutrale Aktionen sind dunkel. */
+.primary {
+  background: var(--state-current);
+}
+
+.portal :is(input, select, textarea):focus,
+.dialog :is(input, select, textarea):focus,
+.login-panel input:focus {
+  border-color: var(--state-confirmed);
+  box-shadow: 0 0 0 3px var(--state-focus-ring);
+}
+
+.portal :is(input[type="checkbox"], input[type="radio"]),
+.dialog :is(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--state-confirmed);
+}
+
+.portal :is(button, a, input, select, textarea):focus-visible,
+.dialog :is(button, a, input, select, textarea):focus-visible {
+  outline-color: var(--state-confirmed);
+}
+
+/* Geführter Ablauf: aktuell = neutral, erledigt/ausgewählt = grün. */
+.funnel-progress i.active {
+  background: var(--state-current);
+}
+
+.funnel-progress i.complete,
+.upload-progress > span,
+.upload-progress.stage-processing > span,
+.upload-progress.stage-ready > span {
+  background: var(--state-confirmed);
+}
+
+.upload-progress.stage-processing > span {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--state-confirmed) 76%, white),
+    transparent
+  );
+}
+
+.funnel-current-step > span:first-child {
+  background: var(--state-current);
+}
+
+.funnel-current-step > b {
+  color: var(--state-current);
+}
+
+.simple-schedule button.selected,
+.content-mode button.selected,
+.target-tabs button.active,
+.selection-row.selected,
+.display-selection > label.selected,
+.ai-options label.selected {
+  border-color: var(--state-confirmed-border);
+  background: var(--state-confirmed-bg);
+  box-shadow: 0 0 0 3px var(--state-focus-ring);
+}
+
+.motif-source-actions button:hover,
+.motif-source-actions button:focus-visible {
+  border-color: var(--state-confirmed-border);
+  background: var(--state-confirmed-bg);
+}
+
+.target-site :is(header, .target-area-name) button,
+.content-status-action:hover,
+.credit-shop button:hover:not(:disabled) {
+  border-color: #8e8b86;
+  color: var(--state-current);
+  background: #fff;
+}
+
+.media-file-check.checking > i {
+  border-top-color: var(--state-confirmed);
+}
+
+.credit-checkout-loading i {
+  border-color: color-mix(in srgb, var(--state-confirmed) 24%, transparent);
+  border-top-color: var(--state-confirmed);
+}
+
+.setup-loader {
+  border-top-color: var(--state-confirmed);
+}
+
+.portal-onboarding-steps article.current {
+  border-color: #a8a5a0;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgb(24 24 27 / 8%);
+}
+
+.portal-onboarding-steps article.current > span {
+  background: var(--state-current);
+}
+
+.portal-onboarding-steps article.current > b {
+  color: var(--state-current);
+}
+
+.portal nav button.active::before {
+  background: var(--state-confirmed);
+}
+
+.customer-project-workspace > nav button.active {
+  color: var(--state-current);
+  box-shadow: inset 0 -3px var(--state-confirmed);
+}
+
+.customer-record-overview:hover,
+.portal-workflow button:focus-visible,
+.edit-record-action:focus-visible {
+  border-color: var(--state-confirmed-border);
+}
+
+.assign-record-action,
+.display-safety-overlay:hover {
+  background: var(--state-current);
+}
+
+.device-link {
+  border-color: #d5d2cc;
+  background: #fff;
+  color: var(--state-current);
+}
+
+.device-link:hover,
+.device-link:focus-visible {
+  border-color: #8e8b86;
+  background: #faf9f7;
+}
+
+.workspace-guide > b {
+  background: var(--state-current);
+}
+
+.review-decision,
+.customer-reference-upload {
+  border-color: #c9c5bf;
+  background: #faf9f7;
+}
+
+/* Echte Fehler und gefährliche Aktionen behalten bewusst Rot. */
+.form-error,
+.customer-record-error,
+.delete-record-action,
+.secondary.danger,
+.media-processing-error {
+  --state-meaning: danger;
+}

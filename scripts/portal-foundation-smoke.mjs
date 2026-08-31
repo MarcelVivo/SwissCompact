@@ -11,6 +11,7 @@ const records = read("api/dashboard/records.ts");
 const overview = read("api/dashboard/overview.ts");
 const portal = read("src/portal/main.tsx");
 const campaignCss = read("src/portal/portal-campaign.css");
+const semanticsCss = read("src/portal/portal-semantics.css");
 const onboardingCss = read("src/portal/portal-onboarding.css");
 const scrollCss = read("src/portal/portal-scroll.css");
 const vercel = JSON.parse(read("vercel.json"));
@@ -50,6 +51,7 @@ const checks = {
   directDisplayAssignment: ["Auf Bildschirm anzeigen", "Inhalt zuweisen", "CampaignPreset"].every((label) => portal.includes(label)) && portal.includes("campaign ? initialStep : 1") && portal.includes("ensureCampaignDraft") && portal.includes("Ihre Auswahl wird automatisch als Entwurf gespeichert"),
   guidedCampaignFunnel: ["funnel-current-step", "stepCollapsed", "Schritt öffnen", "Zuklappen", "Öffnen", "Weiter zu Inhalten", "Weiter zum Zeitpunkt", "Weiter zur Prüfung"].every((label) => portal.includes(label)) && !portal.includes('className="wizard-progress"') && campaignCss.includes(".wizard-stage.is-collapsed"),
   beginnerCampaignFlow: ["Auf Bildschirm anzeigen", "Wo?", "Was?", "Wann?", "Jetzt starten", "Für später planen", "Interner Name", "Ohne Eingabe wird der Name automatisch erstellt", "Jetzt veröffentlichen"].every((label) => portal.includes(label)) && records.includes("portalSetupStep") && campaignCss.includes(".simple-schedule"),
+  semanticPortalColors: ["--state-confirmed", ".selection-row.selected", ".display-selection > label.selected", ".upload-progress > span", ".ai-options label.selected", ".portal-onboarding-steps article.current", ".primary"].every((label) => semanticsCss.includes(label)) && portal.includes('import "./portal-semantics.css"'),
   funnelStepHeaderLayout: campaignCss.includes(".funnel-current-step > span:first-child") && !campaignCss.includes(".funnel-current-step > span {"),
   editablePortalRecords: ["update_content", "update_display"].every((action) => records.includes(action) && portal.includes(action)) && ["ContentEditDialog", "DisplayEditDialog", "Änderungen live übernehmen", "(activate || isRunning)"].every((label) => portal.includes(label)) && !records.includes("müssen zuerst pausiert werden"),
   visibleRecordLabels: ["record-kind", "record-title-line", "record-assignment", "campaign-identity"].every((label) => portal.includes(label) && campaignCss.concat(read("src/portal/portal-records.css")).includes(label)),
