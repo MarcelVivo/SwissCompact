@@ -25,6 +25,7 @@ assert.ok(checkoutRoute.includes("{CHECKOUT_SESSION_ID}") && checkoutRoute.inclu
 assert.match(webhookRoute, /constructEvent[\s\S]*grant_ai_credit_purchase/, "Stripe-Signatur oder Credit-Gutschrift fehlt");
 assert.match(portal, /function AiImageDialog[\s\S]*Überschrift einblenden[\s\S]*Guthaben aufladen/, "KI-Bildstudio ist im Portal unvollständig");
 assert.match(portal, /checkout_session[\s\S]*KI-Credits erfolgreich gekauft[\s\S]*Neues Guthaben/, "Kaufbestätigung im Bildstudio fehlt");
+assert.match(portal, /aria-busy[\s\S]*credit-checkout-loading[\s\S]*Checkout wird geöffnet/, "Ladezustand für Stripe Checkout fehlt");
 assert.ok(auth.includes("Path=/api/dashboard"), "Dashboard-Cookie-Scope wurde unerwartet erweitert");
 assert.ok(portal.includes('fetch("/api/dashboard/records?portalAi=image"') && portal.includes('api<{ checkoutUrl: string }>("/api/dashboard/records?portalAi=credits"'), "KI-Routen liegen ausserhalb des Session-Cookie-Pfads");
 assert.ok(recordsRoute.includes('portalAi === "image"') && recordsRoute.includes('portalAi === "credits"') && recordsRoute.includes('handleAiCreditsStatusGet') && recordsRoute.includes('integration") === "stripe-webhook"'), "KI- und Stripe-Handler sind nicht in der gebündelten Portal-Funktion erreichbar");

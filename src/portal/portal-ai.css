@@ -406,6 +406,43 @@
   cursor: not-allowed;
 }
 
+.credit-shop.is-buying button:disabled {
+  cursor: progress;
+}
+
+.credit-shop button.is-loading {
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--accent) 45%, #e3e0da);
+  background: color-mix(in srgb, var(--accent) 6%, #faf9f7);
+}
+
+.credit-shop button .credit-checkout-loading {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 9px;
+}
+
+.credit-checkout-loading i {
+  width: 17px;
+  height: 17px;
+  border: 2px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: credit-checkout-spin .7s linear infinite;
+}
+
+@keyframes credit-checkout-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .credit-checkout-loading i {
+    animation-duration: 1.5s;
+  }
+}
+
 .credit-shop button span {
   display: grid;
   gap: 3px;
