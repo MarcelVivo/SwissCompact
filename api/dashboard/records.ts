@@ -282,6 +282,67 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true, record: result.data });
   }
 
+  if (action === "create_service_request") {
+    const requestType = cleanText(body.requestType, 40);
+    const title = cleanText(body.title, 180);
+    const objective = cleanText(body.objective, 5000);
+    const deliverables = cleanText(body.deliverables, 5000);
+    const desiredDate = cleanText(body.desiredDate, 20);
+    const budget = cleanText(body.budget, 80);
+    const requestTypes: Record<string, string> = {
+      complex_campaign: "Komplexe Kampagne",
+      video_production: "Videoproduktion",
+      motion_design: "Animation & Motion Design",
+      custom_content: "Individuelle Bilder & Inhalte",
+      concept_strategy: "Konzept & Inhaltsstrategie",
+      other: "Andere Produktion",
+    };
+    if (!requestTypes[requestType] || !title || !objective) return json({ error: "Art, Projekttitel und Ziel der Anfrage sind erforderlich" }, { status: 400 });
+    if (desiredDate && !/^\d{4}-\d{2}-\d{2}$/.test(desiredDate)) return json({ error: "Der Wunschtermin ist ungültig" }, { status: 400 });
+    const payload = {
+      serviceRequest: true,
+      requestType,
+      requestTypeLabel: requestTypes[requestType],
+      objective,
+      deliverables,
+      desiredDate: desiredDate || null,
+      budget: budget || null,
+      requesterEmail: profile.email,
+      requesterName: profile.displayName,
+    };
+    const result = await client.from("tenant_content").insert({
+      tenant_id: profile.tenantId,
+      title,
+      content_type: "composition",
+      status: "review",
+      payload,
+      created_by: profile.userId,
+      updated_by: profile.userId,
+    }).select("id,title,content_type,status,payload,created_at,updated_at").single();
+    if (result.error) return json({ error: "Produktionsanfrage konnte nicht gespeichert werden" }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "create", entity_type: "content_request", entity_id: result.data.id, metadata: { requestType, title } });
+
+    let notificationSent = false;
+    if (process.env.RESEND_API_KEY) {
+      const objectiveHtml = escapeHtml(objective).replace(/\n/g, "<br>");
+      const deliverablesHtml = deliverables ? escapeHtml(deliverables).replace(/\n/g, "<br>") : "Noch offen";
+      try {
+        const mail = await new Resend(process.env.RESEND_API_KEY).emails.send({
+          from: "SwissCompact Portal <kontakt@swisscompact.com>",
+          to: "kontakt@swisscompact.com",
+          replyTo: profile.email,
+          subject: `Neue Produktionsanfrage: ${title}`,
+          html: `<h2>Neue Produktionsanfrage aus dem Kundenportal</h2><p><strong>Kunde:</strong> ${escapeHtml(profile.tenantName)}<br><strong>Kontakt:</strong> ${escapeHtml(profile.displayName)} (${escapeHtml(profile.email)})<br><strong>Art:</strong> ${escapeHtml(requestTypes[requestType])}<br><strong>Wunschtermin:</strong> ${escapeHtml(desiredDate || "Noch offen")}<br><strong>Budgetrahmen:</strong> ${escapeHtml(budget || "Noch offen")}</p><h3>${escapeHtml(title)}</h3><p>${objectiveHtml}</p><h3>Gewünschter Umfang</h3><p>${deliverablesHtml}</p>`,
+        });
+        notificationSent = !mail.error;
+        if (mail.error) console.error("service request notification:", mail.error.message);
+      } catch (reason) {
+        console.error("service request notification:", reason);
+      }
+    }
+    return json({ ok: true, record: result.data, notificationSent });
+  }
+
   if (action === "update_content_status") {
     const id = cleanText(body.id, 80);
     const status = cleanText(body.status, 30);
