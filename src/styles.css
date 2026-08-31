@@ -696,11 +696,15 @@ button {
   border-color: rgba(255, 255, 255, 0.62);
 }
 
-/* Tablet range (past the dedicated phone treatment below, short of desktop's
-   wider images/more forgiving contrast): station headlines/copy sit directly
-   on full-bleed photos without any legibility boost here otherwise, since
-   the phone-only text-shadow rule further down doesn't reach this width. */
-@media (min-width: 641px) and (max-width: 1200px) {
+/* Short viewports (tablet landscape, small laptops with browser chrome
+   eating vertical space — this is a height problem, not a width one, since
+   it shows up across a wide range of widths at ~900px tall or less) put the
+   hero's eyebrow/headline into the same band as the hero image's own
+   embedded wordmark, and squeeze the hero's action buttons close to the
+   fixed room-configurator/assistant triggers in the bottom corners. The
+   phone-only text-shadow rule further down doesn't reach past 640px wide,
+   so none of this gets any legibility boost otherwise. */
+@media (min-width: 641px) and (max-height: 900px) {
   .station h1,
   .station h2 {
     text-shadow: 0 3px 24px rgba(0, 0, 0, 0.72);
@@ -709,13 +713,11 @@ button {
   .station p {
     text-shadow: 0 2px 15px rgba(0, 0, 0, 0.86);
   }
-}
 
-/* Short tablet-landscape viewports put the hero's own action buttons close
-   to the fixed room-configurator/assistant triggers in the bottom corners;
-   trimming this gap buys a bit more breathing room without repositioning
-   the whole hero block (which would push its eyebrow further up instead). */
-@media (min-width: 641px) and (max-height: 900px) {
+  .station--hero {
+    bottom: max(9vh, 100px);
+  }
+
   .hero-actions {
     margin-top: 16px;
   }
