@@ -335,7 +335,7 @@ function DeleteDialog({ target, busy, error, onCancel, onConfirm }: { target: De
   const [stage, setStage] = useState<1 | 2>(1);
   const [confirmation, setConfirmation] = useState("");
   const labelsByKind = {
-    content: { eyebrow: "Medium löschen", noun: "Medium", detail: "Das Medium wird dauerhaft entfernt. Wird es noch aktiv ausgespielt, bearbeiten oder löschen Sie zuerst die zugehörige Kampagne." },
+    content: { eyebrow: "Inhalt löschen", noun: "Inhalt", detail: "Der Inhalt wird dauerhaft entfernt. Verwendet ihn eine Kampagne, wird er dort automatisch entfernt und die betroffenen Bildschirme werden aktualisiert." },
     campaign: { eyebrow: "Kampagne löschen", noun: "Kampagne", detail: "Die Kampagne sowie ihre Inhalts- und Bildschirm-Zuordnungen werden dauerhaft gelöscht. Eine laufende oder geplante Ausspielung wird dabei sofort beendet." },
     display: { eyebrow: "Bildschirm löschen", noun: "Bildschirm", detail: "Der Bildschirm, seine Geräteverbindung und alle Kampagnen-Zuordnungen werden dauerhaft entfernt." },
   } as const;
