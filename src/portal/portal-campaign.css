@@ -19,8 +19,8 @@
 }
 
 .campaign-editor {
-  width: min(960px, 100%);
-  height: min(760px, calc(100svh - 36px));
+  width: min(1100px, 100%);
+  height: min(820px, calc(100svh - 36px));
   max-height: calc(100svh - 36px);
   overflow: hidden;
   display: flex;
@@ -157,6 +157,21 @@
   max-width: 560px;
 }
 
+.campaign-basics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.campaign-basics label {
+  min-width: 0;
+}
+
+.campaign-basics label > small {
+  color: #8a8781;
+  font-weight: 400;
+}
+
 .motif-source-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -226,6 +241,126 @@
 
 .campaign-child-backdrop {
   z-index: 80;
+}
+
+.target-tree {
+  display: grid;
+  gap: 12px;
+}
+
+.target-site {
+  overflow: hidden;
+  border: 1px solid #dedbd5;
+  border-radius: 15px;
+  background: #faf9f7;
+}
+
+.target-site > header,
+.target-area-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.target-site > header {
+  padding: 13px 15px;
+  background: #f0eeea;
+}
+
+.target-site > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.target-site > header small,
+.target-area-name,
+.target-area-name button {
+  color: #77746f;
+  font-size: 10px;
+}
+
+.target-site :is(header, .target-area-name) button {
+  border: 0;
+  background: transparent;
+  color: #b20b2a;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.target-area {
+  display: grid;
+  gap: 8px;
+  padding: 12px 15px 15px;
+  border-top: 1px solid #e3e0da;
+}
+
+.target-area .display-selection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.content-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.content-mode button,
+.target-tabs button {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dedbd5;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #faf9f7;
+  color: #222225;
+  text-align: left;
+  cursor: pointer;
+}
+
+.content-mode button.selected,
+.target-tabs button.active {
+  border-color: var(--accent);
+  background: #fff4f6;
+}
+
+.content-mode small,
+.target-tabs small {
+  color: #7f7c77;
+  font-size: 9px;
+}
+
+.target-tabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+
+.target-tabs button {
+  min-width: 145px;
+  flex: 0 0 auto;
+}
+
+.content-target-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+.content-target-heading span {
+  font-weight: 750;
+}
+
+.content-target-heading b {
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: #efede9;
+  color: #6f6c67;
+  font-size: 10px;
 }
 
 .selection-list {
@@ -420,6 +555,49 @@
   font-size: 13px;
 }
 
+.target-review-list {
+  display: grid;
+  border: 1px solid #e2dfda;
+  border-radius: 15px;
+  background: #faf9f7;
+}
+
+.target-review-list > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(150px, .65fr) minmax(0, 1.35fr);
+  gap: 16px;
+  padding: 12px 15px;
+  border-bottom: 1px solid #e5e2dd;
+}
+
+.target-review-list > div:last-child {
+  border-bottom: 0;
+}
+
+.target-review-list span {
+  display: grid;
+  gap: 3px;
+}
+
+.target-review-list small {
+  color: #85827d;
+  font-size: 9px;
+}
+
+.target-review-list b {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+.campaign-scope-meta {
+  display: block;
+  margin-top: 4px;
+  color: #8c8983;
+  font-size: 9px;
+  font-weight: 500;
+}
+
 .editor-actions {
   flex: 0 0 auto;
   display: flex;
@@ -492,8 +670,15 @@
 
   .media-selection,
   .motif-source-actions,
+  .campaign-basics,
+  .content-mode,
   .wizard-date-pair,
   .wizard-review {
+    grid-template-columns: 1fr;
+  }
+
+  .target-area .display-selection,
+  .target-review-list > div {
     grid-template-columns: 1fr;
   }
 

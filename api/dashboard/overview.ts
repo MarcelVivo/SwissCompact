@@ -10,17 +10,19 @@ export async function GET(request: Request): Promise<Response> {
     if (isResponse(authorized)) return authorized;
     const { client, profile } = authorized;
     const tenantId = profile.tenantId;
-    const [sites, displays, content, campaigns, subscription, members, creatorEvents, aiBalance] = await Promise.all([
+    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
-      client.from("tenant_displays").select("id,site_id,name,kind,status,orientation,resolution,last_seen_at,created_at,updated_at,site:tenant_sites(name)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
+      client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
+      client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,last_seen_at,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
       client.from("tenant_content").select("id,title,content_type,status,payload,asset_path,created_by,created_at,updated_at").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
-      client.from("tenant_campaigns").select("id,name,status,starts_at,ends_at,schedule,created_by,created_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,preview_path:asset_path)),display_links:tenant_campaign_displays(display_id,display:tenant_displays(id,name,status,site:tenant_sites(name)))").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
+      client.from("tenant_campaigns").select("id,name,theme,status,starts_at,ends_at,schedule,scope_site_id,scope_area_id,created_by,created_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,preview_path:asset_path)),display_links:tenant_campaign_displays(display_id,display:tenant_displays(id,name,status,site:tenant_sites(name),area:tenant_areas(id,name,kind)))").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
+      client.from("tenant_campaign_display_content").select("campaign_id,display_id,position,duration_seconds,content:tenant_content(id,title,content_type,status)").eq("tenant_id", tenantId).order("position"),
       client.from("tenant_subscriptions").select("package_code,status,starts_on,minimum_ends_on,monthly_amount_chf,included_ai_credits").eq("tenant_id", tenantId).in("status", ["trial","active","past_due","paused"]).maybeSingle(),
       client.from("tenant_memberships").select("id,role,display_name,user_id,active").eq("tenant_id", tenantId),
       client.from("tenant_audit_log").select("entity_type,entity_id,actor_user_id,created_at").eq("tenant_id", tenantId).eq("action", "create").in("entity_type", ["display", "content", "campaign"]).order("created_at", { ascending: true }),
       client.rpc("get_ai_credit_balance", { target_tenant: tenantId }),
     ]);
-    const firstError = [sites, displays, content, campaigns, subscription, members, creatorEvents].find((result) => result.error)?.error;
+    const firstError = [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents].find((result) => result.error)?.error;
     if (firstError) {
       console.error("portal overview:", firstError.message);
       return json({ error: "Das Kundenportal-Datenmodell ist noch nicht eingerichtet" }, { status: 503 });
@@ -46,13 +48,22 @@ export async function GET(request: Request): Promise<Response> {
         ? "offline"
         : display.status,
     }));
+    const targetContentByCampaign = new Map<string, Map<string, unknown[]>>();
+    for (const link of targetContent.data ?? []) {
+      if (!targetContentByCampaign.has(link.campaign_id)) targetContentByCampaign.set(link.campaign_id, new Map());
+      const byDisplay = targetContentByCampaign.get(link.campaign_id)!;
+      if (!byDisplay.has(link.display_id)) byDisplay.set(link.display_id, []);
+      byDisplay.get(link.display_id)!.push({ position: link.position, duration_seconds: link.duration_seconds, content: link.content });
+    }
     const campaignsWithCreators = (campaigns.data ?? []).map((campaign) => ({
       ...campaign,
       creator_name: creatorName(campaign.created_by || auditedCreators.get(`campaign:${campaign.id}`)),
+      target_assignments: [...(targetContentByCampaign.get(campaign.id) ?? new Map())].map(([display_id, content_links]) => ({ display_id, content_links })),
     }));
     return json({
       profile,
       sites: sites.data ?? [],
+      areas: areas.data ?? [],
       displays: displaysWithHealth,
       content: contentWithPreviews,
       campaigns: campaignsWithCreators,
