@@ -387,10 +387,13 @@ const initial = await desktop.evaluate(() => {
     stage: stage instanceof HTMLElement ? bounds(stage) : null,
     browser: browserPanel instanceof HTMLElement ? bounds(browserPanel) : null,
     tools: tools instanceof HTMLElement ? bounds(tools) : null,
+    // The legacy edge-menu/config-sidebar/object-navbar UI generation was
+    // removed from the DOM entirely (not just hidden via CSS) — either
+    // state satisfies "not shown to the visitor".
     legacyHidden: legacy.every((selector) => {
       const element = document.querySelector(selector);
-      return element instanceof HTMLElement
-        && getComputedStyle(element).display === "none";
+      return !element
+        || getComputedStyle(element).display === "none";
     }),
   };
 });

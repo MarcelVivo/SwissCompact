@@ -86,18 +86,16 @@ for (const viewport of viewports) {
           }
         : null;
     };
-    const title = bounds(".showroom-navbar-title");
-    const configurator = bounds(".showroom-object-navbar");
+    const focusHeader = bounds(".showroom-focus-header");
     const siteHeader = bounds(".site-header");
     const visibleControlHeights = Array.from(document.querySelectorAll(
-      ".showroom-object-navbar button",
+      ".showroom-focus-header button",
     )).map((button) => button.getBoundingClientRect())
       .filter((rect) => rect.width > 0 && rect.height > 0)
       .map((rect) => rect.height);
     const minimumControlHeight = Math.min(...visibleControlHeights);
     return {
-      title,
-      configurator,
+      focusHeader,
       siteHeader,
       minimumControlHeight,
       horizontalOverflow:
@@ -191,10 +189,8 @@ for (const viewport of viewports) {
 
   const hierarchyValid = Boolean(
     layout.siteHeader
-    && layout.title
-    && layout.configurator
-    && layout.title.top >= layout.siteHeader.bottom + 8
-    && layout.configurator.top >= layout.title.bottom + 8
+    && layout.focusHeader
+    && layout.focusHeader.top >= layout.siteHeader.bottom + 8
   );
   const dialogFits = Boolean(
     dialog.bounds

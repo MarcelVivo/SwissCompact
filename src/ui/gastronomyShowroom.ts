@@ -7263,9 +7263,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   const objectFlyoutCloseButton = root.querySelector<HTMLButtonElement>(
     "[data-showroom-object-flyout-close]",
   );
-  const objectNavButtons = Array.from(
-    root.querySelectorAll<HTMLButtonElement>("[data-showroom-object-nav]"),
-  );
   [
     displayFlyout,
     objectFlyout,
@@ -22858,59 +22855,10 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     return objects.surfaceTargets[wall];
   };
 
-  const getObjectNavigationLabel = (wall: DisplayWall): string => {
-    if (isLeftSideWall(wall)) return "< Wand L";
-    if (isRightSideWall(wall)) return "Wand R >";
-    if (wall === "menu") return "Rückwand";
-    if (wall === "counterTop") return "Front Oben";
-    return getWallLabel(wall);
-  };
-
-  const renderObjectNavigation = (): void => {
-    const enabled = getRoomConfiguration().enabledObjects;
-    objectNavButtons.forEach((button) => {
-      const sourceWall =
-        button.dataset.showroomObjectNav as DisplayWall | undefined;
-      if (!sourceWall) return;
-      const wall = activeRoomZone !== "total" && isSideWall(sourceWall)
-        ? getSideWallForZone(
-          isRightSideWall(sourceWall) ? "right" : "left",
-          activeRoomZone,
-        )
-        : sourceWall;
-      const structureCount = isFreestandingWall(wall)
-        ? getRoomConfiguration().structures[wall].filter(
-          (item) => item.enabled,
-        ).length
-        : 0;
-      const active = isFreestandingWall(wall)
-        ? structureCount > 0
-        : enabled[wall];
-      if (isFreestandingWall(wall)) {
-        button.textContent = `${getWallLabel(wall)} ${structureCount}/4 hinzufügen`;
-        button.disabled = structureCount >= 4;
-      } else {
-        button.textContent = getObjectNavigationLabel(wall);
-        button.disabled = false;
-      }
-      button.title = getWallLabel(wall);
-      button.classList.toggle("is-removed", !active);
-      button.classList.toggle(
-        "is-selected",
-        objectFlyoutOpen && selectedMountObject === wall,
-      );
-      button.setAttribute(
-        "aria-label",
-        isFreestandingWall(wall)
-          ? structureCount >= 4
-            ? `Maximal vier ${getWallLabel(wall)}n platziert`
-            : `${getWallLabel(wall)} hinzufügen, ${structureCount} von 4 platziert`
-          : active
-            ? `${getWallLabel(wall)} auswählen`
-          : `${getWallLabel(wall)} wieder hinzufügen`,
-      );
-    });
-  };
+  // Rendered/rewired the now-removed dead object-navbar's per-wall
+  // buttons; kept as a no-op stub since renderObjectNavigation() is
+  // still called from a few live spots.
+  const renderObjectNavigation = (): void => {};
 
   const getSelectedObjectDimensions = (): Record<
     ObjectDimensionKey,
@@ -23284,78 +23232,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     updateObjectColorControl();
   };
 
-  objectNavButtons.forEach((button) => {
-    const handler = () => {
-      activeStructureControlKey = null;
-      const sourceWall =
-        button.dataset.showroomObjectNav as DisplayWall | undefined;
-      if (!sourceWall) return;
-      const wall = activeRoomZone !== "total" && isSideWall(sourceWall)
-        ? getSideWallForZone(
-          isRightSideWall(sourceWall) ? "right" : "left",
-          activeRoomZone,
-        )
-        : sourceWall;
-      const roomConfiguration = getRoomConfiguration();
-      if (isFreestandingWall(wall)) {
-        const nextIndex = roomConfiguration.structures[wall].findIndex(
-          (item) => !item.enabled,
-        );
-        if (nextIndex < 0) return;
-        selectedStructureIndex = nextIndex;
-        dismissedStructureControls.delete(
-          getStructureControlKey(wall, nextIndex),
-        );
-        const structure = roomConfiguration.structures[wall][nextIndex];
-        structure.enabled = true;
-        structure.rotationY = 0;
-        roomConfiguration.enabledObjects[wall] = true;
-        roomConfiguration.installations[wall].totemVariant =
-          structure.variant;
-        if (roomConfiguration.installations[wall].displayCount === 0) {
-          roomConfiguration.installations[wall].displayCount = 1;
-          ensureDisplayUnits(roomConfiguration.installations[wall]);
-        }
-        applyConfig();
-        const bounds = button.getBoundingClientRect();
-        openObjectFlyout(
-          wall,
-          bounds.left + bounds.width * 0.5,
-          bounds.bottom + 16,
-        );
-        return;
-      }
-      if (wall === "counterFront" || wall === "counterTop") {
-        const counterId = config.preset === "takeaway"
-          ? "takeaway-counter"
-          : "service-counter";
-        const counter = findActiveFurnishing(counterId);
-        if (counter) {
-          roomConfiguration.enabledObjects.counterFront = true;
-          roomConfiguration.enabledObjects.counterTop = true;
-          selectFurnishing(counter);
-          renderFurnishingControls();
-          return;
-        }
-      }
-      const wasEnabled = roomConfiguration.enabledObjects[wall];
-      roomConfiguration.enabledObjects[wall] = true;
-      const installation = roomConfiguration.installations[wall];
-      if (!wasEnabled && installation.displayCount === 0) {
-        installation.displayCount = 1;
-        ensureDisplayUnits(installation);
-      }
-      applyConfig();
-      const bounds = button.getBoundingClientRect();
-      openObjectFlyout(
-        wall,
-        bounds.left + bounds.width * 0.5,
-        bounds.bottom + 16,
-      );
-    };
-    button.addEventListener("click", handler);
-    cleanupHandlers.push(() => button.removeEventListener("click", handler));
-  });
 
   root.querySelectorAll<HTMLButtonElement>("[data-showroom-object-count]")
     .forEach((button) => {
@@ -24632,23 +24508,9 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(stage);
 
-  root.querySelectorAll<HTMLButtonElement>("[data-showroom-tab]").forEach((button) => {
-    const handler = () => {
-      const tab = button.dataset.showroomTab;
-      root.querySelectorAll<HTMLButtonElement>("[data-showroom-tab]").forEach((item) => {
-        item.setAttribute("aria-selected", String(item === button));
-      });
-      root.querySelectorAll<HTMLElement>("[data-showroom-panel]").forEach((panel) => {
-        panel.classList.toggle("is-active", panel.dataset.showroomPanel === tab);
-      });
-    };
-    button.addEventListener("click", handler);
-    cleanupHandlers.push(() => button.removeEventListener("click", handler));
-  });
-
-  const edgeMenus = Array.from(
-    root.querySelectorAll<HTMLElement>("[data-showroom-edge-menu]"),
-  );
+  // Guidance-pulse highlighting used to target the now-removed edge-menu
+  // tab bar (a prior UI generation's controls); kept as a no-op stub so
+  // its ~15 call sites elsewhere don't need to change one by one.
   type GuidanceTarget =
     | "position"
     | "displays"
@@ -24656,98 +24518,7 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     | "light"
     | "furnishings"
     | "cta";
-  let guidanceTarget: GuidanceTarget | null = null;
-  const setGuidanceTarget = (target: GuidanceTarget | null): void => {
-    guidanceTarget = target;
-    edgeMenus.forEach((menu) => {
-      menu.classList.toggle(
-        "is-guidance-pulse",
-        Boolean(
-          target
-          && target !== "cta"
-          && menu.classList.contains(`showroom-edge-menu--${target}`),
-        ),
-      );
-    });
-    root.querySelector<HTMLElement>(".showroom-edge-cta")?.classList.toggle(
-      "is-guidance-pulse",
-      target === "cta",
-    );
-    if (target) root.dataset.showroomGuidanceTarget = target;
-    else delete root.dataset.showroomGuidanceTarget;
-  };
-  const closeEdgeMenu = (menu: HTMLElement, _dismissed = false): void => {
-    menu.classList.remove("is-open");
-    menu.querySelector<HTMLButtonElement>("[data-showroom-edge-trigger]")
-      ?.setAttribute("aria-expanded", "false");
-    menu.querySelector<HTMLElement>("[data-showroom-edge-flyout]")
-      ?.setAttribute("aria-hidden", "true");
-  };
-  const openEdgeMenu = (menu: HTMLElement): void => {
-    edgeMenus.forEach((item) => {
-      if (item !== menu) closeEdgeMenu(item);
-    });
-    menu.classList.add("is-open");
-    if (
-      guidanceTarget
-      && menu.classList.contains(`showroom-edge-menu--${guidanceTarget}`)
-    ) {
-      menu.classList.remove("is-guidance-pulse");
-    }
-    menu.querySelector<HTMLButtonElement>("[data-showroom-edge-trigger]")
-      ?.setAttribute("aria-expanded", "true");
-    menu.querySelector<HTMLElement>("[data-showroom-edge-flyout]")
-      ?.setAttribute("aria-hidden", "false");
-  };
-  edgeMenus.forEach((menu, index) => {
-    const trigger = menu.querySelector<HTMLButtonElement>(
-      "[data-showroom-edge-trigger]",
-    );
-    const flyout = menu.querySelector<HTMLElement>("[data-showroom-edge-flyout]");
-    if (trigger && flyout) {
-      flyout.id ||= `showroom-edge-flyout-${index + 1}`;
-      flyout.setAttribute("aria-hidden", "true");
-      trigger.setAttribute("aria-controls", flyout.id);
-      trigger.setAttribute("aria-haspopup", "true");
-    }
-    const triggerClickHandler = () => {
-      if (menu.classList.contains("is-open")) closeEdgeMenu(menu, true);
-      else openEdgeMenu(menu);
-    };
-    const keydownHandler = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      closeEdgeMenu(menu, true);
-      trigger?.focus();
-    };
-    menu.addEventListener("keydown", keydownHandler);
-    trigger?.addEventListener("click", triggerClickHandler);
-    cleanupHandlers.push(() => {
-      menu.removeEventListener("keydown", keydownHandler);
-      trigger?.removeEventListener("click", triggerClickHandler);
-    });
-  });
-  const edgeDisplayCloseButton = root.querySelector<HTMLButtonElement>(
-    "[data-showroom-edge-display-close]",
-  );
-  const edgeDisplayCloseHandler = (): void => {
-    const menu = edgeDisplayCloseButton?.closest<HTMLElement>(
-      "[data-showroom-edge-menu]",
-    );
-    if (!menu) return;
-    menu.querySelector<HTMLButtonElement>("[data-showroom-edge-trigger]")
-      ?.focus();
-    closeEdgeMenu(menu, true);
-  };
-  edgeDisplayCloseButton?.addEventListener(
-    "click",
-    edgeDisplayCloseHandler,
-  );
-  cleanupHandlers.push(() => {
-    edgeDisplayCloseButton?.removeEventListener(
-      "click",
-      edgeDisplayCloseHandler,
-    );
-  });
+  const setGuidanceTarget = (_target: GuidanceTarget | null): void => {};
 
   const removeOpening = (id: string): void => {
     const room = getRoomConfiguration();
@@ -25480,161 +25251,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     cleanupHandlers.push(() => input.removeEventListener("input", handler));
   });
 
-  const configPanel = root.querySelector<HTMLElement>(".showroom-config");
-  const closeConfig = root.querySelector<HTMLButtonElement>("[data-showroom-config-toggle]");
-  const openConfig = root.querySelector<HTMLButtonElement>("[data-showroom-config-open]");
-  const configDragHandle = root.querySelector<HTMLElement>(
-    "[data-showroom-config-drag-handle]",
-  );
-  let configDragging = false;
-  let configDragPointerId = -1;
-  let configDragStartX = 0;
-  let configDragStartY = 0;
-  let configPanelStartLeft = 0;
-  let configPanelStartTop = 0;
-
-  const constrainConfigPanel = (): void => {
-    if (
-      !configPanel
-      || root.dataset.showroomControlLayout === "edge"
-      || window.innerWidth <= 640
-      || !configPanel.style.left
-    ) return;
-    const rootBounds = root.getBoundingClientRect();
-    const panelBounds = configPanel.getBoundingClientRect();
-    const margin = 12;
-    const maximumLeft = Math.max(
-      margin,
-      rootBounds.width - panelBounds.width - margin,
-    );
-    const maximumTop = Math.max(
-      margin,
-      rootBounds.height - panelBounds.height - margin,
-    );
-    const left = clamp(Number.parseFloat(configPanel.style.left), margin, maximumLeft);
-    const top = clamp(Number.parseFloat(configPanel.style.top), margin, maximumTop);
-    configPanel.style.left = `${left}px`;
-    configPanel.style.top = `${top}px`;
-  };
-
-  const configDragStart = (event: PointerEvent): void => {
-    if (
-      !configPanel
-      || !configDragHandle
-      || root.dataset.showroomControlLayout === "edge"
-      || window.innerWidth <= 640
-      || (event.pointerType === "mouse" && event.button !== 0)
-      || event.target instanceof Element
-        && Boolean(event.target.closest("button, a, input"))
-    ) {
-      return;
-    }
-    const rootBounds = root.getBoundingClientRect();
-    const panelBounds = configPanel.getBoundingClientRect();
-    configDragging = true;
-    configDragPointerId = event.pointerId;
-    configDragStartX = event.clientX;
-    configDragStartY = event.clientY;
-    configPanelStartLeft = panelBounds.left - rootBounds.left;
-    configPanelStartTop = panelBounds.top - rootBounds.top;
-    configPanel.style.left = `${configPanelStartLeft}px`;
-    configPanel.style.top = `${configPanelStartTop}px`;
-    configPanel.style.right = "auto";
-    configPanel.style.bottom = "auto";
-    configPanel.style.height = `${panelBounds.height}px`;
-    configPanel.classList.add("is-dragging");
-    safelyCapturePointer(configDragHandle, event.pointerId);
-    event.preventDefault();
-  };
-
-  const configDragMove = (event: PointerEvent): void => {
-    if (
-      !configDragging
-      || !configPanel
-      || event.pointerId !== configDragPointerId
-    ) {
-      return;
-    }
-    const rootBounds = root.getBoundingClientRect();
-    const panelBounds = configPanel.getBoundingClientRect();
-    const margin = 12;
-    const left = clamp(
-      configPanelStartLeft + event.clientX - configDragStartX,
-      margin,
-      Math.max(margin, rootBounds.width - panelBounds.width - margin),
-    );
-    const top = clamp(
-      configPanelStartTop + event.clientY - configDragStartY,
-      margin,
-      Math.max(margin, rootBounds.height - panelBounds.height - margin),
-    );
-    configPanel.style.left = `${left}px`;
-    configPanel.style.top = `${top}px`;
-  };
-
-  const configDragEnd = (event: PointerEvent): void => {
-    if (
-      !configDragging
-      || !configDragHandle
-      || event.pointerId !== configDragPointerId
-    ) {
-      return;
-    }
-    configDragging = false;
-    configDragPointerId = -1;
-    configPanel?.classList.remove("is-dragging");
-    if (configDragHandle.hasPointerCapture(event.pointerId)) {
-      configDragHandle.releasePointerCapture(event.pointerId);
-    }
-    constrainConfigPanel();
-  };
-
-  const resetConfigPosition = (event: MouseEvent): void => {
-    if (
-      !configPanel
-      || root.dataset.showroomControlLayout === "edge"
-      || window.innerWidth <= 640
-    ) return;
-    if (
-      event.target instanceof Element
-      && Boolean(event.target.closest("button, a, input"))
-    ) {
-      return;
-    }
-    configPanel.style.removeProperty("left");
-    configPanel.style.removeProperty("top");
-    configPanel.style.removeProperty("right");
-    configPanel.style.removeProperty("bottom");
-    configPanel.style.removeProperty("height");
-  };
-
-  configDragHandle?.addEventListener("pointerdown", configDragStart);
-  configDragHandle?.addEventListener("pointermove", configDragMove);
-  configDragHandle?.addEventListener("pointerup", configDragEnd);
-  configDragHandle?.addEventListener("pointercancel", configDragEnd);
-  configDragHandle?.addEventListener("dblclick", resetConfigPosition);
-  window.addEventListener("resize", constrainConfigPanel);
-
-  const setConfigOpen = (open: boolean): void => {
-    configPanel?.classList.toggle("is-collapsed", !open);
-    root.classList.toggle("is-config-collapsed", !open);
-  };
-  const closeConfigHandler = () => setConfigOpen(false);
-  const openConfigHandler = () => setConfigOpen(true);
-  closeConfig?.addEventListener("click", closeConfigHandler);
-  openConfig?.addEventListener("click", openConfigHandler);
-  cleanupHandlers.push(() => {
-    configDragHandle?.removeEventListener("pointerdown", configDragStart);
-    configDragHandle?.removeEventListener("pointermove", configDragMove);
-    configDragHandle?.removeEventListener("pointerup", configDragEnd);
-    configDragHandle?.removeEventListener("pointercancel", configDragEnd);
-    configDragHandle?.removeEventListener("dblclick", resetConfigPosition);
-    window.removeEventListener("resize", constrainConfigPanel);
-    closeConfig?.removeEventListener("click", closeConfigHandler);
-    openConfig?.removeEventListener("click", openConfigHandler);
-  });
-  if (window.innerWidth <= 640) setConfigOpen(false);
-
   const introSkip = root.querySelector<HTMLButtonElement>("[data-showroom-intro-skip]");
   const introSkipHandler = (): void => hideIntro();
   introSkip?.addEventListener("click", introSkipHandler);
@@ -25657,7 +25273,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
         ? document.activeElement
         : themesToggle;
       closeNavbarMenus();
-      edgeMenus.forEach((menu) => closeEdgeMenu(menu));
     }
     themes?.classList.toggle("is-open", open);
     if (themes) {
@@ -30584,7 +30199,6 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     sceneManipulationMoved = false;
     const hadActiveSelection = hasActiveSceneSelection();
     if (selectTouchHitWithoutManipulation(event)) return;
-    edgeMenus.forEach((menu) => closeEdgeMenu(menu, true));
     if (selectionMode === "mount") {
       clearFurnishingSelection();
       clearStructureSelection();
