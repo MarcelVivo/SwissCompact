@@ -317,11 +317,53 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true, record: result.data });
   }
 
+  if (action === "archive_content") {
+    const id = cleanText(body.id, 80);
+    if (!id) return json({ error: "Inhalt fehlt" }, { status: 400 });
+    const existing = await client.from("tenant_content").select("id,title,status,payload").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (existing.error || !existing.data) return json({ error: "Inhalt nicht gefunden" }, { status: 404 });
+    if (existing.data.status === "archived") return json({ ok: true, record: existing.data });
+    const usage = await contentUsage(client, profile.tenantId, id);
+    const payload = { ...(existing.data.payload || {}), archivePreviousStatus: existing.data.status };
+    const archived = await client.from("tenant_content").update({ status: "archived", payload, updated_by: profile.userId, updated_at: now })
+      .eq("id", id).eq("tenant_id", profile.tenantId)
+      .select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
+    if (archived.error) return json({ error: "Inhalt konnte nicht archiviert werden" }, { status: 400 });
+    const [legacyLinks, targetLinks] = await Promise.all([
+      client.from("tenant_campaign_content").delete().eq("content_id", id),
+      client.from("tenant_campaign_display_content").delete().eq("content_id", id).eq("tenant_id", profile.tenantId),
+    ]);
+    if (legacyLinks.error || targetLinks.error) console.error("content archive link cleanup:", legacyLinks.error?.message || targetLinks.error?.message);
+    await bumpDisplayConfigurations(client, usage.displayIds);
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "archive", entity_type: "content", entity_id: id, metadata: { title: existing.data.title, removedFromCampaigns: usage.campaignIds.length } });
+    return json({ ok: true, record: archived.data });
+  }
+
+  if (action === "restore_content") {
+    const id = cleanText(body.id, 80);
+    if (!id) return json({ error: "Inhalt fehlt" }, { status: 400 });
+    const existing = await client.from("tenant_content").select("id,title,status,payload").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (existing.error || !existing.data) return json({ error: "Archivierter Inhalt nicht gefunden" }, { status: 404 });
+    if (existing.data.status !== "archived") return json({ error: "Der Inhalt befindet sich nicht im Archiv" }, { status: 409 });
+    const payload = { ...(existing.data.payload || {}) } as Record<string, unknown>;
+    const previousStatus = typeof payload.archivePreviousStatus === "string" && ["draft", "review", "approved", "published"].includes(payload.archivePreviousStatus)
+      ? payload.archivePreviousStatus
+      : "approved";
+    delete payload.archivePreviousStatus;
+    const restored = await client.from("tenant_content").update({ status: previousStatus, payload, updated_by: profile.userId, updated_at: now })
+      .eq("id", id).eq("tenant_id", profile.tenantId)
+      .select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
+    if (restored.error) return json({ error: "Inhalt konnte nicht wiederhergestellt werden" }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "restore", entity_type: "content", entity_id: id, metadata: { title: existing.data.title, status: previousStatus } });
+    return json({ ok: true, record: restored.data });
+  }
+
   if (action === "delete_content") {
     const id = cleanText(body.id, 80);
     if (!id) return json({ error: "Inhalt fehlt" }, { status: 400 });
-    const existing = await client.from("tenant_content").select("id,title,asset_path").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    const existing = await client.from("tenant_content").select("id,title,status,asset_path").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (existing.error || !existing.data) return json({ error: "Inhalt nicht gefunden" }, { status: 404 });
+    if (existing.data.status !== "archived") return json({ error: "Inhalte können nur aus dem Archiv endgültig gelöscht werden" }, { status: 409 });
     if (cleanText(body.confirmationName, 180) !== existing.data.title) return json({ error: "Der eingegebene Name stimmt nicht überein" }, { status: 409 });
     const usage = await contentUsage(client, profile.tenantId, id);
     const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
@@ -397,14 +439,20 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const areaId = cleanText(body.areaId, 80) || null;
     const kind = cleanText(body.kind, 30);
     const orientation = cleanText(body.orientation, 30);
+    const screenSizeInchesRaw = Number(body.screenSizeInches);
+    const screenSizeInches = [22, 24, 27, 32, 55, 65, 75].includes(screenSizeInchesRaw) ? screenSizeInchesRaw : null;
+    const panelTechnology = cleanText(body.panelTechnology, 20) || "auto";
+    const useCategoryRaw = cleanText(body.useCategory, 20);
+    const useCategory = ["menu", "promotion", "wayfinding"].includes(useCategoryRaw) ? useCategoryRaw : null;
     if (!name || !siteId || !["display", "led_wall", "led_controller", "player"].includes(kind) || !["landscape", "portrait", "custom"].includes(orientation)) return json({ error: "Bildschirmangaben sind unvollständig" }, { status: 400 });
+    if (!["auto", "display", "led"].includes(panelTechnology)) return json({ error: "Bildtechnologie ist ungültig" }, { status: 400 });
     const site = await client.from("tenant_sites").select("id").eq("id", siteId).eq("tenant_id", profile.tenantId).eq("active", true).maybeSingle();
     if (!site.data) return json({ error: "Standort nicht gefunden" }, { status: 404 });
     if (areaId) {
       const area = await client.from("tenant_areas").select("id").eq("id", areaId).eq("tenant_id", profile.tenantId).eq("site_id", siteId).eq("active", true).maybeSingle();
       if (!area.data) return json({ error: "Bereich nicht gefunden" }, { status: 404 });
     }
-    const created = await client.from("tenant_displays").insert({ tenant_id: profile.tenantId, site_id: siteId, area_id: areaId, name, kind, orientation, status: "provisioning" }).select("id,name,status,kind,orientation,area_id").single();
+    const created = await client.from("tenant_displays").insert({ tenant_id: profile.tenantId, site_id: siteId, area_id: areaId, name, kind, orientation, screen_size_inches: screenSizeInches, panel_technology: panelTechnology, use_category: useCategory, status: "provisioning" }).select("id,name,status,kind,orientation,area_id,screen_size_inches,panel_technology,use_category").single();
     if (created.error) return json({ error: created.error.message }, { status: 400 });
     const code = newPairingCode();
     const codeHash = createHash("sha256").update(`${created.data.id}:${code}`).digest("hex");
@@ -461,16 +509,22 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const areaId = cleanText(body.areaId, 80) || null;
     const kind = cleanText(body.kind, 30);
     const orientation = cleanText(body.orientation, 30);
+    const screenSizeInchesRaw = Number(body.screenSizeInches);
+    const screenSizeInches = [22, 24, 27, 32, 55, 65, 75].includes(screenSizeInchesRaw) ? screenSizeInchesRaw : null;
+    const panelTechnology = cleanText(body.panelTechnology, 20) || "auto";
+    const useCategoryRaw = cleanText(body.useCategory, 20);
+    const useCategory = ["menu", "promotion", "wayfinding"].includes(useCategoryRaw) ? useCategoryRaw : null;
     if (!id || !name || !siteId || !["display", "led_wall", "led_controller", "player"].includes(kind) || !["landscape", "portrait", "custom"].includes(orientation)) return json({ error: "Bildschirmangaben sind unvollständig" }, { status: 400 });
+    if (!["auto", "display", "led"].includes(panelTechnology)) return json({ error: "Bildtechnologie ist ungültig" }, { status: 400 });
     const site = await client.from("tenant_sites").select("id").eq("id", siteId).eq("tenant_id", profile.tenantId).eq("active", true).maybeSingle();
     if (!site.data) return json({ error: "Standort nicht gefunden" }, { status: 404 });
     if (areaId) {
       const area = await client.from("tenant_areas").select("id").eq("id", areaId).eq("tenant_id", profile.tenantId).eq("site_id", siteId).eq("active", true).maybeSingle();
       if (!area.data) return json({ error: "Bereich nicht gefunden" }, { status: 404 });
     }
-    const result = await client.from("tenant_displays").update({ name, site_id: siteId, area_id: areaId, kind, orientation, updated_at: now })
+    const result = await client.from("tenant_displays").update({ name, site_id: siteId, area_id: areaId, kind, orientation, screen_size_inches: screenSizeInches, panel_technology: panelTechnology, use_category: useCategory, updated_at: now })
       .eq("id", id).eq("tenant_id", profile.tenantId)
-      .select("id,site_id,area_id,name,kind,status,orientation,resolution,created_at,updated_at").single();
+      .select("id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,created_at,updated_at").single();
     if (result.error) return json({ error: "Bildschirm konnte nicht aktualisiert werden" }, { status: 400 });
     await bumpDisplayConfigurations(client, [id]);
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "update", entity_type: "display", entity_id: id });

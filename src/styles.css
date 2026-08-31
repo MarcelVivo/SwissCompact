@@ -17933,48 +17933,26 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   }
 
   .sales-assistant {
+    left: 76px;
     right: max(12px, env(safe-area-inset-right));
     bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   .sales-assistant__trigger {
-    position: relative;
-    width: 52px;
-    height: 52px;
+    width: 100%;
+    min-height: 52px;
     justify-content: center;
-    padding: 0;
-    border-radius: 50%;
-    background: rgba(9, 9, 11, 0.92);
-  }
-
-  .sales-assistant__trigger > span:last-child {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .sales-assistant__trigger::after {
-    color: #fff;
-    content: "?";
-    font-size: 19px;
-    font-weight: 800;
-  }
-
-  .sales-assistant__trigger .sales-assistant__state-dot {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 8px;
-    height: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    border-color: rgba(200, 16, 46, 0.72);
+    background: rgba(8, 8, 10, 0.85);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
   }
 
   .sales-assistant__panel {
     inset: auto 0 0;
     width: 100%;
-    max-height: min(82dvh, 720px);
+    max-height: min(92dvh, 820px);
     padding-bottom: env(safe-area-inset-bottom);
     border-right: 0;
     border-bottom: 0;
@@ -18026,13 +18004,25 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   }
 
   .showroom-funnel__trigger {
-    right: 76px;
-    bottom: calc(12px + env(safe-area-inset-bottom));
     left: max(12px, env(safe-area-inset-left));
-    min-height: 52px;
+    right: auto;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    width: 52px;
+    height: 52px;
+    min-height: 0;
     justify-content: center;
-    padding: 10px 14px;
-    font-size: 14px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(9, 9, 11, 0.92);
+  }
+
+  .showroom-funnel__trigger > span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .showroom-funnel__panel {
@@ -18349,11 +18339,11 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     grid-template-columns: 1fr;
   }
 
-  .showroom-funnel__trigger {
+  .sales-assistant__trigger {
     justify-content: flex-start;
   }
 
-  .showroom-funnel__trigger > span:last-child {
+  .sales-assistant__trigger > span:last-child {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

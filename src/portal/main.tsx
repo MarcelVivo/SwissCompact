@@ -13,7 +13,18 @@ import "./portal-records.css";
 type PortalProfile = { displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
 type Site = { id: string; name: string; active: boolean; address?: Record<string, string> };
 type Area = { id: string; site_id: string; parent_id?: string | null; name: string; kind: "building" | "floor" | "area" | "zone"; active: boolean };
-type Display = { id: string; site_id?: string; area_id?: string | null; name: string; kind: string; status: string; orientation?: string; resolution?: { width?: number; height?: number }; last_seen_at?: string; created_at?: string; creator_name?: string; site?: { name?: string }; area?: { id?: string; name?: string; kind?: string; parent_id?: string | null } };
+type Display = { id: string; site_id?: string; area_id?: string | null; name: string; kind: string; status: string; orientation?: string; resolution?: { width?: number; height?: number }; screen_size_inches?: number | null; panel_technology?: string; use_category?: string | null; last_seen_at?: string; created_at?: string; creator_name?: string; site?: { name?: string }; area?: { id?: string; name?: string; kind?: string; parent_id?: string | null } };
+
+const DISPLAY_SIZE_LANDSCAPE_CM: Record<number, { width: number; height: number }> = {
+  22: { width: 49, height: 27 },
+  24: { width: 53, height: 30 },
+  27: { width: 60, height: 34 },
+  32: { width: 71, height: 40 },
+  55: { width: 121, height: 68 },
+  65: { width: 144, height: 81 },
+  75: { width: 166, height: 93 },
+};
+const LED_AUTO_THRESHOLD_INCHES = 75;
 type Content = { id: string; title: string; content_type: string; status: string; payload?: { text?: string; uploadState?: string }; preview_url?: string | null; created_at?: string; creator_name?: string; updated_at: string };
 type CampaignContentLink = { position: number; duration_seconds: number; content: { id: string; title: string; content_type: string; status: string } | null };
 type Campaign = { id: string; name: string; theme?: string | null; status: string; starts_at?: string; ends_at?: string; scope_site_id?: string | null; scope_area_id?: string | null; created_at?: string; creator_name?: string; updated_at: string; content_links?: CampaignContentLink[]; target_assignments?: Array<{ display_id: string; content_links: CampaignContentLink[] }>; display_links?: Array<{ display_id: string; display: { id: string; name: string; status: string; site?: { name?: string }; area?: { id?: string; name?: string; kind?: string } } | null }> };
@@ -34,9 +45,9 @@ type CreditCheckoutResult = {
   purchase: { package_code: string; credits: number; amount_minor: number; currency: string; status: string };
   balance: { includedRemaining: number; purchasedBalance: number; available: number } | null;
 };
-type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits };
-type View = "overview" | "content" | "campaigns" | "displays" | "settings";
-type DeleteTarget = { kind: "content" | "campaign" | "display"; id: string; name: string };
+type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; archivedContent: Content[]; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits };
+type View = "overview" | "content" | "archive" | "campaigns" | "displays" | "settings";
+type DeleteTarget = { kind: "archived_content" | "campaign" | "display"; id: string; name: string };
 type CampaignPreset = { contentId?: string; displayId?: string };
 
 type PreparedMediaUpload = {
@@ -116,6 +127,7 @@ function Icon({ name }: { name: View | "logout" | "plus" }) {
   const paths: Record<string, React.ReactNode> = {
     overview: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></>,
     content: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 15 3-3 3 3 2-2 3 3M8 9h.01"/></>,
+    archive: <><path d="M4 7h16v13H4zM3 4h18v3H3z"/><path d="M9 11h6"/></>,
     campaigns: <><path d="M4 13V7l14-3v12L4 13Z"/><path d="M7 13v6h4v-5"/></>,
     displays: <><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></>,
     settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
@@ -195,6 +207,7 @@ function Portal() {
   const [editingDisplay, setEditingDisplay] = useState<Display | null>(null);
   const [pairing, setPairing] = useState<PairingInfo | null>(null);
   const [pairingBusyId, setPairingBusyId] = useState("");
+  const [archiveBusyId, setArchiveBusyId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -206,6 +219,7 @@ function Portal() {
       if (!overview.profile || !Array.isArray(overview.displays) || !Array.isArray(overview.content) || !Array.isArray(overview.campaigns)) {
         throw new Error("Das Kundenportal wird gerade eingerichtet. Bitte versuchen Sie es in Kürze erneut.");
       }
+      if (!Array.isArray(overview.archivedContent)) overview.archivedContent = [];
       setData(overview); setSession("ready");
       return overview;
     } catch (reason) {
@@ -257,13 +271,26 @@ function Portal() {
   if (session === "guest" || !data) return <><Login onDone={() => void load()} />{error && <div className="global-message">{error}</div>}</>;
   const canEdit = data.profile.role !== "viewer";
   const canManageDevices = data.profile.role === "owner" || data.profile.role === "admin";
-  const nav: Array<[View,string]> = [["overview","Übersicht"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"],["settings","Einstellungen"]];
+  const nav: Array<[View,string]> = [["overview","Übersicht"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"],["archive","Archiv"],["settings","Einstellungen"]];
   async function logout() { await api("/api/dashboard/logout", { method: "POST", body: "{}" }).catch(() => undefined); setData(null); setSession("guest"); }
   async function setContentStatus(id: string, status: "approved" | "draft") {
     try {
       await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id, status }) });
       await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Status konnte nicht geändert werden"); }
+  }
+  async function changeContentArchive(id: string, action: "archive_content" | "restore_content") {
+    if (archiveBusyId) return;
+    setArchiveBusyId(id); setError("");
+    try {
+      await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action, id }) });
+      await load(false);
+      setView(action === "archive_content" ? "content" : "archive");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Der Archivstatus konnte nicht geändert werden");
+    } finally {
+      setArchiveBusyId("");
+    }
   }
   function requestDelete(target: DeleteTarget) {
     setDeleteError("");
@@ -272,7 +299,7 @@ function Portal() {
   async function confirmDelete() {
     if (!deleteTarget || deleteBusy) return;
     setDeleteBusy(true); setDeleteError("");
-    const action = deleteTarget.kind === "content" ? "delete_content" : deleteTarget.kind === "campaign" ? "delete_campaign" : "delete_display";
+    const action = deleteTarget.kind === "archived_content" ? "delete_content" : deleteTarget.kind === "campaign" ? "delete_campaign" : "delete_display";
     try {
       await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action, id: deleteTarget.id, confirmationName: deleteTarget.name }) });
       setDeleteTarget(null);
@@ -361,18 +388,28 @@ function ContentEditDialog({ content, onClose, onSaved }: { content: Content; on
 function DisplayEditDialog({ display, sites, areas, onClose, onSaved }: { display: Display; sites: Site[]; areas: Area[]; onClose: () => void; onSaved: () => void }) {
   const [siteId, setSiteId] = useState(display.site_id || sites[0]?.id || "");
   const [areaId, setAreaId] = useState(display.area_id || "");
+  const [orientation, setOrientation] = useState(display.orientation || "landscape");
+  const [screenSizeInches, setScreenSizeInches] = useState(display.screen_size_inches ? String(display.screen_size_inches) : "");
+  const [panelTechnology, setPanelTechnology] = useState(display.panel_technology || "auto");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const availableAreas = areas.filter((area) => area.active && area.site_id === siteId);
+  const sizeDimensions = screenSizeInches ? DISPLAY_SIZE_LANDSCAPE_CM[Number(screenSizeInches)] : null;
+  const dimensionHint = sizeDimensions
+    ? orientation === "portrait"
+      ? `≈ ${sizeDimensions.height} × ${sizeDimensions.width} cm`
+      : `≈ ${sizeDimensions.width} × ${sizeDimensions.height} cm`
+    : "";
+  const showLedHint = panelTechnology === "auto" && Number(screenSizeInches) >= LED_AUTO_THRESHOLD_INCHES;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); const form = new FormData(event.currentTarget);
     try {
-      await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_display", id: display.id, name: form.get("name"), siteId, areaId: areaId || null, kind: form.get("kind"), orientation: form.get("orientation") }) });
+      await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_display", id: display.id, name: form.get("name"), siteId, areaId: areaId || null, kind: form.get("kind"), orientation, screenSizeInches: screenSizeInches ? Number(screenSizeInches) : null, panelTechnology, useCategory: form.get("useCategory") || null }) });
       onSaved();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Bildschirm konnte nicht gespeichert werden"); }
     finally { setBusy(false); }
   }
-  return <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog record-edit-dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button><div className="eyebrow">Bildschirm bearbeiten</div><h2>{display.name}</h2><form onSubmit={submit}><label>Bildschirmname<input name="name" required autoFocus defaultValue={display.name}/></label><div className="date-pair"><label>Gerätetyp<select name="kind" defaultValue={display.kind || "display"}><option value="display">Bildschirm</option><option value="led_wall">LED-Wand</option><option value="led_controller">LED-Controller</option><option value="player">Player</option></select></label><label>Ausrichtung<select name="orientation" defaultValue={display.orientation || "landscape"}><option value="landscape">Querformat</option><option value="portrait">Hochformat</option><option value="custom">Individuell</option></select></label></div><label>Standort<select required value={siteId} onChange={(event) => { setSiteId(event.target.value); setAreaId(""); }}>{sites.map((site) => <option value={site.id} key={site.id}>{site.name}</option>)}</select></label><label>Stockwerk / Bereich<select value={areaId} onChange={(event) => setAreaId(event.target.value)}><option value="">Keine weitere Zuordnung</option>{availableAreas.map((area) => <option value={area.id} key={area.id}>{area.name}</option>)}</select></label>{error && <div className="form-error" role="alert">{error}</div>}<footer className="record-edit-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>Abbrechen</button><button className="primary" disabled={busy}>{busy ? "Wird gespeichert …" : "Änderungen speichern"}</button></footer></form></section></div>;
+  return <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog record-edit-dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button><div className="eyebrow">Bildschirm bearbeiten</div><h2>{display.name}</h2><form onSubmit={submit}><label>Bildschirmname<input name="name" required autoFocus defaultValue={display.name}/></label><div className="date-pair"><label>Gerätetyp<select name="kind" defaultValue={display.kind || "display"}><option value="display">Bildschirm</option><option value="led_wall">LED-Wand</option><option value="led_controller">LED-Controller</option><option value="player">Player</option></select></label><label>Ausrichtung<select name="orientation" value={orientation} onChange={(event) => setOrientation(event.target.value)}><option value="landscape">Querformat</option><option value="portrait">Hochformat</option><option value="custom">Individuell</option></select></label></div><div className="date-pair"><label>Displaygrösse<select name="screenSizeInches" value={screenSizeInches} onChange={(event) => setScreenSizeInches(event.target.value)}><option value="">Nicht festgelegt</option><option value="22">22″</option><option value="24">24″</option><option value="27">27″</option><option value="32">32″</option><option value="55">55″</option><option value="65">65″</option><option value="75">75″</option></select>{dimensionHint && <span className="field-hint">{dimensionHint}</span>}</label><label>Bildtechnologie<select name="panelTechnology" value={panelTechnology} onChange={(event) => setPanelTechnology(event.target.value)}><option value="auto">Automatisch</option><option value="display">Display</option><option value="led">LED-Fläche</option></select>{showLedHint && <span className="field-hint">Ab {LED_AUTO_THRESHOLD_INCHES}″ wird automatisch eine LED-Wand empfohlen.</span>}</label></div><label>Verwendungszweck<select name="useCategory" defaultValue={display.use_category || ""}><option value="">Nicht festgelegt</option><option value="menu">Menü / Angebote</option><option value="promotion">Werbung / Kampagne</option><option value="wayfinding">Orientierung / Wegweiser</option></select></label><label>Standort<select required value={siteId} onChange={(event) => { setSiteId(event.target.value); setAreaId(""); }}>{sites.map((site) => <option value={site.id} key={site.id}>{site.name}</option>)}</select></label><label>Stockwerk / Bereich<select value={areaId} onChange={(event) => setAreaId(event.target.value)}><option value="">Keine weitere Zuordnung</option>{availableAreas.map((area) => <option value={area.id} key={area.id}>{area.name}</option>)}</select></label>{error && <div className="form-error" role="alert">{error}</div>}<footer className="record-edit-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>Abbrechen</button><button className="primary" disabled={busy}>{busy ? "Wird gespeichert …" : "Änderungen speichern"}</button></footer></form></section></div>;
 }
 
 function DisplaySetupDialog({ sites, areas, onClose, onCreated }: { sites: Site[]; areas: Area[]; onClose: () => void; onCreated: (pairing: PairingInfo) => void }) {
