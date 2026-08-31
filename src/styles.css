@@ -5064,6 +5064,10 @@ button {
 }
 
 .project-detail {
+  /* The global `* { margin: 0; }` reset strips the margin:auto a native
+     <dialog shown via showModal() relies on for centering itself in the
+     viewport, leaving it pinned to the top-left corner instead. */
+  margin: auto;
   width: min(980px, calc(100vw - 48px));
   max-height: min(820px, calc(100dvh - 48px));
   padding: 0;
