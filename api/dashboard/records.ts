@@ -311,17 +311,22 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       requesterEmail: profile.email,
       requesterName: profile.displayName,
     };
-    const result = await client.from("tenant_content").insert({
-      tenant_id: profile.tenantId,
-      title,
-      content_type: "composition",
-      status: "review",
-      payload,
-      created_by: profile.userId,
-      updated_by: profile.userId,
-    }).select("id,title,content_type,status,payload,created_at,updated_at").single();
-    if (result.error) return json({ error: "Produktionsanfrage konnte nicht gespeichert werden" }, { status: 400 });
-    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "create", entity_type: "content_request", entity_id: result.data.id, metadata: { requestType, title } });
+    const creation = await client.rpc("create_portal_service_request", {
+      target_tenant: profile.tenantId,
+      request_title: title,
+      request_payload: payload,
+    });
+    const linkage = Array.isArray(creation.data) ? creation.data[0] : creation.data;
+    if (creation.error || !linkage?.request_id || !linkage?.opportunity_id) {
+      console.error("service request CRM creation:", creation.error?.message || "missing linkage");
+      return json({ error: "Produktionsanfrage und Verkaufschance konnten nicht gespeichert werden" }, { status: 400 });
+    }
+    const result = await client.from("tenant_content")
+      .select("id,title,content_type,status,payload,created_at,updated_at")
+      .eq("id", linkage.request_id)
+      .eq("tenant_id", profile.tenantId)
+      .single();
+    if (result.error) return json({ error: "Produktionsanfrage wurde angelegt, konnte aber nicht geladen werden" }, { status: 500 });
 
     let notificationSent = false;
     if (process.env.RESEND_API_KEY) {
@@ -341,7 +346,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
         console.error("service request notification:", reason);
       }
     }
-    return json({ ok: true, record: result.data, notificationSent });
+    return json({ ok: true, record: result.data, opportunityId: linkage.opportunity_id, notificationSent });
   }
 
   if (action === "update_content_status") {
@@ -824,7 +829,42 @@ export async function POST(request: Request): Promise<Response> {
     const payload = { ...(existing.data.payload || {}), serviceRequestStatus: status };
     const result = await client.from("tenant_content").update({ payload, updated_at: new Date().toISOString() }).eq("id", id).select("id,title,status,payload,updated_at").single();
     if (result.error) return json({ error: "Produktionsstatus konnte nicht gespeichert werden" }, { status: 400 });
+    const opportunityId = cleanText(existing.data.payload?.opportunityId, 80);
+    if (opportunityId) {
+      const stage = status === "planning" ? "consulting" : status === "completed" ? "completed" : status === "declined" ? "lost" : null;
+      const nextAction = status === "submitted"
+        ? "Produktionsanfrage prüfen, Umfang klären und Offerte vorbereiten"
+        : status === "planning"
+          ? "Leistungsumfang kalkulieren und Offerte erstellen"
+          : status === "production"
+            ? "Produktion umsetzen und Kundin oder Kunden informieren"
+            : null;
+      const opportunityUpdate: Record<string, unknown> = { next_action: nextAction, updated_at: new Date().toISOString() };
+      if (stage) opportunityUpdate.stage = stage;
+      let opportunityUpdateQuery = client.from("opportunities").update(opportunityUpdate).eq("id", opportunityId).eq("portal_request_id", id);
+      if (status === "planning") opportunityUpdateQuery = opportunityUpdateQuery.in("stage", ["request", "qualification", "consulting"]);
+      if (status === "declined") opportunityUpdateQuery = opportunityUpdateQuery.in("stage", ["request", "qualification", "consulting", "customer_decision", "quote"]);
+      await opportunityUpdateQuery;
+    }
     await writeAudit(client, profile, "status_change", "content_request", id, { serviceRequestStatus: existing.data.payload?.serviceRequestStatus }, { serviceRequestStatus: status });
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "set_client_portal_verification") {
+    const id = cleanText(body.id, 80);
+    const verified = body.verified === true;
+    if (!id) return json({ error: "Kunde fehlt" }, { status: 400 });
+    const previous = await client.from("clients").select("id,company_name,lifecycle,portal_verified_at,portal_verified_by").eq("id", id).single();
+    if (previous.error) return json({ error: "Kunde nicht gefunden" }, { status: 404 });
+    if (verified && previous.data.lifecycle !== "customer") {
+      return json({ error: "Portalzugriff kann nur für einen registrierten Kunden verifiziert werden" }, { status: 409 });
+    }
+    const update = verified
+      ? { portal_verified_at: new Date().toISOString(), portal_verified_by: profile.userId, updated_at: new Date().toISOString() }
+      : { portal_verified_at: null, portal_verified_by: null, updated_at: new Date().toISOString() };
+    const result = await client.from("clients").update(update).eq("id", id).select("*").single();
+    if (result.error) return json({ error: "Portal-Verifizierung konnte nicht gespeichert werden" }, { status: 400 });
+    await writeAudit(client, profile, verified ? "portal_verify" : "portal_revoke", "client", id, previous.data, result.data);
     return json({ ok: true, record: result.data });
   }
 
@@ -867,6 +907,8 @@ export async function POST(request: Request): Promise<Response> {
       city: cleanText(body.city, 120) || null,
       lifecycle,
       notes: cleanText(body.notes, 20_000) || null,
+      portal_verified_at: lifecycle === "customer" ? previous.data.portal_verified_at : null,
+      portal_verified_by: lifecycle === "customer" ? previous.data.portal_verified_by : null,
       updated_at: new Date().toISOString(),
     };
     if (!update.company_name) return json({ error: "Firmenname fehlt" }, { status: 400 });

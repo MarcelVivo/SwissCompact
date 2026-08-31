@@ -25,6 +25,7 @@ export interface PortalProfile {
   displayName: string;
   membershipId: string;
   tenantId: string;
+  clientId: string;
   tenantName: string;
   tenantSlug: string;
   role: "owner" | "admin" | "editor" | "viewer";
@@ -185,17 +186,20 @@ export async function ensurePortalProfile(
   if (!membership) return null;
   const tenant = await client
     .from("tenants")
-    .select("id,name,slug,status,branding,enabled_modules")
+    .select("id,client_id,name,slug,status,branding,enabled_modules")
     .eq("id", membership.tenant_id)
     .eq("status", "active")
     .maybeSingle();
   if (!tenant.data) return null;
+  const verifiedCustomer = await client.rpc("is_verified_portal_customer", { target_tenant: tenant.data.id });
+  if (verifiedCustomer.error || verifiedCustomer.data !== true || !tenant.data.client_id) return null;
   return {
     userId: user.id,
     email,
     displayName: membership.display_name || user.user_metadata?.full_name || email.split("@")[0],
     membershipId: membership.id,
     tenantId: tenant.data.id,
+    clientId: tenant.data.client_id,
     tenantName: tenant.data.name,
     tenantSlug: tenant.data.slug,
     role: membership.role,

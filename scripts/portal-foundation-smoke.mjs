@@ -5,6 +5,7 @@ const migration = read("supabase/migrations/20260830_customer_platform.sql");
 const mediaMigration = read("supabase/migrations/20260831_portal_media.sql");
 const deviceMigration = read("supabase/migrations/20260831_display_devices.sql");
 const targetingMigration = read("supabase/migrations/20260902_campaign_targeting.sql");
+const customerVerificationMigration = read("supabase/migrations/20260903_verified_portal_customers.sql");
 const auth = read("api/_lib/dashboard/auth.ts");
 const records = read("api/dashboard/records.ts");
 const overview = read("api/dashboard/overview.ts");
@@ -17,6 +18,7 @@ const checks = {
   tables: ["tenants", "tenant_memberships", "tenant_displays", "tenant_content", "tenant_campaigns"].every((name) => migration.includes(`swisscompact.${name}`)),
   rls: migration.includes("enable row level security") && migration.includes("is_tenant_member") && migration.includes("can_edit_tenant"),
   tenantAuthorization: auth.includes("authorizePortal") && auth.includes("tenant_memberships") && auth.includes("tenant_domains"),
+  verifiedCustomerAccess: customerVerificationMigration.includes("is_verified_portal_customer") && customerVerificationMigration.includes("tenants_active_client_required") && auth.includes("is_verified_portal_customer") && auth.includes("clientId"),
   scopedWrites: records.includes('eq("tenant_id", profile.tenantId)') && records.includes('tenant_id: profile.tenantId'),
   customerUi: portal.includes("Medien & Vorlagen") && portal.includes("Bildschirme") && portal.includes("Kampagnen") && portal.includes("Konto & Service"),
   portalBuild: vite.includes("portal.html") && vercel.rewrites.some((item) => item.source === "/portal" && item.destination === "/portal.html"),
@@ -30,7 +32,7 @@ const checks = {
   creatorAttribution: overview.includes("creator_name") && overview.includes("created_by") && overview.includes("tenant_audit_log") && portal.includes("Erstellt von"),
   safeDeletion: ["delete_content", "delete_campaign", "delete_display"].every((action) => records.includes(action)) && records.includes("confirmationName") && records.includes("bumpDisplayConfigurations") && portal.includes("DeleteDialog") && ["Bestätigung {stage} von 2", "zweites Mal", "zweiten Bestätigung", "endgültig löschen"].every((label) => portal.includes(label)) && !["Weiter zur Sicherheitsabfrage", "Name zur Bestätigung"].some((label) => portal.includes(label)),
   mediaArchive: ["archive_content", "restore_content", "delete_content"].every((action) => records.includes(`action === "${action}"`)) && records.includes('status !== "archived"') && overview.includes("archivedContent") && overview.includes('item.status !== "archived"') && ["Medienarchiv", "Archivieren", "Wiederherstellen", "Endgültig löschen", "archived_content"].every((label) => portal.includes(label)),
-  professionalContentRequest: records.includes('action === "create_service_request"') && records.includes("new Resend") && records.includes("serviceRequest: true") && overview.includes("serviceRequests") && ["Von SwissCompact erstellen lassen", "Produktion anfragen", "ServiceRequestDialog", "Anfrage an SwissCompact senden", "Unverbindliche Anfrage"].every((label) => portal.includes(label)),
+  professionalContentRequest: records.includes('action === "create_service_request"') && records.includes("create_portal_service_request") && records.includes("new Resend") && customerVerificationMigration.includes("portal_request_id") && customerVerificationMigration.includes("opportunities") && overview.includes("serviceRequests") && ["Von SwissCompact erstellen lassen", "Produktion anfragen", "ServiceRequestDialog", "Anfrage an SwissCompact senden", "Unverbindliche Anfrage"].every((label) => portal.includes(label)),
   logicalWorkflow: portal.includes('[["overview","Übersicht"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"]') && portal.includes("Kampagne in vier Schritten erstellen") && ["Kampagne planen", "Ziele wählen", "Inhalte zuordnen", "Prüfen & starten"].every((label) => portal.includes(label)),
   simpleCampaignWizard: ["Was planen Sie?", "Wo soll die Kampagne erscheinen?", "Was läuft auf den Ziel-Bildschirmen?", "Alles bereit?"].every((label) => portal.includes(label)) && portal.includes('action: "create_campaign"') && portal.includes('action: "configure_campaign"'),
   responsiveCampaignEditor: campaignCss.includes("wizard-date-pair") && campaignCss.includes("minmax(0, 1fr)") && campaignCss.includes("overflow: hidden") && campaignCss.includes("overflow: auto"),

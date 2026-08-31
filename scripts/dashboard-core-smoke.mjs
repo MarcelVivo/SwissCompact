@@ -8,6 +8,7 @@ const auth = read("api/_lib/dashboard/auth.ts");
 const ui = read("src/dashboard/main.tsx");
 const records = read("api/dashboard/records.ts");
 const overview = read("api/dashboard/overview.ts");
+const portalCustomerMigration = read("supabase/migrations/20260903_verified_portal_customers.sql");
 const publicQuote = read("api/_lib/dashboard/quote-public.ts");
 const lead = read("api/assistant/lead.ts");
 const vercel = JSON.parse(read("vercel.json"));
@@ -41,13 +42,20 @@ assert.match(migration, /'2026-08-28'.*'settlement_transfer'.*'thomas'.*'marcel'
 for (const area of ["Auftragstrichter", "Kundenkartei", "Produktionsanfragen", "Rechnungen", "Finanzen", "KI-Bots", "Sicherheit & Protokoll"]) {
   assert.ok(ui.includes(area), `UI-Bereich ${area} fehlt`);
 }
-for (const action of ["update_client", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "publish_quote", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "invoice_document_url", "update_task_status", "update_service_request_status"]) {
+for (const action of ["update_client", "set_client_portal_verification", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "publish_quote", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "invoice_document_url", "update_task_status", "update_service_request_status"]) {
   assert.ok(records.includes(`action === "${action}"`), `CRM-Aktion ${action} fehlt`);
 }
 assert.match(overview, /contentRequests/);
 assert.match(overview, /serviceRequest: true/);
 assert.match(ui, /ProductionRequests/);
 assert.match(ui, /Kunde kontaktieren/);
+assert.match(ui, /Kundenkartei öffnen/);
+assert.match(ui, /Offerte vorbereiten/);
+assert.match(ui, /Verifizierter SwissCompact-Kunde/);
+assert.match(ui, /Produktionsanfragen/);
+assert.match(portalCustomerMigration, /clients[\s\S]*portal_verified_at/);
+assert.match(portalCustomerMigration, /tenants[\s\S]*client_id/);
+assert.match(portalCustomerMigration, /create_portal_service_request[\s\S]*insert into swisscompact\.opportunities/);
 assert.ok(ui.includes("ClientDrawer"), "Kunden-Detailansicht fehlt");
 assert.ok(ui.includes("OpportunityDrawer"), "Chancen-Detailansicht fehlt");
 assert.ok(ui.includes("ProjectDrawer"), "Projekt-Detailansicht fehlt");

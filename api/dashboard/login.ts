@@ -24,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
     if (error || !data.session || !data.user) return json({ error: "E-Mail oder Passwort ist falsch" }, { status: 401 });
     if (audience === "portal") {
       const portalProfile = await ensurePortalProfile(authClient, data.user, request);
-      if (!portalProfile) return json({ error: "Für dieses Konto ist kein Kundenportal freigeschaltet" }, { status: 403 });
+      if (!portalProfile) return json({ error: "Für dieses Konto ist kein registriertes und verifiziertes Kundenportal freigeschaltet" }, { status: 403 });
       return json({ ok: true, audience, profile: portalProfile }, {
         headers: sessionCookieHeaders(data.session.access_token, data.session.refresh_token, data.session.expires_in),
       });
