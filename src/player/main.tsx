@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { registerServiceWorker } from "../pwa/registerServiceWorker";
 import "./player.css";
 import "./player-video.css";
 import "./player-safety.css";
@@ -11,6 +12,63 @@ const DISPLAY_KEY = "swisscompact_display_id";
 const CONFIG_KEY = "swisscompact_device_config";
 const PLAYER_VERSION = "1.0.0-web";
 const MEDIA_CACHE = "swisscompact-player-media-v1";
+
+registerServiceWorker({ scope: "/" });
+
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
+function isStandalonePlayer(): boolean {
+  const iosStandalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  return iosStandalone || window.matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches;
+}
+
+function PlayerDisplayControls() {
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [standalone, setStandalone] = useState(isStandalonePlayer);
+  const [visible, setVisible] = useState(() => !isStandalonePlayer());
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const canFullscreen = typeof document.documentElement.requestFullscreen === "function";
+
+  useEffect(() => {
+    const capturePrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+      setVisible(true);
+    };
+    const installed = () => { setStandalone(true); setVisible(false); setInstallPrompt(null); };
+    window.addEventListener("beforeinstallprompt", capturePrompt);
+    window.addEventListener("appinstalled", installed);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", capturePrompt);
+      window.removeEventListener("appinstalled", installed);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!visible || standalone) return;
+    const timer = window.setTimeout(() => setVisible(false), 15_000);
+    return () => window.clearTimeout(timer);
+  }, [standalone, visible]);
+
+  useEffect(() => {
+    const reveal = () => { if (!standalone) setVisible(true); };
+    window.addEventListener("pointerdown", reveal);
+    return () => window.removeEventListener("pointerdown", reveal);
+  }, [standalone]);
+
+  if (standalone || (!visible && !installPrompt)) return null;
+
+  return <aside className="player-display-controls" aria-label="Player im Vollbild öffnen">
+    <button type="button" className="player-display-dismiss" onClick={() => setVisible(false)} aria-label="Hinweis schließen">×</button>
+    <strong>Player bildfüllend öffnen</strong>
+    {isIos && <span>In Safari: Teilen → „Zum Home-Bildschirm“ und danach über das SC-Player-Icon starten.</span>}
+    {!isIos && installPrompt && <button type="button" onClick={() => void installPrompt.prompt().then(() => installPrompt.userChoice).then(() => setInstallPrompt(null))}>Player installieren</button>}
+    {canFullscreen && <button type="button" onClick={() => void document.documentElement.requestFullscreen()}>Jetzt Vollbild öffnen</button>}
+  </aside>;
+}
 
 function mediaCacheKey(item: PlaylistItem): string {
   return new URL(`/player-cache/${encodeURIComponent(item.contentId)}`, location.origin).toString();
@@ -248,7 +306,7 @@ function Player() {
     setToken(nextToken);
     void loadConfig(nextToken);
   }} />;
-  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}-${usingFallback ? "fallback" : "scheduled"}`}>{item.contentType === "image" && playableUrl ? <img src={playableUrl} alt="" onError={() => setMediaFailed(true)}/> : item.contentType === "video" && playableUrl ? <PlayerVideo source={playableUrl} loop={usingFallback || config?.playlist.length === 1} onEnded={advancePlaylist} onFailure={() => setMediaFailed(true)}/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p>{!previewDisplayId && <button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button>}</section>}{usingFallback && <div className="player-mode fallback">Ersatzinhalt</div>}{config?.mode === "test" && <div className="player-mode test">Testbetrieb</div>}{previewDisplayId && <div className="player-mode preview">Gerätevorschau</div>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
+  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}-${usingFallback ? "fallback" : "scheduled"}`}>{item.contentType === "image" && playableUrl ? <img src={playableUrl} alt="" onError={() => setMediaFailed(true)}/> : item.contentType === "video" && playableUrl ? <PlayerVideo source={playableUrl} loop={usingFallback || config?.playlist.length === 1} onEnded={advancePlaylist} onFailure={() => setMediaFailed(true)}/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p>{!previewDisplayId && <button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button>}</section>}{usingFallback && <div className="player-mode fallback">Ersatzinhalt</div>}{config?.mode === "test" && <div className="player-mode test">Testbetrieb</div>}{previewDisplayId && <div className="player-mode preview">Gerätevorschau</div>}<PlayerDisplayControls/><div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
 }
 
 createRoot(document.getElementById("player-root")!).render(<Player/>);

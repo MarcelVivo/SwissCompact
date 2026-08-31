@@ -7,11 +7,18 @@ const targetingMigration = read("supabase/migrations/20260902_campaign_targeting
 const safetyMigration = read("supabase/migrations/20260905_safe_display_delivery.sql");
 const records = read("api/dashboard/records.ts");
 const player = read("src/player/main.tsx");
+const playerHtml = read("player.html");
+const playerManifest = JSON.parse(read("public/site/player.webmanifest"));
 const portal = read("src/portal/main.tsx");
 const vercel = JSON.parse(read("vercel.json"));
 
 assert.ok(existsSync(new URL("../player.html", import.meta.url)), "Player-Einstieg fehlt");
 assert.ok(existsSync(new URL("../dist/player.html", import.meta.url)), "Player fehlt im Produktions-Build");
+assert.ok(existsSync(new URL("../dist/player.webmanifest", import.meta.url)), "Player-Manifest fehlt im Produktions-Build");
+assert.equal(playerManifest.start_url, "/player", "Player-App startet nicht direkt im Player");
+assert.ok([playerManifest.display, ...(playerManifest.display_override || [])].includes("standalone"), "Player-App besitzt keinen Standalone-Modus");
+assert.match(playerHtml, /rel="manifest" href="\/player\.webmanifest"/, "Player-Manifest ist nicht eingebunden");
+assert.match(playerHtml, /apple-mobile-web-app-capable/, "iOS-Standalone-Modus fehlt");
 assert.ok(vercel.rewrites.some((rule) => rule.source === "/player" && rule.destination === "/player.html"), "Player-Rewrite fehlt");
 assert.match(migration, /device_token_hash/);
 assert.match(migration, /pairing_code_hash/);
@@ -58,6 +65,8 @@ assert.match(records, /rollback_display/, "Rollback fehlt");
 assert.match(records, /campaignConflicts/, "Kampagnenkonflikte werden nicht geprüft");
 assert.match(player, /swisscompact-player-media-v1/, "Offline-Mediencache fehlt");
 assert.match(player, /fallback/, "Ersatzinhalt fehlt im Player");
+assert.match(player, /PlayerDisplayControls/, "Installations- und Vollbildführung fehlt");
+assert.match(player, /Zum Home-Bildschirm/, "iOS-Installationshinweis fehlt");
 assert.match(portal, /Sicher veröffentlichen/, "Geführte sichere Veröffentlichung fehlt im Portal");
 
 console.log("Display player smoke checks passed.");
