@@ -31,7 +31,8 @@ const DISPLAY_SIZE_LANDSCAPE_CM: Record<number, { width: number; height: number 
   75: { width: 166, height: 93 },
 };
 const LED_AUTO_THRESHOLD_INCHES = 75;
-type Content = { id: string; title: string; content_type: string; status: string; payload?: { text?: string; uploadState?: string; serviceRequest?: boolean; serviceRequestStatus?: string; requestType?: string; requestTypeLabel?: string; objective?: string; deliverables?: string; desiredDate?: string | null; budget?: string | null; requesterEmail?: string; requesterName?: string }; preview_url?: string | null; created_at?: string; creator_name?: string; updated_at: string };
+type MediaMetadata = { width: number; height: number; durationSeconds?: number; aspectRatio: number; orientation: "landscape" | "portrait" | "square"; inspectedAt: string; validationVersion: number };
+type Content = { id: string; title: string; content_type: string; status: string; payload?: { text?: string; uploadState?: string; processingState?: string; compatibilityStatus?: string; posterPath?: string; mediaMetadata?: MediaMetadata; serviceRequest?: boolean; serviceRequestStatus?: string; requestType?: string; requestTypeLabel?: string; objective?: string; deliverables?: string; desiredDate?: string | null; budget?: string | null; requesterEmail?: string; requesterName?: string }; preview_url?: string | null; poster_url?: string | null; created_at?: string; creator_name?: string; updated_at: string };
 type CampaignContentLink = { position: number; duration_seconds: number; content: { id: string; title: string; content_type: string; status: string } | null };
 type Campaign = { id: string; name: string; theme?: string | null; status: string; priority?: number; starts_at?: string; ends_at?: string; scope_site_id?: string | null; scope_area_id?: string | null; created_at?: string; creator_name?: string; updated_at: string; content_links?: CampaignContentLink[]; target_assignments?: Array<{ display_id: string; content_links: CampaignContentLink[] }>; display_links?: Array<{ display_id: string; display: { id: string; name: string; status: string; site?: { name?: string }; area?: { id?: string; name?: string; kind?: string } } | null }> };
 type Subscription = { package_code: string; status: string; starts_on: string; minimum_ends_on?: string; monthly_amount_chf?: number; included_ai_credits?: number } | null;
@@ -65,7 +66,10 @@ type CampaignPreset = { contentId?: string; displayId?: string };
 type PreparedMediaUpload = {
   record: { id: string };
   upload: { signedUrl: string; token: string; path: string; resumableUrl: string };
+  posterUpload?: { signedUrl: string; token: string; path: string } | null;
 };
+
+type InspectedMedia = { file: File; metadata: MediaMetadata; poster?: Blob };
 
 const MEDIA_MIME_BY_EXTENSION: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
@@ -77,6 +81,97 @@ function mediaMimeType(file: File): string {
   if (declared && declared !== "application/octet-stream") return declared;
   const extension = file.name.split(".").pop()?.toLowerCase() || "";
   return MEDIA_MIME_BY_EXTENSION[extension] || declared;
+}
+
+function mediaOrientation(width: number, height: number): MediaMetadata["orientation"] {
+  if (Math.abs(width - height) / Math.max(width, height) < 0.04) return "square";
+  return width > height ? "landscape" : "portrait";
+}
+
+function mediaDurationLabel(seconds?: number): string {
+  if (!seconds) return "";
+  const rounded = Math.max(1, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  return `${minutes}:${String(rounded % 60).padStart(2, "0")} Min.`;
+}
+
+function mediaMetadataLabel(metadata?: MediaMetadata): string {
+  if (!metadata) return "";
+  const orientation = metadata.orientation === "landscape" ? "Querformat" : metadata.orientation === "portrait" ? "Hochformat" : "Quadratisch";
+  return [`${metadata.width} × ${metadata.height} px`, mediaDurationLabel(metadata.durationSeconds), orientation].filter(Boolean).join(" · ");
+}
+
+function contentIsDisplayReady(item: Content): boolean {
+  if (!["image", "video"].includes(item.content_type)) return true;
+  return item.payload?.uploadState === "ready" && (!item.payload.processingState || item.payload.processingState === "ready");
+}
+
+function waitForMediaEvent(target: HTMLMediaElement, successEvent: string, timeoutMs = 15_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => finish(new Error("Die Mediendatei konnte nicht rechtzeitig gelesen werden.")), timeoutMs);
+    const onSuccess = () => finish();
+    const onError = () => finish(new Error("Die Datei ist beschädigt oder verwendet ein nicht unterstütztes Videoformat."));
+    const finish = (error?: Error) => {
+      window.clearTimeout(timeout);
+      target.removeEventListener(successEvent, onSuccess);
+      target.removeEventListener("error", onError);
+      error ? reject(error) : resolve();
+    };
+    target.addEventListener(successEvent, onSuccess, { once: true });
+    target.addEventListener("error", onError, { once: true });
+  });
+}
+
+async function inspectMediaFile(file: File, expectedType: string): Promise<InspectedMedia> {
+  const mimeType = mediaMimeType(file);
+  const isImage = mimeType.startsWith("image/");
+  const isVideo = mimeType.startsWith("video/");
+  if ((expectedType === "image" && !isImage) || (expectedType === "video" && !isVideo)) {
+    throw new Error(expectedType === "video" ? "Bitte wählen Sie eine MP4- oder WebM-Videodatei aus." : "Bitte wählen Sie eine JPG-, PNG- oder WebP-Bilddatei aus.");
+  }
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    if (isImage) {
+      const image = new Image();
+      image.decoding = "async";
+      const loaded = new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("Das Bild ist beschädigt oder kann nicht gelesen werden."));
+      });
+      image.src = objectUrl;
+      await loaded;
+      if (!image.naturalWidth || !image.naturalHeight) throw new Error("Das Bild enthält keine gültige Auflösung.");
+      return { file, metadata: { width: image.naturalWidth, height: image.naturalHeight, aspectRatio: Number((image.naturalWidth / image.naturalHeight).toFixed(4)), orientation: mediaOrientation(image.naturalWidth, image.naturalHeight), inspectedAt: new Date().toISOString(), validationVersion: 1 } };
+    }
+
+    const video = document.createElement("video");
+    video.preload = "auto";
+    video.muted = true;
+    video.playsInline = true;
+    video.src = objectUrl;
+    await waitForMediaEvent(video, "loadedmetadata", 20_000);
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    const durationSeconds = video.duration;
+    if (!width || !height || !Number.isFinite(durationSeconds) || durationSeconds <= 0) throw new Error("Das Video enthält keine gültige Bildspur oder Laufzeit.");
+    if (durationSeconds > 24 * 60 * 60) throw new Error("Das Video ist länger als 24 Stunden und kann nicht verwendet werden.");
+    const seekTime = Math.min(Math.max(durationSeconds * 0.08, 0.05), 1);
+    const seeked = waitForMediaEvent(video, "seeked", 20_000);
+    video.currentTime = seekTime;
+    await seeked;
+    const posterWidth = Math.min(1280, width);
+    const posterHeight = Math.max(1, Math.round((posterWidth / width) * height));
+    const canvas = document.createElement("canvas");
+    canvas.width = posterWidth;
+    canvas.height = posterHeight;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Die Videovorschau konnte auf diesem Gerät nicht erzeugt werden.");
+    context.drawImage(video, 0, 0, posterWidth, posterHeight);
+    const poster = await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Die Videovorschau konnte nicht gespeichert werden.")), "image/jpeg", 0.84));
+    return { file, poster, metadata: { width, height, durationSeconds: Number(durationSeconds.toFixed(3)), aspectRatio: Number((width / height).toFixed(4)), orientation: mediaOrientation(width, height), inspectedAt: new Date().toISOString(), validationVersion: 1 } };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function storageUploadMessage(reason: unknown): string {
@@ -120,6 +215,17 @@ function uploadVideo(file: File, prepared: PreparedMediaUpload, mimeType: string
     });
     upload.start();
   });
+}
+
+async function uploadSignedBlob(blob: Blob, signedUrl: string): Promise<void> {
+  const uploadBody = new FormData();
+  uploadBody.append("cacheControl", "3600");
+  uploadBody.append("", blob);
+  const uploaded = await fetch(signedUrl, { method: "PUT", body: uploadBody, headers: { "x-upsert": "false" } });
+  if (!uploaded.ok) {
+    const detail = await uploaded.text().catch(() => "");
+    throw new Error(detail || `${uploaded.status} ${uploaded.statusText}`);
+  }
 }
 
 const labels: Record<string, string> = {
@@ -369,7 +475,7 @@ function DisplaySafetyDialog({ display, campaigns, content, safety, canEdit, onC
   const [campaignId, setCampaignId] = useState(assigned[0]?.id || "");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const approvedContent = content.filter((item) => ["approved", "published"].includes(item.status));
+  const approvedContent = content.filter((item) => ["approved", "published"].includes(item.status) && contentIsDisplayReady(item));
   const previewUrl = `/player?preview=${encodeURIComponent(display.id)}${campaignId ? `&campaign=${encodeURIComponent(campaignId)}` : ""}`;
 
   async function run(action: string, body: Record<string, unknown>) {
@@ -614,8 +720,8 @@ function Portal() {
           <section className="card"><div className="card-head"><div><span>Bildschirm-Status</span><h3>Ihre Flächen</h3></div><button onClick={() => setView("displays")}>Alle ansehen</button></div>{data.displays.length ? data.displays.slice(0,4).map((item) => <div className="row" key={item.id}><div><strong>{item.name}</strong><small>{item.site?.name || "Ohne Standort"} · Erstellt von {item.creator_name || "Nicht erfasst"}</small></div><Status value={item.status}/></div>) : <Empty>Noch keine Bildschirme verbunden.</Empty>}</section></div>
       </section>}
       {view === "content" && <section className="service-request-entry"><div className="service-request-intro"><div><span className="eyebrow">Persönliche Content-Produktion</span><h2>Von SwissCompact erstellen lassen</h2><p>Für Videoproduktionen, komplexe Kampagnen, Animationen und individuelle Inhalte, die über Upload und KI-Generator hinausgehen.</p></div>{canEdit && <button type="button" className="primary compact" onClick={() => setServiceRequestDialog(true)}>Produktion anfragen</button>}</div>{data.serviceRequests.length > 0 && <div className="service-request-list"><div className="service-request-list-head"><strong>Ihre Anfragen</strong><span>{data.serviceRequests.length}</span></div>{data.serviceRequests.slice(0, 4).map((item) => <article key={item.id}><div><small>{item.payload?.requestTypeLabel || "Individuelle Produktion"}</small><strong>{item.title}</strong><span>{item.payload?.desiredDate ? `Wunschtermin ${new Date(`${item.payload.desiredDate}T12:00:00`).toLocaleDateString("de-CH")}` : "Termin wird gemeinsam festgelegt"}</span></div><b>{serviceRequestStatusLabels[item.payload?.serviceRequestStatus || "submitted"] || "Eingegangen"}</b></article>)}</div>}</section>}
-      {view === "content" && <section className="view"><div className="section-title"><div><h2>Medien & Vorlagen</h2><p>Alle Inhalte klar beschriftet, bearbeitbar und direkt zuweisbar.</p></div>{canEdit && <div className="content-create-actions"><button className="secondary compact ai-create" onClick={() => setAiDialog(true)}><span>✦</span>KI-Bild <b>{data.aiCredits?.balance?.available ?? "–"}</b></button><button className="primary compact" onClick={() => setDialog("content")}><Icon name="plus"/>Bild oder Video hochladen</button></div>}</div><div className="content-grid">{data.content.map((item) => { const usedBy = data.campaigns.filter((campaign) => (campaign.content_links || []).some((link) => link.content?.id === item.id) || (campaign.target_assignments || []).some((assignment) => assignment.content_links.some((link) => link.content?.id === item.id))); return <article className="content-card record-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : item.preview_url && item.content_type === "video" ? <video src={item.preview_url} muted playsInline preload="metadata"/> : null}<span>{item.payload?.uploadState === "uploading" ? "UPLOAD LÄUFT" : item.content_type.toUpperCase()}</span></div><div><span className="record-kind">Inhalt · {item.content_type === "image" ? "Bild" : item.content_type === "video" ? "Video" : item.content_type}</span><div className="record-title-line"><h3>{item.title}</h3><Status value={item.status}/></div><p>{item.payload?.text || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Noch keine Beschreibung")}</p><div className="record-assignment"><span>Verwendung</span><strong>{usedBy.length ? usedBy.map((campaign) => campaign.name).join(", ") : "Noch keiner Kampagne zugeordnet"}</strong></div><small>Geändert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small><small className="creator-meta">Erstellt von {item.creator_name || "Nicht erfasst"}</small>{canEdit && <div className="record-actions">{item.payload?.uploadState !== "uploading" && <button type="button" className="assign-record-action" onClick={() => { setCampaignPreset({ contentId: item.id }); setCreatingCampaign(true); }}>Auf Bildschirm anzeigen</button>}<button type="button" className="edit-record-action" onClick={() => setEditingContent(item)}>Bearbeiten</button>{item.payload?.uploadState !== "uploading" && <button className="content-status-action" onClick={() => void setContentStatus(item.id, ["approved", "published"].includes(item.status) ? "draft" : "approved")}>{["approved", "published"].includes(item.status) ? "Freigabe zurückziehen" : "Für Bildschirme freigeben"}</button>}<button type="button" className="delete-record-action" disabled={archiveBusyId === item.id} onClick={() => void changeContentArchive(item.id, "archive_content")}>{archiveBusyId === item.id ? "Wird archiviert …" : "Archivieren"}</button></div>}</div></article>; })}{!data.content.length && <Empty>Fügen Sie Ihr erstes Bild, Video oder eine Vorlage hinzu.</Empty>}</div></section>}
-      {view === "archive" && <section className="view"><div className="section-title"><div><h2>Medienarchiv</h2><p>Aufbewahrte Bilder, Videos und generierte Inhalte können wiederverwendet oder endgültig gelöscht werden.</p></div><span className="archive-count">{data.archivedContent.length} {data.archivedContent.length === 1 ? "Inhalt" : "Inhalte"}</span></div><div className="content-grid">{data.archivedContent.map((item) => <article className="content-card record-card archived-content-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : item.preview_url && item.content_type === "video" ? <video src={item.preview_url} muted playsInline preload="metadata"/> : null}<span>{item.content_type.toUpperCase()}</span></div><div><span className="record-kind">Archiv · {item.content_type === "image" ? "Bild" : item.content_type === "video" ? "Video" : item.content_type}</span><div className="record-title-line"><h3>{item.title}</h3><Status value="archived"/></div><p>{item.payload?.text || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Archivierter Inhalt")}</p><div className="record-assignment"><span>Verwendung</span><strong>Im Archiv sicher aufbewahrt</strong></div><small>Archiviert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small><small className="creator-meta">Erstellt von {item.creator_name || "Nicht erfasst"}</small>{canEdit && <div className="record-actions"><button type="button" className="restore-record-action" disabled={archiveBusyId === item.id} onClick={() => void changeContentArchive(item.id, "restore_content")}>{archiveBusyId === item.id ? "Wird wiederhergestellt …" : "Wiederherstellen"}</button><button type="button" className="delete-record-action" onClick={() => requestDelete({ kind: "archived_content", id: item.id, name: item.title })}>Endgültig löschen</button></div>}</div></article>)}{!data.archivedContent.length && <Empty>Das Archiv ist leer. Archivierte Medien erscheinen hier und bleiben für später erhalten.</Empty>}</div></section>}
+      {view === "content" && <section className="view"><div className="section-title"><div><h2>Medien & Vorlagen</h2><p>Alle Inhalte klar beschriftet, technisch geprüft und direkt zuweisbar.</p></div>{canEdit && <div className="content-create-actions"><button className="secondary compact ai-create" onClick={() => setAiDialog(true)}><span>✦</span>KI-Bild <b>{data.aiCredits?.balance?.available ?? "–"}</b></button><button className="primary compact" onClick={() => setDialog("content")}><Icon name="plus"/>Bild oder Video hochladen</button></div>}</div><div className="content-grid">{data.content.map((item) => { const usedBy = data.campaigns.filter((campaign) => (campaign.content_links || []).some((link) => link.content?.id === item.id) || (campaign.target_assignments || []).some((assignment) => assignment.content_links.some((link) => link.content?.id === item.id))); const displayReady = contentIsDisplayReady(item); const mediaDetails = mediaMetadataLabel(item.payload?.mediaMetadata); return <article className="content-card record-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : (item.poster_url || item.preview_url) && item.content_type === "video" ? <img src={item.poster_url || item.preview_url || ""} alt="" loading="lazy"/> : null}<span>{item.payload?.uploadState === "uploading" ? "UPLOAD LÄUFT" : displayReady && ["image", "video"].includes(item.content_type) ? "✓ DISPLAYBEREIT" : item.content_type.toUpperCase()}</span></div><div><span className="record-kind">Inhalt · {item.content_type === "image" ? "Bild" : item.content_type === "video" ? "Video" : item.content_type}</span><div className="record-title-line"><h3>{item.title}</h3><Status value={item.status}/></div><p>{item.payload?.text || mediaDetails || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Noch keine Beschreibung")}</p><div className="record-assignment"><span>Verwendung</span><strong>{usedBy.length ? usedBy.map((campaign) => campaign.name).join(", ") : "Noch keiner Kampagne zugeordnet"}</strong></div><small>Geändert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small><small className="creator-meta">Erstellt von {item.creator_name || "Nicht erfasst"}</small>{canEdit && <div className="record-actions">{displayReady && <button type="button" className="assign-record-action" onClick={() => { setCampaignPreset({ contentId: item.id }); setCreatingCampaign(true); }}>Auf Bildschirm anzeigen</button>}<button type="button" className="edit-record-action" onClick={() => setEditingContent(item)}>Bearbeiten</button>{displayReady && <button className="content-status-action" onClick={() => void setContentStatus(item.id, ["approved", "published"].includes(item.status) ? "draft" : "approved")}>{["approved", "published"].includes(item.status) ? "Freigabe zurückziehen" : "Für Bildschirme freigeben"}</button>}<button type="button" className="delete-record-action" disabled={archiveBusyId === item.id} onClick={() => void changeContentArchive(item.id, "archive_content")}>{archiveBusyId === item.id ? "Wird archiviert …" : "Archivieren"}</button></div>}</div></article>; })}{!data.content.length && <Empty>Fügen Sie Ihr erstes Bild, Video oder eine Vorlage hinzu.</Empty>}</div></section>}
+      {view === "archive" && <section className="view"><div className="section-title"><div><h2>Medienarchiv</h2><p>Aufbewahrte Bilder, Videos und generierte Inhalte können wiederverwendet oder endgültig gelöscht werden.</p></div><span className="archive-count">{data.archivedContent.length} {data.archivedContent.length === 1 ? "Inhalt" : "Inhalte"}</span></div><div className="content-grid">{data.archivedContent.map((item) => <article className="content-card record-card archived-content-card" key={item.id}><div className={`content-preview type-${item.content_type}`}>{item.preview_url && item.content_type === "image" ? <img src={item.preview_url} alt="" loading="lazy"/> : (item.poster_url || item.preview_url) && item.content_type === "video" ? <img src={item.poster_url || item.preview_url || ""} alt="" loading="lazy"/> : null}<span>{item.content_type.toUpperCase()}</span></div><div><span className="record-kind">Archiv · {item.content_type === "image" ? "Bild" : item.content_type === "video" ? "Video" : item.content_type}</span><div className="record-title-line"><h3>{item.title}</h3><Status value="archived"/></div><p>{item.payload?.text || mediaMetadataLabel(item.payload?.mediaMetadata) || (item.content_type === "image" ? "Bildmedium" : item.content_type === "video" ? "Videomedium" : "Archivierter Inhalt")}</p><div className="record-assignment"><span>Verwendung</span><strong>Im Archiv sicher aufbewahrt</strong></div><small>Archiviert {new Date(item.updated_at).toLocaleDateString("de-CH")}</small><small className="creator-meta">Erstellt von {item.creator_name || "Nicht erfasst"}</small>{canEdit && <div className="record-actions"><button type="button" className="restore-record-action" disabled={archiveBusyId === item.id} onClick={() => void changeContentArchive(item.id, "restore_content")}>{archiveBusyId === item.id ? "Wird wiederhergestellt …" : "Wiederherstellen"}</button><button type="button" className="delete-record-action" onClick={() => requestDelete({ kind: "archived_content", id: item.id, name: item.title })}>Endgültig löschen</button></div>}</div></article>)}{!data.archivedContent.length && <Empty>Das Archiv ist leer. Archivierte Medien erscheinen hier und bleiben für später erhalten.</Empty>}</div></section>}
       {view === "campaigns" && <section className="view"><div className="section-title"><div><h2>Kampagnen</h2><p>Jede Kampagne mit Zeitraum, Bildschirmen und Inhalten auf einen Blick.</p></div>{canEdit && <button className="primary compact" onClick={() => { setCampaignInitialStep(1); setCreatingCampaign(true); }}><Icon name="plus"/>Kampagne hinzufügen</button>}</div><div className="table-card"><div className="table-head campaign-table"><span>Kampagne</span><span>Laufzeit</span><span>Verantwortlich</span><span>Status</span><span>Aktionen</span></div>{data.campaigns.map((item) => { const contentIds = new Set([...(item.content_links || []).flatMap((link) => link.content?.id ? [link.content.id] : []), ...(item.target_assignments || []).flatMap((assignment) => assignment.content_links.flatMap((link) => link.content?.id ? [link.content.id] : []))]); const scope = item.scope_area_id ? data.areas.find((area) => area.id === item.scope_area_id)?.name : item.scope_site_id ? data.sites.find((site) => site.id === item.scope_site_id)?.name : "Alle Standorte"; return <div className="table-row campaign-table" key={item.id}><div className="campaign-identity"><span className="record-kind">Kampagne</span><strong>{item.name}</strong><small>{item.theme || "Ohne Thema"}</small><small>{scope || "Ohne Einordnung"} · {item.display_links?.length || 0} {(item.display_links?.length || 0) === 1 ? "Bildschirm" : "Bildschirme"} · {contentIds.size} {contentIds.size === 1 ? "Inhalt" : "Inhalte"}</small></div><span>{item.starts_at ? new Date(item.starts_at).toLocaleDateString("de-CH") : "Sofort"} – {item.ends_at ? new Date(item.ends_at).toLocaleDateString("de-CH") : "Ohne Ende"}</span><span className="creator-meta">{item.creator_name || "Nicht erfasst"}</span><Status value={item.status}/><div className="campaign-row-actions"><button className="assign-record-action" onClick={() => { setCampaignInitialStep(2); setEditingCampaign(item); }}>Bildschirme zuordnen</button><button className="row-action" onClick={() => { setCampaignInitialStep(1); setEditingCampaign(item); }}>{canEdit ? "Bearbeiten" : "Ansehen"}</button>{canEdit && <button type="button" className="delete-record-action" onClick={() => requestDelete({ kind: "campaign", id: item.id, name: item.name })}>Löschen</button>}</div></div>; })}{!data.campaigns.length && <Empty>Erstellen Sie Ihre erste Kampagne.</Empty>}</div></section>}
       {view === "displays" && <section className="view"><div className="section-title"><div><h2>Bildschirme</h2><p>Name, Standort, Status und Kampagnen-Zuordnung sofort erkennen.</p></div>{canManageDevices && <button className="primary compact" onClick={() => setDisplaySetup(true)}><Icon name="plus"/>Bildschirm hinzufügen</button>}</div><div className="display-grid">{data.displays.map((item) => { const assigned = data.campaigns.filter((campaign) => (campaign.display_links || []).some((link) => link.display_id === item.id)); return <article className="display-card record-card" key={item.id}><DisplayPreview display={item} campaigns={data.campaigns} content={data.content}/><div><span className="record-kind">Bildschirm · {item.orientation === "portrait" ? "Hochformat" : item.orientation === "landscape" ? "Querformat" : "Individuell"}</span><div className="record-title-line"><h3>{item.name}</h3><Status value={item.status}/></div><p>{item.site?.name || "Standort noch nicht zugewiesen"}{item.area?.name ? ` · ${item.area.name}` : ""}</p><div className="record-assignment"><span>Kampagnen</span><strong>{assigned.length ? assigned.map((campaign) => campaign.name).join(", ") : "Noch keine Kampagne zugeordnet"}</strong></div><small>{item.resolution?.width ? `${item.resolution.width} × ${item.resolution.height}` : "Auflösung nicht erfasst"}</small><small className="creator-meta">Erstellt von {item.creator_name || "Nicht erfasst"}</small><div className="record-actions"><a className="player-open-action" href={`/player?preview=${encodeURIComponent(item.id)}`} target="_blank" rel="noreferrer">Player öffnen</a>{canEdit && <button type="button" className="assign-record-action" onClick={() => { setCampaignPreset({ displayId: item.id }); setCreatingCampaign(true); }}>Inhalt zuweisen</button>}{canManageDevices && <button type="button" className="edit-record-action" onClick={() => setEditingDisplay(item)}>Bearbeiten</button>}{canManageDevices && <button type="button" className="device-link" disabled={Boolean(pairingBusyId)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void createPairing(item); }}>{pairingBusyId === item.id ? "Code wird erstellt …" : item.status === "provisioning" ? "Aktivierungscode erstellen" : "Bildschirm neu verbinden"}</button>}{canManageDevices && <button type="button" className="delete-record-action" onClick={() => requestDelete({ kind: "display", id: item.id, name: item.name })}>Löschen</button>}</div></div></article>; })}{!data.displays.length && <Empty>Richten Sie Ihren ersten Bildschirm ein.</Empty>}</div></section>}
       {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang und das aktive SwissCompact-Paket.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
@@ -805,7 +911,7 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
   const mediaListRef = useRef<HTMLDivElement>(null);
   const isRunning = Boolean(campaign && ["active", "scheduled"].includes(campaign.status));
   const isClosed = Boolean(campaign && ["completed", "archived"].includes(campaign.status));
-  const availableContent = content.filter((item) => item.payload?.uploadState !== "uploading");
+  const availableContent = content.filter(contentIsDisplayReady);
   const scopedAreaIds = new Set<string>();
   if (scopeAreaId) {
     scopedAreaIds.add(scopeAreaId);
@@ -1054,6 +1160,23 @@ function CreateDialog({ type, initialContentType = "image", nested = false, onCl
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [contentType, setContentType] = useState(initialContentType);
+  const [inspectionBusy, setInspectionBusy] = useState(false);
+  const [inspection, setInspection] = useState<InspectedMedia | null>(null);
+
+  async function inspectSelection(file?: File) {
+    setInspection(null);
+    setError("");
+    if (!file?.size) return;
+    setInspectionBusy(true);
+    try {
+      setInspection(await inspectMediaFile(file, contentType));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Die Datei konnte nicht geprüft werden.");
+    } finally {
+      setInspectionBusy(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setUploadProgress(0); const form = new FormData(event.currentTarget);
     const title = String(form.get("title") || "");
@@ -1064,26 +1187,21 @@ function CreateDialog({ type, initialContentType = "image", nested = false, onCl
       const file = form.get("file");
       if (type === "content" && (contentType === "image" || contentType === "video")) {
         if (!(file instanceof File) || !file.size) throw new Error("Bitte wählen Sie eine Datei aus.");
+        const inspected = inspection?.file === file ? inspection : await inspectMediaFile(file, contentType);
         const mimeType = mediaMimeType(file);
         const prepared = await api<PreparedMediaUpload>("/api/dashboard/records?audience=portal", {
           method: "POST",
-          body: JSON.stringify({ action: "prepare_media_upload", title, mimeType, sizeBytes: file.size }),
+          body: JSON.stringify({ action: "prepare_media_upload", title, mimeType, sizeBytes: file.size, mediaMetadata: inspected.metadata, createPoster: Boolean(inspected.poster) }),
         });
         preparedId = prepared.record.id;
         createdId = prepared.record.id;
         if (contentType === "video") {
           await uploadVideo(file, prepared, mimeType, setUploadProgress);
         } else {
-          const uploadBody = new FormData();
-          uploadBody.append("cacheControl", "3600");
-          uploadBody.append("", file);
-          const uploaded = await fetch(prepared.upload.signedUrl, { method: "PUT", body: uploadBody, headers: { "x-upsert": "false" } });
-          if (!uploaded.ok) {
-            const detail = await uploaded.text().catch(() => "");
-            throw new Error(detail || `${uploaded.status} ${uploaded.statusText}`);
-          }
+          await uploadSignedBlob(file, prepared.upload.signedUrl);
           setUploadProgress(100);
         }
+        if (inspected.poster && prepared.posterUpload?.signedUrl) await uploadSignedBlob(inspected.poster, prepared.posterUpload.signedUrl);
         await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "finalize_media_upload", id: prepared.record.id }) });
         preparedId = "";
       } else {
@@ -1098,7 +1216,7 @@ function CreateDialog({ type, initialContentType = "image", nested = false, onCl
     } finally { setBusy(false); }
   }
   const isMedia = contentType === "image" || contentType === "video";
-  return <div className={`dialog-backdrop ${nested ? "campaign-child-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Medien & Vorlagen" : "Anzeigen"}</div><h2>{type === "content" ? "Bild oder Video hochladen" : "Neue Anzeige erstellen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Name der Anzeige"}<input name="title" required autoFocus /></label>{type === "content" ? <><label>Was möchten Sie hinzufügen?<select name="contentType" value={contentType} onChange={(event) => setContentType(event.target.value)}><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="text">Textanzeige</option><option value="web">Web-Inhalt</option><option value="composition">Leerer Entwurf (erweitert)</option></select></label>{isMedia ? <label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm,.mp4,.webm"}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4 (H.264) oder WebM · maximal 250 MB"}</small></label> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{busy && isMedia && <div className="upload-progress" role="status"><span style={{ width: `${uploadProgress}%` }}/><small>{uploadProgress > 0 ? `${uploadProgress} % übertragen` : "Upload wird vorbereitet …"}</small></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy}>{busy ? (isMedia ? `Datei wird übertragen${uploadProgress ? ` · ${uploadProgress} %` : " …"}` : "Wird gespeichert …") : isMedia ? (nested ? "Hochladen und auswählen" : "Datei hochladen") : "Inhalt speichern"}</button></form></section></div>;
+  return <div className={`dialog-backdrop ${nested ? "campaign-child-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Medien & Vorlagen" : "Anzeigen"}</div><h2>{type === "content" ? "Bild oder Video hochladen" : "Neue Anzeige erstellen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Name der Anzeige"}<input name="title" required autoFocus /></label>{type === "content" ? <><label>Was möchten Sie hinzufügen?<select name="contentType" value={contentType} onChange={(event) => { setContentType(event.target.value); setInspection(null); setError(""); }}><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="text">Textanzeige</option><option value="web">Web-Inhalt</option><option value="composition">Leerer Entwurf (erweitert)</option></select></label>{isMedia ? <><label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm,.mp4,.webm"} onChange={(event) => void inspectSelection(event.target.files?.[0])}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4 (H.264) oder WebM · maximal 250 MB · wird vor dem Upload geprüft"}</small></label>{inspectionBusy && <div className="media-file-check checking" role="status"><i/><span><strong>Datei wird technisch geprüft …</strong><small>Auflösung, Laufzeit und Abspielbarkeit</small></span></div>}{inspection && <div className="media-file-check ready" role="status"><b>✓</b><span><strong>Technisch lesbar</strong><small>{mediaMetadataLabel(inspection.metadata)}{inspection.poster ? " · Vorschau erstellt" : ""}</small></span></div>}</> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{busy && isMedia && <div className="upload-progress" role="status"><span style={{ width: `${uploadProgress}%` }}/><small>{uploadProgress > 0 ? `${uploadProgress} % übertragen` : "Geprüfter Upload wird vorbereitet …"}</small></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy || inspectionBusy || (isMedia && !inspection)}>{busy ? (isMedia ? `Datei wird übertragen${uploadProgress ? ` · ${uploadProgress} %` : " …"}` : "Wird gespeichert …") : inspectionBusy ? "Datei wird geprüft …" : isMedia ? (nested ? "Hochladen und auswählen" : "Datei hochladen") : "Inhalt speichern"}</button></form></section></div>;
 }
 
 function PortalEntry() {

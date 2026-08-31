@@ -73,6 +73,60 @@
   font-weight: 700;
 }
 
+.media-file-check {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  border: 1px solid #d8d8dc;
+  border-radius: 0.8rem;
+  padding: 0.8rem 0.95rem;
+  background: #f6f6f7;
+}
+
+.media-file-check > :is(b, i) {
+  display: grid;
+  flex: 0 0 2rem;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 50%;
+  font-style: normal;
+}
+
+.media-file-check > span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.media-file-check strong {
+  font-size: 0.84rem;
+}
+
+.media-file-check small {
+  color: #6f6f73;
+  font-size: 0.76rem;
+}
+
+.media-file-check.ready {
+  border-color: #b7e7d2;
+  background: #edf9f4;
+}
+
+.media-file-check.ready > b {
+  background: #16875d;
+  color: #fff;
+}
+
+.media-file-check.checking > i {
+  border: 3px solid #d6d6da;
+  border-top-color: var(--accent);
+  animation: media-check-spin 0.75s linear infinite;
+}
+
+@keyframes media-check-spin {
+  to { transform: rotate(360deg); }
+}
+
 .content-status-action {
   display: block;
   width: 100%;

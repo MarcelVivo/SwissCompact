@@ -80,9 +80,11 @@ export async function GET(request: Request): Promise<Response> {
     const creatorName = (userId?: string | null) => userId ? creatorNames.get(userId) || "Ehemaliger Benutzer" : "Nicht erfasst";
     const contentWithPreviews = await Promise.all((content.data ?? []).map(async (item) => {
       const enriched = { ...item, creator_name: creatorName(item.created_by || auditedCreators.get(`content:${item.id}`)) };
-      if (!item.asset_path || item.payload?.uploadState !== "ready") return { ...enriched, preview_url: null };
+      if (!item.asset_path || item.payload?.uploadState !== "ready" || (item.payload?.processingState && item.payload.processingState !== "ready")) return { ...enriched, preview_url: null, poster_url: null };
       const preview = await client.storage.from("swisscompact-media").createSignedUrl(item.asset_path, 60 * 60);
-      return { ...enriched, preview_url: preview.data?.signedUrl ?? null };
+      const posterPath = typeof item.payload?.posterPath === "string" ? item.payload.posterPath : "";
+      const poster = posterPath ? await client.storage.from("swisscompact-media").createSignedUrl(posterPath, 60 * 60) : null;
+      return { ...enriched, preview_url: preview.data?.signedUrl ?? null, poster_url: poster?.data?.signedUrl ?? null };
     }));
     const displayHealthCutoff = Date.now() - 90_000;
     const deliveryStateByDisplay = new Map((displayDeliveryState.data ?? []).map((entry) => [entry.id, entry]));

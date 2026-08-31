@@ -63,7 +63,9 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 
 ### 6. Medien- und Unternehmensskalierung
 
-- [ ] Videos automatisch normalisieren und Vorschaubilder erzeugen
+- [x] Medien vor Upload dekodieren, technische Metadaten erfassen und Vorschaubilder erzeugen
+- [x] Unvollständige oder nicht lesbare Medien von Kampagnen und Player-Auslieferung ausschliessen
+- [ ] Videos serverseitig in ein einheitliches H.264/AAC-Auslieferungsformat normalisieren
 - [ ] Kampagnenvorlagen und wiederverwendbare Abläufe
 - [ ] Bildschirmgruppen, Suche, Filter und Massenaktionen
 - [ ] Prioritäten und Playlists je Standort, Gebäude, Stockwerk und Bereich

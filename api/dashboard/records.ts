@@ -26,6 +26,39 @@ const PROJECT_FILE_TYPES: Record<string, { extension: string; maxBytes: number; 
   "application/pdf": { extension: "pdf", maxBytes: 20 * 1024 * 1024, kind: "document" },
 };
 
+function normalizedMediaMetadata(value: unknown, type: "image" | "video"): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  const width = Math.round(Number(candidate.width));
+  const height = Math.round(Number(candidate.height));
+  const durationSeconds = Number(candidate.durationSeconds);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1 || width > 32768 || height > 32768) return null;
+  if (type === "video" && (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 86400)) return null;
+  const orientation = Math.abs(width - height) / Math.max(width, height) < 0.04 ? "square" : width > height ? "landscape" : "portrait";
+  return {
+    width,
+    height,
+    ...(type === "video" ? { durationSeconds: Number(durationSeconds.toFixed(3)) } : {}),
+    aspectRatio: Number((width / height).toFixed(4)),
+    orientation,
+    inspectedAt: new Date().toISOString(),
+    validationVersion: 1,
+  };
+}
+
+function mediaPayloadIsReady(payload: Record<string, unknown> | null | undefined): boolean {
+  return payload?.uploadState === "ready" && (!payload.processingState || payload.processingState === "ready");
+}
+
+async function storageObjectExists(client: any, path: string): Promise<boolean> {
+  const parts = path.split("/");
+  const filename = parts.pop() || "";
+  const directory = parts.join("/");
+  if (!filename || !directory) return false;
+  const stored = await client.storage.from(PORTAL_MEDIA_BUCKET).list(directory, { limit: 10, search: filename });
+  return !stored.error && Boolean(stored.data?.some((entry: { name: string }) => entry.name === filename));
+}
+
 function portalSetupUrl(request: Request): string {
   const configured = process.env.SITE_URL;
   if (configured) {
@@ -413,6 +446,7 @@ async function buildDisplayConfig(client: any, display: any, updateDeviceState =
       const linkedContent = Array.isArray(link.content) ? link.content[0] : link.content;
       const content = linkedContent as { id: string; title: string; content_type: string; status: string; payload: Record<string, unknown>; asset_path?: string | null } | null;
       if (!content || !["approved", "published"].includes(content.status)) continue;
+      if (["image", "video"].includes(content.content_type) && (!content.asset_path || !mediaPayloadIsReady(content.payload))) continue;
       let mediaUrl: string | null = null;
       if (content.asset_path) {
         const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUrl(content.asset_path, 6 * 60 * 60);
@@ -431,6 +465,7 @@ async function materializeFallback(client: any, display: any, configuredFallback
   if (!fallbackId) return null;
   const fallback = await client.from("tenant_content").select("id,title,content_type,status,payload,asset_path").eq("id", fallbackId).eq("tenant_id", display.tenant_id).in("status", ["approved", "published"]).maybeSingle();
   if (!fallback.data) return null;
+  if (["image", "video"].includes(fallback.data.content_type) && (!fallback.data.asset_path || !mediaPayloadIsReady(fallback.data.payload))) return null;
   let mediaUrl: string | null = null;
   if (fallback.data.asset_path) {
     const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUrl(fallback.data.asset_path, 6 * 60 * 60);
@@ -610,17 +645,24 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (!media || sizeBytes < 1 || sizeBytes > media.maxBytes) {
       return json({ error: "Dateityp oder Dateigrösse wird nicht unterstützt" }, { status: 400 });
     }
+    const mediaMetadata = normalizedMediaMetadata(body.mediaMetadata, media.type);
+    if (!mediaMetadata) return json({ error: "Die Datei wurde noch nicht technisch geprüft. Bitte laden Sie die Seite neu und wählen Sie die Datei erneut aus." }, { status: 400 });
+    if (media.type === "video" && body.createPoster !== true) return json({ error: "Für das Video fehlt das automatisch erzeugte Vorschaubild" }, { status: 400 });
     const month = now.slice(0, 7);
-    const assetPath = `${profile.tenantId}/${month}/${randomBytes(16).toString("hex")}.${media.extension}`;
+    const assetKey = randomBytes(16).toString("hex");
+    const assetPath = `${profile.tenantId}/${month}/${assetKey}.${media.extension}`;
+    const posterPath = media.type === "video" ? `${profile.tenantId}/${month}/${assetKey}-poster.jpg` : null;
     const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUploadUrl(assetPath);
     if (signed.error || !signed.data?.token) return json({ error: `Upload konnte nicht vorbereitet werden${signed.error?.message ? `: ${signed.error.message}` : ""}` }, { status: 503 });
+    const posterSigned = posterPath ? await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUploadUrl(posterPath) : null;
+    if (posterPath && (posterSigned?.error || !posterSigned?.data?.token)) return json({ error: "Die Videovorschau konnte nicht vorbereitet werden" }, { status: 503 });
     const result = await client.from("tenant_content").insert({
       tenant_id: profile.tenantId,
       title,
       content_type: media.type,
       status: "draft",
       asset_path: assetPath,
-      payload: { mimeType, sizeBytes, uploadState: "uploading" },
+      payload: { mimeType, sizeBytes, uploadState: "uploading", processingState: "validated", compatibilityStatus: "browser_verified", mediaMetadata, posterPath },
       created_by: profile.userId,
       updated_by: profile.userId,
     }).select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
@@ -635,6 +677,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
         path: signed.data.path,
         resumableUrl: resumableStorageUrl(signed.data.signedUrl),
       },
+      posterUpload: posterSigned?.data ? { signedUrl: posterSigned.data.signedUrl, token: posterSigned.data.token, path: posterSigned.data.path } : null,
     });
   }
 
@@ -643,13 +686,11 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (!id) return json({ error: "Inhalt fehlt" }, { status: 400 });
     const existing = await client.from("tenant_content").select("id,asset_path,payload").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (existing.error || !existing.data?.asset_path) return json({ error: "Inhalt nicht gefunden" }, { status: 404 });
-    const parts = existing.data.asset_path.split("/");
-    const filename = parts.pop() || "";
-    const directory = parts.join("/");
-    const stored = await client.storage.from(PORTAL_MEDIA_BUCKET).list(directory, { limit: 10, search: filename });
-    if (stored.error || !stored.data?.some((entry) => entry.name === filename)) return json({ error: "Die Datei wurde noch nicht vollständig übertragen" }, { status: 409 });
+    if (!await storageObjectExists(client, existing.data.asset_path)) return json({ error: "Die Datei wurde noch nicht vollständig übertragen" }, { status: 409 });
+    const posterPath = typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : "";
+    if (posterPath && !await storageObjectExists(client, posterPath)) return json({ error: "Die Videovorschau wurde noch nicht vollständig übertragen" }, { status: 409 });
     const result = await client.from("tenant_content").update({
-      payload: { ...(existing.data.payload || {}), uploadState: "ready" },
+      payload: { ...(existing.data.payload || {}), uploadState: "ready", processingState: "ready", compatibilityStatus: "display_ready", processedAt: now },
       updated_by: profile.userId,
       updated_at: now,
     }).eq("id", id).eq("tenant_id", profile.tenantId).select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
@@ -665,7 +706,8 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (existing.error || !existing.data || existing.data.payload?.uploadState !== "uploading") {
       return json({ error: "Upload nicht gefunden" }, { status: 404 });
     }
-    if (existing.data.asset_path) await client.storage.from(PORTAL_MEDIA_BUCKET).remove([existing.data.asset_path]);
+    const uploadPaths = [existing.data.asset_path, typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : ""].filter(Boolean);
+    if (uploadPaths.length) await client.storage.from(PORTAL_MEDIA_BUCKET).remove(uploadPaths);
     const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
     if (removed.error) return json({ error: removed.error.message }, { status: 400 });
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "upload_cancelled", entity_type: "content", entity_id: id });
@@ -767,6 +809,13 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (!id || !["draft", "review", "approved", "published", "archived"].includes(status)) {
       return json({ error: "Ungültige Statusänderung" }, { status: 400 });
     }
+    if (["approved", "published"].includes(status)) {
+      const existing = await client.from("tenant_content").select("content_type,asset_path,payload").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+      if (!existing.data) return json({ error: "Inhalt nicht gefunden" }, { status: 404 });
+      if (["image", "video"].includes(existing.data.content_type) && (!existing.data.asset_path || !mediaPayloadIsReady(existing.data.payload))) {
+        return json({ error: "Dieses Medium ist noch nicht vollständig geprüft und kann nicht freigegeben werden" }, { status: 409 });
+      }
+    }
     const result = await client.from("tenant_content").update({ status, updated_by: profile.userId, updated_at: now })
       .eq("id", id).eq("tenant_id", profile.tenantId)
       .select("id,title,content_type,status,payload,asset_path,created_at,updated_at").single();
@@ -842,7 +891,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   if (action === "delete_content") {
     const id = cleanText(body.id, 80);
     if (!id) return json({ error: "Inhalt fehlt" }, { status: 400 });
-    const existing = await client.from("tenant_content").select("id,title,status,asset_path").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    const existing = await client.from("tenant_content").select("id,title,status,asset_path,payload").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (existing.error || !existing.data) return json({ error: "Inhalt nicht gefunden" }, { status: 404 });
     if (existing.data.status !== "archived") return json({ error: "Inhalte können nur aus dem Archiv endgültig gelöscht werden" }, { status: 409 });
     if (cleanText(body.confirmationName, 180) !== existing.data.title) return json({ error: "Der eingegebene Name stimmt nicht überein" }, { status: 409 });
@@ -850,8 +899,9 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
     if (removed.error) return json({ error: "Inhalt konnte nicht gelöscht werden" }, { status: 400 });
     await bumpDisplayConfigurations(client, usage.displayIds);
-    if (existing.data.asset_path) {
-      const storageRemoval = await client.storage.from(PORTAL_MEDIA_BUCKET).remove([existing.data.asset_path]);
+    const storagePaths = [existing.data.asset_path, typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : ""].filter(Boolean);
+    if (storagePaths.length) {
+      const storageRemoval = await client.storage.from(PORTAL_MEDIA_BUCKET).remove(storagePaths);
       if (storageRemoval.error) console.error("content asset cleanup:", storageRemoval.error.message);
     }
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "delete", entity_type: "content", entity_id: id, metadata: { title: existing.data.title, removedFromCampaigns: usage.campaignIds.length } });
@@ -1123,8 +1173,11 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const campaign = await client.from("tenant_campaigns").select("id,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
     if (contentIds.length) {
-      const available = await client.from("tenant_content").select("id").eq("tenant_id", profile.tenantId).in("id", contentIds);
+      const available = await client.from("tenant_content").select("id,content_type,status,asset_path,payload").eq("tenant_id", profile.tenantId).in("id", contentIds);
       if (available.error || available.data?.length !== contentIds.length) return json({ error: "Mindestens ein Motiv gehört nicht zu diesem Kunden" }, { status: 403 });
+      if (available.data.some((item) => item.status === "archived" || (["image", "video"].includes(item.content_type) && (!item.asset_path || !mediaPayloadIsReady(item.payload))))) {
+        return json({ error: "Mindestens ein Medium ist noch nicht displaybereit" }, { status: 409 });
+      }
     }
     let availableDisplays: Array<{ id: string; site_id?: string | null; area_id?: string | null }> = [];
     if (displayIds.length) {
@@ -1176,14 +1229,14 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
     if (["completed", "archived"].includes(campaign.data.status)) return json({ error: "Diese Kampagne ist abgeschlossen" }, { status: 409 });
     const [contentLinks, displayLinks, targetContentLinks] = await Promise.all([
-      client.from("tenant_campaign_content").select("content_id,content:tenant_content(status)").eq("campaign_id", id),
+      client.from("tenant_campaign_content").select("content_id,content:tenant_content(status,content_type,asset_path,payload)").eq("campaign_id", id),
       client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id),
-      client.from("tenant_campaign_display_content").select("display_id,content_id,content:tenant_content(status)").eq("campaign_id", id).eq("tenant_id", profile.tenantId),
+      client.from("tenant_campaign_display_content").select("display_id,content_id,content:tenant_content(status,content_type,asset_path,payload)").eq("campaign_id", id).eq("tenant_id", profile.tenantId),
     ]);
     if (!contentLinks.data?.length) return json({ error: "Fügen Sie der Kampagne mindestens ein Motiv hinzu" }, { status: 409 });
     const unapproved = contentLinks.data.some((link) => {
       const relation = Array.isArray(link.content) ? link.content[0] : link.content;
-      return !relation || !["approved", "published"].includes(relation.status);
+      return !relation || !["approved", "published"].includes(relation.status) || (["image", "video"].includes(relation.content_type) && (!relation.asset_path || !mediaPayloadIsReady(relation.payload)));
     });
     if (unapproved) return json({ error: "Geben Sie alle gewählten Motive vor dem Start frei" }, { status: 409 });
     if (!displayLinks.data?.length) return json({ error: "Wählen Sie mindestens einen Bildschirm aus" }, { status: 409 });
@@ -1192,7 +1245,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (missingTarget) return json({ error: "Weisen Sie jedem gewählten Bildschirm mindestens ein Motiv zu" }, { status: 409 });
     const unapprovedTargetContent = (targetContentLinks.data ?? []).some((link) => {
       const relation = Array.isArray(link.content) ? link.content[0] : link.content;
-      return !relation || !["approved", "published"].includes(relation.status);
+      return !relation || !["approved", "published"].includes(relation.status) || (["image", "video"].includes(relation.content_type) && (!relation.asset_path || !mediaPayloadIsReady(relation.payload)));
     });
     if (unapprovedTargetContent) return json({ error: "Geben Sie alle zielbezogenen Motive vor dem Start frei" }, { status: 409 });
     if (campaign.data.ends_at && new Date(campaign.data.ends_at).getTime() <= Date.now()) return json({ error: "Das Enddatum liegt bereits in der Vergangenheit" }, { status: 409 });
