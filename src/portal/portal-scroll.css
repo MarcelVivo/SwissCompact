@@ -1,0 +1,74 @@
+/*
+ * Ein Dialog, ein Scrollbereich:
+ * Der Hintergrund übernimmt das vertikale Scrollen. Karten, Assistenten und
+ * Formulare wachsen mit ihrem Inhalt und erzeugen keine verschachtelten
+ * Scrollleisten mehr.
+ */
+.dialog-backdrop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dialog-backdrop > .dialog {
+  flex: 0 0 auto;
+  margin-block: auto;
+}
+
+.campaign-editor,
+.record-edit-dialog,
+.service-request-dialog,
+.ai-dialog,
+.display-safety-dialog {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.campaign-editor {
+  min-height: 0;
+}
+
+.wizard-stage,
+.selection-list,
+.ai-dialog-grid,
+.ai-dialog form,
+.ai-preview-column {
+  min-height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.ai-backdrop {
+  overflow-y: auto;
+}
+
+@media (min-width: 1050px) and (min-height: 650px) {
+  .ai-dialog {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .ai-dialog-grid,
+  .ai-dialog form,
+  .ai-preview-column {
+    min-height: auto;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 680px) {
+  .dialog-backdrop {
+    padding: 9px;
+  }
+
+  .campaign-editor,
+  .ai-dialog {
+    height: auto;
+    max-height: none;
+  }
+}

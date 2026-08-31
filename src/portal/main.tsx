@@ -16,6 +16,7 @@ import "./portal-customer-records.css";
 import "./portal-project-collaboration.css";
 import "./portal-safety.css";
 import "./portal-onboarding.css";
+import "./portal-scroll.css";
 
 type PortalProfile = { displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
 type Site = { id: string; name: string; active: boolean; address?: Record<string, string> };

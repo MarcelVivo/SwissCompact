@@ -12,6 +12,7 @@ const overview = read("api/dashboard/overview.ts");
 const portal = read("src/portal/main.tsx");
 const campaignCss = read("src/portal/portal-campaign.css");
 const onboardingCss = read("src/portal/portal-onboarding.css");
+const scrollCss = read("src/portal/portal-scroll.css");
 const vercel = JSON.parse(read("vercel.json"));
 const vite = read("vite.config.ts");
 
@@ -43,6 +44,7 @@ const checks = {
   customerNotifications: records.includes("sendCustomerStatusNotification") && records.includes("Meine Vorgänge öffnen") && records.includes("Customer status notification failed"),
   simpleCampaignWizard: ["Was planen Sie?", "Wo soll die Kampagne erscheinen?", "Was läuft auf den Ziel-Bildschirmen?", "Alles bereit?"].every((label) => portal.includes(label)) && portal.includes('action: "create_campaign"') && portal.includes('action: "configure_campaign"'),
   responsiveCampaignEditor: campaignCss.includes("wizard-date-pair") && campaignCss.includes("minmax(0, 1fr)") && campaignCss.includes("overflow: hidden") && campaignCss.includes("overflow: auto"),
+  singleDialogScrollArea: [".dialog-backdrop", "overflow-y: auto", ".wizard-stage", ".selection-list", "max-height: none", "overflow: visible"].every((value) => scrollCss.includes(value)),
   inWizardMediaCreation: ["Vorhandener Inhalt", "Bild oder Video", "KI-Bild erstellen", "Hochladen und auswählen"].every((label) => portal.includes(label)) && portal.includes("acceptCreatedContent") && portal.includes('status: "approved"') && campaignCss.includes("campaign-child-backdrop"),
   scalableCampaignTargeting: targetingMigration.includes("tenant_areas") && targetingMigration.includes("tenant_campaign_display_content") && targetingMigration.includes("on conflict (campaign_id, display_id, content_id) do nothing") && records.includes("targetAssignments") && records.includes("targetContentByCampaign") && overview.includes("target_assignments") && ["Gleicher Inhalt überall", "Unterschiedlich je Ziel", "Standort / Gebäude", "Stockwerk / Bereich"].every((label) => portal.includes(label)),
   directDisplayAssignment: ["Auf Bildschirm anzeigen", "Inhalt zuweisen", "CampaignPreset"].every((label) => portal.includes(label)) && portal.includes("campaign ? initialStep : 1") && portal.includes("ensureCampaignDraft") && portal.includes("Die Kampagne ist als Entwurf gespeichert"),
