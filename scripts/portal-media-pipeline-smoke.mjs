@@ -20,6 +20,7 @@ const checks = {
   secureMuxPlayback: ["muxSignedPlaybackUrl", "RS256", 'aud: "v"', "MUX_SIGNING_KEY_ID", "MUX_PRIVATE_KEY"].every((value) => mux.includes(value)) && records.includes("materializeMediaUrl"),
   verifiedMuxWebhooks: ["verifyMuxWebhook", "timingSafeEqual", "mux-signature", "video.asset.static_rendition.ready"].every((value) => mux.concat(muxWebhook).includes(value)),
   asynchronousReadiness: ["VIDEO WIRD AUFBEREITET", "contentProcessingLabel", "processingState", "setInterval"].every((value) => portal.includes(value)) && muxWebhook.includes('compatibilityStatus = "display_ready"'),
+  guidedCampaignMediaReadiness: ["pendingCreatedContent", "wird jetzt aufbereitet und danach automatisch freigegeben und ausgewählt", "ist displaybereit, freigegeben und ausgewählt"].every((value) => portal.includes(value)),
   muxDeletion: records.includes("deleteMuxAsset") && records.includes("deleteMuxDirectUpload") && records.includes("Mux content cleanup failed"),
 };
 

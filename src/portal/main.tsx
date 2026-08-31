@@ -772,7 +772,6 @@ function Portal() {
     {editingContent && <ContentEditDialog content={editingContent} onClose={() => setEditingContent(null)} onUpload={() => { setEditingContent(null); setDialog("content"); }} onSaved={() => { setEditingContent(null); void load(); }} />}
     {aiDialog && <AiImageDialog credits={data.aiCredits} canBuy={canManageDevices} checkoutNotice={creditNotice} onDismissCheckoutNotice={() => setCreditNotice(null)} onClose={() => setAiDialog(false)} onCreated={() => { setAiDialog(false); void load(); }} />}
     {(creatingCampaign || editingCampaign) && <CampaignEditor campaign={editingCampaign} preset={editingCampaign ? null : campaignPreset} initialStep={campaignInitialStep} sites={data.sites} areas={data.areas} content={data.content} displays={data.displays} aiCredits={data.aiCredits} canEdit={canEdit} canManageDevices={canManageDevices} onContentCreated={async (id) => {
-      await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id, status: "approved" }) });
       const next = await load(false);
       return next?.content.find((item) => item.id === id) || null;
     }} onDraftCreated={() => load(false)} onCreateDisplay={() => setDisplaySetup(true)} onClose={() => { setCreatingCampaign(false); setEditingCampaign(null); setCampaignPreset(null); setCampaignInitialStep(1); void load(false); }} onSaved={() => { if (campaignPreset) setView("displays"); setCreatingCampaign(false); setEditingCampaign(null); setCampaignPreset(null); setCampaignInitialStep(1); void load(); }} />}
@@ -948,6 +947,7 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
   const [draftNotice, setDraftNotice] = useState("");
   const [contentDialog, setContentDialog] = useState<"upload" | "ai" | null>(null);
   const [contentNotice, setContentNotice] = useState("");
+  const [pendingCreatedContent, setPendingCreatedContent] = useState<{ id: string; targetId: string } | null>(null);
   const mediaListRef = useRef<HTMLDivElement>(null);
   const isRunning = Boolean(campaign && ["active", "scheduled"].includes(campaign.status));
   const isClosed = Boolean(campaign && ["completed", "archived"].includes(campaign.status));
@@ -1011,11 +1011,46 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
     if (mode === "individual") setTargetPlaylists((current) => ({ ...current, ...Object.fromEntries(chosenDisplays.filter((display) => !current[display.id]).map((display) => [display.id, [...sharedPlaylist]])) }));
     setContentMode(mode);
   }
+  useEffect(() => {
+    if (!pendingCreatedContent) return;
+    const created = content.find((item) => item.id === pendingCreatedContent.id);
+    if (!created) return;
+    if (created.payload?.processingState === "error") {
+      setPendingCreatedContent(null);
+      setContentNotice("");
+      setError(created.payload.processingError || `„${created.title}“ konnte nicht aufbereitet werden.`);
+      return;
+    }
+    if (!contentIsDisplayReady(created)) return;
+    const targetId = pendingCreatedContent.targetId;
+    setPendingCreatedContent(null);
+    void (async () => {
+      try {
+        if (!["approved", "published"].includes(created.status)) {
+          await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id: created.id, status: "approved" }) });
+        }
+        updatePlaylist(targetId, (playlist) => playlist.some((entry) => entry.contentId === created.id) ? playlist : [...playlist, { contentId: created.id, durationSeconds: 10 }]);
+        setContentNotice(`„${created.title}“ ist displaybereit, freigegeben und ausgewählt.`);
+        await onDraftCreated();
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Der neue Inhalt konnte nicht automatisch ausgewählt werden.");
+      }
+    })();
+  }, [content, pendingCreatedContent]);
   async function acceptCreatedContent(id?: string) {
     if (!id) throw new Error("Das neue Motiv konnte nicht übernommen werden.");
     setError("");
     const created = await onContentCreated(id);
     if (!created) throw new Error("Das neue Motiv wurde gespeichert, konnte aber noch nicht geladen werden.");
+    if (!contentIsDisplayReady(created)) {
+      setPendingCreatedContent({ id, targetId: currentTargetId });
+      setContentNotice(`„${created.title}“ wird jetzt aufbereitet und danach automatisch freigegeben und ausgewählt.`);
+      setContentDialog(null);
+      return;
+    }
+    if (!["approved", "published"].includes(created.status)) {
+      await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id, status: "approved" }) });
+    }
     updatePlaylist(currentTargetId, (playlist) => playlist.some((entry) => entry.contentId === id) ? playlist : [...playlist, { contentId: id, durationSeconds: 10 }]);
     setContentNotice(`„${created.title}“ wurde erstellt, freigegeben und ausgewählt.`);
     setContentDialog(null);
