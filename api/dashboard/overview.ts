@@ -2,6 +2,7 @@ import { authorizeDashboard, authorizePortal, dashboardSupabase, isResponse } fr
 import { json } from "../_lib/assistant/security.js";
 import { publicAiConfiguration } from "../_lib/portal/ai-config.js";
 import { muxSignedPlaybackUrl, muxVideoEnabled } from "../_lib/portal/mux-video.js";
+import { loadPartnerNetwork } from "../_lib/portal/partner-network.js";
 
 export const config = { runtime: "nodejs", maxDuration: 15 };
 
@@ -13,6 +14,7 @@ export async function GET(request: Request): Promise<Response> {
     const tenantId = profile.tenantId;
     const customerAdmin = dashboardSupabase();
     if (!customerAdmin) return json({ error: "Kundenvorgänge sind noch nicht konfiguriert" }, { status: 503 });
+    const partnerNetworkPromise = loadPartnerNetwork(customerAdmin, tenantId);
     const displayHealthRefresh = await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
     if (displayHealthRefresh.error) console.warn("portal display health refresh:", displayHealthRefresh.error.message);
     const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts] = await Promise.all([
@@ -46,6 +48,7 @@ export async function GET(request: Request): Promise<Response> {
       customerAdmin.from("project_review_decisions").select("id,deliverable_version_id,project_id,decision,feedback,decided_by_name,created_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
       customerAdmin.from("project_revision_rounds").select("id,project_id,deliverable_id,round_number,status,request_text,response_text,included,additional_cost_chf,approved_at,created_at,updated_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
     ]);
+    const partnerNetwork = await partnerNetworkPromise;
     const portalDataQueries = { sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents };
     const portalDataErrors = Object.entries(portalDataQueries)
       .filter(([, result]) => result.error)
@@ -149,6 +152,7 @@ export async function GET(request: Request): Promise<Response> {
         reviews: collaborationAvailable ? projectReviews.data ?? [] : [],
         revisions: collaborationAvailable ? projectRevisions.data ?? [] : [],
       },
+      partnerNetwork,
       displaySafety: {
         versions: displaySafetyAvailable ? displayVersions.data ?? [] : [],
         tests: displaySafetyAvailable ? displayTests.data ?? [] : [],

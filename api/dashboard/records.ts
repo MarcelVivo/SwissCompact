@@ -10,6 +10,7 @@ import { handleAiImagePost } from "../_lib/portal/ai-image-handler.js";
 import { handleStripeWebhookPost } from "../_lib/portal/stripe-webhook-handler.js";
 import { createMuxDirectUpload, deleteMuxAsset, deleteMuxDirectUpload, getMuxDirectUpload, muxSignedPlaybackUrl, muxVideoEnabled } from "../_lib/portal/mux-video.js";
 import { handleMuxWebhookPost } from "../_lib/portal/mux-webhook-handler.js";
+import { handlePartnerNetworkAction } from "../_lib/portal/partner-network.js";
 
 export const config = { runtime: "nodejs", maxDuration: 180 };
 
@@ -518,6 +519,13 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   const action = cleanText(body.action, 80);
   const now = new Date().toISOString();
 
+  if (action.includes("partner")) {
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Das Partnerprogramm ist noch nicht konfiguriert" }, { status: 503 });
+    const partnerResponse = await handlePartnerNetworkAction(admin, profile, body);
+    if (partnerResponse) return partnerResponse;
+  }
+
   if (action === "create_portal_quote_access") {
     if (!["owner", "admin"].includes(profile.role)) return json({ error: "Nur Inhaber oder Administratoren dürfen Offerten entscheiden" }, { status: 403 });
     const quoteId = cleanText(body.quoteId, 80);
@@ -969,8 +977,15 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (existing.error || !existing.data) return json({ error: "Inhalt nicht gefunden" }, { status: 404 });
     if (existing.data.status !== "archived") return json({ error: "Inhalte können nur aus dem Archiv endgültig gelöscht werden" }, { status: 409 });
     if (cleanText(body.confirmationName, 180) !== existing.data.title) return json({ error: "Der eingegebene Name stimmt nicht überein" }, { status: 409 });
+    const sharedPartnerCopy = existing.data.payload?.partnerSource?.sharedAsset === true;
+    if (!sharedPartnerCopy) {
+      const acceptedPartnerOffers = await client.from("tenant_partner_content_offers").select("id", { count: "exact", head: true }).eq("source_content_id", id).eq("status", "accepted").not("recipient_content_id", "is", null);
+      if (!acceptedPartnerOffers.error && (acceptedPartnerOffers.count || 0) > 0) {
+        return json({ error: "Dieser Inhalt wird noch von einem Partnerbetrieb verwendet und kann deshalb nicht endgültig gelöscht werden" }, { status: 409 });
+      }
+    }
     const usage = await contentUsage(client, profile.tenantId, id);
-    if (mediaUsesMux(existing.data.payload)) {
+    if (!sharedPartnerCopy && mediaUsesMux(existing.data.payload)) {
       const assetId = cleanText(existing.data.payload?.mux?.assetId, 180);
       const uploadId = cleanText(existing.data.payload?.mux?.uploadId, 180);
       try {
@@ -984,7 +999,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const removed = await client.from("tenant_content").delete().eq("id", id).eq("tenant_id", profile.tenantId);
     if (removed.error) return json({ error: "Inhalt konnte nicht gelöscht werden" }, { status: 400 });
     await bumpDisplayConfigurations(client, usage.displayIds);
-    const storagePaths = [mediaUsesMux(existing.data.payload) ? "" : existing.data.asset_path, typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : ""].filter(Boolean);
+    const storagePaths = sharedPartnerCopy ? [] : [mediaUsesMux(existing.data.payload) ? "" : existing.data.asset_path, typeof existing.data.payload?.posterPath === "string" ? existing.data.payload.posterPath : ""].filter(Boolean);
     if (storagePaths.length) {
       const storageRemoval = await client.storage.from(PORTAL_MEDIA_BUCKET).remove(storagePaths);
       if (storageRemoval.error) console.error("content asset cleanup:", storageRemoval.error.message);
