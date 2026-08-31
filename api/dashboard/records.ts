@@ -1014,6 +1014,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       scope_area_id: scopeAreaId,
       starts_at: startsAt,
       ends_at: endsAt,
+      schedule: { portalSetupStep: 1 },
       created_by: profile.userId,
     }).select("id,name,theme,status,priority,scope_site_id,scope_area_id,starts_at,ends_at,schedule,created_at,updated_at").single();
     if (result.error) return json({ error: result.error.message }, { status: 400 });
@@ -1233,6 +1234,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const priority = Math.min(100, Math.max(0, Math.round(Number(body.priority) || 50)));
     const startsAt = optionalDate(body.startsAt);
     const endsAt = optionalDate(body.endsAt);
+    const setupStep = Math.min(4, Math.max(1, Math.round(Number(body.setupStep) || 1)));
     const rawAssignments = Array.isArray(body.targetAssignments) ? body.targetAssignments : [];
     const legacyContent = Array.isArray(body.contentItems) ? body.contentItems : [];
     const legacyDisplays = Array.isArray(body.displayIds) ? body.displayIds : [];
@@ -1255,7 +1257,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (new Set(displayIds).size !== displayIds.length) return json({ error: "Ein Ziel-Bildschirm darf nur einmal vorkommen" }, { status: 400 });
     if (assignments.some((assignment) => new Set(assignment.contentItems.map((item) => item.contentId)).size !== assignment.contentItems.length)) return json({ error: "Ein Motiv darf pro Bildschirm nur einmal vorkommen" }, { status: 400 });
     const contentIds = [...new Set(assignments.flatMap((assignment) => assignment.contentItems.map((item) => item.contentId)))];
-    const campaign = await client.from("tenant_campaigns").select("id,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    const campaign = await client.from("tenant_campaigns").select("id,status,schedule").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
     if (contentIds.length) {
       const available = await client.from("tenant_content").select("id,content_type,status,asset_path,payload").eq("tenant_id", profile.tenantId).in("id", contentIds);
@@ -1301,7 +1303,8 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       const inserted = await client.from("tenant_campaign_display_content").insert(assignments.flatMap((assignment) => assignment.contentItems.map((item) => ({ tenant_id: profile.tenantId, campaign_id: id, display_id: assignment.displayId, content_id: item.contentId, position: item.position, duration_seconds: item.durationSeconds }))));
       if (inserted.error) return json({ error: inserted.error.message }, { status: 400 });
     }
-    await client.from("tenant_campaigns").update({ name, theme, priority, scope_site_id: scopeSiteId, scope_area_id: scopeAreaId, starts_at: startsAt, ends_at: endsAt, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId);
+    const schedule = campaign.data.schedule && typeof campaign.data.schedule === "object" && !Array.isArray(campaign.data.schedule) ? campaign.data.schedule : {};
+    await client.from("tenant_campaigns").update({ name, theme, priority, scope_site_id: scopeSiteId, scope_area_id: scopeAreaId, starts_at: startsAt, ends_at: endsAt, schedule: { ...schedule, portalSetupStep: setupStep }, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId);
     await bumpDisplayConfigurations(client, [...(previousTargets.data ?? []).map((entry) => entry.display_id), ...displayIds], "campaign", id);
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "configure", entity_type: "campaign", entity_id: id, metadata: { contentCount: contentIds.length, displayCount: displayIds.length, targetedContentCount: totalContentItems } });
     return json({ ok: true });
