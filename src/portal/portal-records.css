@@ -5,6 +5,65 @@
   font-size: 11px !important;
 }
 
+.record-card > div:last-child {
+  display: flex;
+  min-height: 300px;
+  flex-direction: column;
+}
+
+.record-kind {
+  display: block;
+  color: var(--accent) !important;
+  font-size: 9px !important;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .13em;
+}
+
+.record-title-line {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.record-title-line h3 {
+  min-width: 0;
+  margin: 8px 0 7px;
+  overflow-wrap: anywhere;
+}
+
+.record-title-line .status {
+  flex: none;
+  margin-top: 8px;
+}
+
+.record-assignment {
+  display: grid;
+  gap: 4px;
+  margin: 5px 0 13px;
+  border-radius: 11px;
+  padding: 11px 12px;
+  background: #f4f2ee;
+}
+
+.record-assignment span {
+  color: #8b8882;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.record-assignment strong {
+  overflow: hidden;
+  color: #29282a;
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .portal-workflow {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -104,6 +163,11 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   margin-top: 15px;
+  padding-top: 2px;
+}
+
+.record-card .record-actions {
+  margin-top: auto;
 }
 
 .record-actions .content-status-action,
@@ -132,6 +196,25 @@
   outline: none;
 }
 
+.edit-record-action {
+  border: 1px solid #d5d2cc;
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: #fff;
+  color: #27272a;
+  font-weight: 750;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.edit-record-action:hover,
+.edit-record-action:focus-visible {
+  border-color: var(--accent);
+  background: #faf9f7;
+  outline: none;
+}
+
 .delete-record-action {
   border: 1px solid #e5bcc4;
   border-radius: 10px;
@@ -157,6 +240,26 @@
 
 .campaign-table > .creator-meta {
   margin-top: 0;
+}
+
+.campaign-identity {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding-block: 10px;
+}
+
+.campaign-identity > strong {
+  overflow-wrap: anywhere;
+}
+
+.campaign-identity > small:not(.record-kind) {
+  overflow: hidden;
+  color: #85827d;
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .campaign-row-actions {
@@ -226,6 +329,47 @@
   cursor: pointer;
 }
 
+.delete-name-copy {
+  margin: -6px 0 15px;
+  border-radius: 10px;
+  padding: 11px 13px;
+  background: #ece9e4;
+  color: #27272a;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.delete-confirmation-field {
+  margin-bottom: 14px;
+}
+
+.record-edit-dialog {
+  width: min(600px, 100%);
+  max-height: calc(100svh - 36px);
+  overflow: auto;
+}
+
+.record-edit-readonly {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 16px;
+  border-radius: 12px;
+  padding: 13px 14px;
+  background: #eceae6;
+  font-size: 12px;
+}
+
+.record-edit-readonly span {
+  color: #7c7974;
+}
+
+.record-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 5px;
+}
+
 .delete-dialog-actions button:disabled {
   opacity: .55;
   cursor: wait;
@@ -278,6 +422,15 @@
   }
 
   .delete-dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .record-title-line {
+    align-items: center;
+  }
+
+  .record-edit-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
