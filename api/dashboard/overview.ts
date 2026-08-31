@@ -45,11 +45,14 @@ export async function GET(request: Request): Promise<Response> {
       customerAdmin.from("project_review_decisions").select("id,deliverable_version_id,project_id,decision,feedback,decided_by_name,created_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
       customerAdmin.from("project_revision_rounds").select("id,project_id,deliverable_id,round_number,status,request_text,response_text,included,additional_cost_chf,approved_at,created_at,updated_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
     ]);
-    const firstError = [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents].find((result) => result.error)?.error;
-    if (firstError) {
-      console.error("portal overview:", firstError.message);
-      return json({ error: "Das Kundenportal-Datenmodell ist noch nicht eingerichtet" }, { status: 503 });
-    }
+    const portalDataQueries = { sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents };
+    const portalDataErrors = Object.entries(portalDataQueries)
+      .filter(([, result]) => result.error)
+      .map(([query, result]) => ({ query, message: result.error?.message }));
+    // Eine optionale Portalansicht darf eine gültige Kundensitzung nie wieder
+    // auf den Anmeldebildschirm zurückwerfen. Fehlerhafte Bereiche bleiben leer
+    // und werden serverseitig mit ihrem Abfragenamen protokolliert.
+    if (portalDataErrors.length) console.error("portal overview partial data:", portalDataErrors);
     const displaySafetyAvailable = [displayVersions, displayTests, displayAlerts].every((result) => !result.error);
     if (!displaySafetyAvailable) console.warn("portal display safety is temporarily unavailable", {
       versions: displayVersions.error?.message,
