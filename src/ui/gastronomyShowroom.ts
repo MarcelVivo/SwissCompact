@@ -6644,6 +6644,28 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
       "[data-showroom-display-scale-reset]",
     ),
   );
+  const displayAdvancedToggle = root.querySelector<HTMLButtonElement>(
+    "[data-showroom-display-advanced-toggle]",
+  );
+  const displayAdvancedPanel = root.querySelector<HTMLElement>(
+    "[data-showroom-display-advanced]",
+  );
+  const orientationCompareShapes = {
+    landscape: root.querySelector<HTMLElement>(
+      "[data-showroom-orientation-shape=\"landscape\"]",
+    ),
+    portrait: root.querySelector<HTMLElement>(
+      "[data-showroom-orientation-shape=\"portrait\"]",
+    ),
+  };
+  const orientationCompareDims = {
+    landscape: root.querySelector<HTMLElement>(
+      "[data-showroom-orientation-dims=\"landscape\"]",
+    ),
+    portrait: root.querySelector<HTMLElement>(
+      "[data-showroom-orientation-dims=\"portrait\"]",
+    ),
+  };
   const furnishingLists = Array.from(
     root.querySelectorAll<HTMLElement>("[data-showroom-furnishing-list]"),
   );
@@ -20700,6 +20722,8 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     clearStructureSelection();
     displayFlyoutOpen = true;
     if (displayFlyout) displayFlyout.hidden = false;
+    if (displayAdvancedPanel) displayAdvancedPanel.hidden = true;
+    displayAdvancedToggle?.setAttribute("aria-expanded", "false");
     updateDisplayOwnershipLabels();
     root.classList.add("has-display-selection");
     refreshDisplaySelectionVisuals();
@@ -22580,6 +22604,34 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
           : "Individuelle Skalierung auf Standardgrösse zurücksetzen.",
       );
     });
+    {
+      // Both orientation shapes are sized from the same real cm dimensions
+      // getDisplayPhysicalDesign() already computes for the current size/
+      // scale/technology — landscape and portrait are just swapped, so
+      // fitting both within the same bounding box makes them directly,
+      // honestly comparable rather than two arbitrary icons.
+      const COMPARE_BOX_PX = 52;
+      (["landscape", "portrait"] as const).forEach((orientation) => {
+        const design = getDisplayPhysicalDesign(
+          config.displaySize,
+          orientation,
+          config.displayWidthScale,
+          config.displayTechnology,
+        );
+        const longSideCm = Math.max(design.widthCm, design.heightCm);
+        const scale = longSideCm > 0 ? COMPARE_BOX_PX / longSideCm : 0;
+        const shape = orientationCompareShapes[orientation];
+        if (shape) {
+          shape.style.width = `${Math.max(6, design.widthCm * scale)}px`;
+          shape.style.height = `${Math.max(6, design.heightCm * scale)}px`;
+        }
+        const dims = orientationCompareDims[orientation];
+        if (dims) {
+          dims.textContent =
+            `${Math.round(design.widthCm)} × ${Math.round(design.heightCm)} cm`;
+        }
+      });
+    }
     root.querySelectorAll<HTMLElement>("[data-showroom-wall-count]").forEach(
       (output) => {
         const wall = output.dataset.showroomWallCount as DisplayWall | undefined;
@@ -25239,6 +25291,17 @@ export function mountGastronomyShowroom(): GastronomyShowroom {
     displayTechnologyButtons.forEach((button) => {
       button.removeEventListener("click", displayTechnologyHandler);
     });
+  });
+
+  const displayAdvancedToggleHandler = (): void => {
+    if (!displayAdvancedToggle || !displayAdvancedPanel) return;
+    const open = displayAdvancedPanel.hidden;
+    displayAdvancedPanel.hidden = !open;
+    displayAdvancedToggle.setAttribute("aria-expanded", String(open));
+  };
+  displayAdvancedToggle?.addEventListener("click", displayAdvancedToggleHandler);
+  cleanupHandlers.push(() => {
+    displayAdvancedToggle?.removeEventListener("click", displayAdvancedToggleHandler);
   });
 
   root.querySelectorAll<HTMLButtonElement>("[data-showroom-count]").forEach((button) => {

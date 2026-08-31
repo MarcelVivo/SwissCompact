@@ -1313,29 +1313,6 @@
               <i aria-hidden="true">↗</i>
             </button>
             <small class="showroom-mount-dimensions">Montagefläche <strong data-showroom-mount-dimensions>5,60 × 2,80 m</strong> · Darstellung <strong data-showroom-display-fit-output>100%</strong></small>
-            <div class="showroom-display-flyout__group showroom-display-technology">
-              <span>Bildtechnologie <output data-showroom-display-technology-output>Professional Display</output></span>
-              <div class="showroom-options showroom-options--three">
-                <button class="is-active" type="button" data-showroom-display-technology="auto">Automatisch</button>
-                <button type="button" data-showroom-display-technology="display">Display</button>
-                <button type="button" data-showroom-display-technology="led">LED-Fläche</button>
-              </div>
-              <div class="showroom-display-technology__status" data-showroom-display-technology-status>
-                <strong data-showroom-display-technology-badge>DISPLAY</strong>
-                <span data-showroom-display-technology-detail>Bis 75″ wird ein professionelles Display eingesetzt.</span>
-              </div>
-              <div class="showroom-media-comparison" aria-label="Unterschied zwischen Display und LED-Fläche">
-                <article class="is-display">
-                  <i aria-hidden="true">▣</i>
-                  <span><strong>Display</strong><small>Sehr gut für einzelne Bildschirme. Mehrere Displays haben sichtbare Rahmen und eine kleine Lücke dazwischen.</small></span>
-                </article>
-                <article class="is-led">
-                  <i aria-hidden="true">▰</i>
-                  <span><strong>LED-Fläche</strong><small>Heller, kontrastreicher, randlos und langlebiger im Dauerbetrieb. Mehrere Module zeigen ein Bild nahtlos.</small></span>
-                </article>
-              </div>
-              <small data-showroom-display-technology-hint>Automatik: bis 75″ Display · über 75″ modular berechnete LED-Wand.</small>
-            </div>
             <div class="showroom-display-flyout__group">
               <span>Displaygrösse <output data-showroom-display-size-output>55″ · 121 × 68 cm</output></span>
               <div class="showroom-options showroom-size-options" data-showroom-size-options>
@@ -1358,9 +1335,17 @@
             </div>
             <div class="showroom-display-flyout__group">
               <span>Ausrichtung</span>
-              <div class="showroom-options">
-                <button type="button" data-showroom-setting="orientation" data-value="landscape">Horizontal</button>
-                <button class="is-active" type="button" data-showroom-setting="orientation" data-value="portrait">Vertikal</button>
+              <div class="showroom-orientation-compare" data-showroom-orientation-compare>
+                <button type="button" class="showroom-orientation-compare__option" data-showroom-setting="orientation" data-value="landscape">
+                  <span class="showroom-orientation-compare__shape" data-showroom-orientation-shape="landscape" aria-hidden="true"></span>
+                  <strong>Querformat</strong>
+                  <small data-showroom-orientation-dims="landscape">121 × 68 cm</small>
+                </button>
+                <button class="showroom-orientation-compare__option is-active" type="button" data-showroom-setting="orientation" data-value="portrait">
+                  <span class="showroom-orientation-compare__shape" data-showroom-orientation-shape="portrait" aria-hidden="true"></span>
+                  <strong>Hochformat</strong>
+                  <small data-showroom-orientation-dims="portrait">68 × 121 cm</small>
+                </button>
               </div>
             </div>
             <div class="showroom-display-flyout__group">
@@ -1370,6 +1355,39 @@
                 <button class="is-active" type="button" data-showroom-setting="content" data-value="campaign">Kampagne</button>
                 <button type="button" data-showroom-setting="content" data-value="pickup">Abholung</button>
               </div>
+            </div>
+            <button
+              class="showroom-display-flyout__advanced-toggle"
+              type="button"
+              data-showroom-display-advanced-toggle
+              aria-expanded="false"
+              aria-controls="showroom-display-advanced"
+            >
+              <span><strong>Weitere Einstellungen</strong><small>Bildtechnologie und Netzwerk-Freigaben</small></span><i aria-hidden="true">⌄</i>
+            </button>
+            <div class="showroom-display-flyout__advanced" id="showroom-display-advanced" data-showroom-display-advanced hidden>
+            <div class="showroom-display-flyout__group showroom-display-technology">
+              <span>Bildtechnologie <output data-showroom-display-technology-output>Professional Display</output></span>
+              <div class="showroom-options showroom-options--three">
+                <button class="is-active" type="button" data-showroom-display-technology="auto">Automatisch</button>
+                <button type="button" data-showroom-display-technology="display">Display</button>
+                <button type="button" data-showroom-display-technology="led">LED-Fläche</button>
+              </div>
+              <div class="showroom-display-technology__status" data-showroom-display-technology-status>
+                <strong data-showroom-display-technology-badge>DISPLAY</strong>
+                <span data-showroom-display-technology-detail>Bis 75″ wird ein professionelles Display eingesetzt.</span>
+              </div>
+              <div class="showroom-media-comparison" aria-label="Unterschied zwischen Display und LED-Fläche">
+                <article class="is-display">
+                  <i aria-hidden="true">▣</i>
+                  <span><strong>Display</strong><small>Sehr gut für einzelne Bildschirme. Mehrere Displays haben sichtbare Rahmen und eine kleine Lücke dazwischen.</small></span>
+                </article>
+                <article class="is-led">
+                  <i aria-hidden="true">▰</i>
+                  <span><strong>LED-Fläche</strong><small>Heller, kontrastreicher, randlos und langlebiger im Dauerbetrieb. Mehrere Module zeigen ein Bild nahtlos.</small></span>
+                </article>
+              </div>
+              <small data-showroom-display-technology-hint>Automatik: bis 75″ Display · über 75″ modular berechnete LED-Wand.</small>
             </div>
             <section class="showroom-display-network" data-showroom-display-network>
               <header>
@@ -1409,6 +1427,7 @@
                 <span>Partner finden und Freigaben verwalten</span><i aria-hidden="true">›</i>
               </button>
             </section>
+            </div>
             <small>Änderungen gelten nur für dieses Display.</small>
           </aside>
 
