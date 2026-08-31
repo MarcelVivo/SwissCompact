@@ -846,21 +846,6 @@
             <button class="showroom-focus-tool--sales" type="button" data-showroom-focus-tool="stele" aria-label="Neue Display-Stele erstellen">
               <span class="showroom-focus-tools__structure-icon showroom-focus-tools__structure-icon--stele" aria-hidden="true"></span><strong>Stelen</strong>
             </button>
-            <button type="button" data-showroom-focus-tool="partition" aria-label="Verschiebbare Trennwände auswählen">
-              <span aria-hidden="true">▥</span><strong>Trennwände</strong>
-            </button>
-            <button class="showroom-focus-tool--secondary-start" type="button" data-showroom-focus-tool="room" aria-label="Wände, Boden und Decke">
-              <span aria-hidden="true">▱</span><strong>Raum</strong>
-            </button>
-            <button type="button" data-showroom-focus-tool="door" aria-label="Türen auswählen oder erstellen">
-              <span aria-hidden="true">▯</span><strong>Türen</strong>
-            </button>
-            <button type="button" data-showroom-focus-tool="window" aria-label="Fenster auswählen oder erstellen">
-              <span aria-hidden="true">▭</span><strong>Fenster</strong>
-            </button>
-            <button type="button" data-showroom-focus-tool="furnishing" aria-label="Möbel und Objekte">
-              <span aria-hidden="true">▰</span><strong>Möbel</strong>
-            </button>
             <button type="button" data-showroom-focus-tool="light" aria-label="Licht">
               <span aria-hidden="true">☼</span><strong>Licht</strong>
             </button>
@@ -918,18 +903,6 @@
                   <button type="button" data-showroom-quick-action="stele">
                     <i aria-hidden="true">▯</i><span><strong>Stele</strong><small>Schlank und mobil</small></span><em>＋</em>
                   </button>
-                  <button type="button" data-showroom-quick-action="partition">
-                    <i aria-hidden="true">▥</i><span><strong>Trennwand</strong><small>Raum neu aufteilen</small></span><em>＋</em>
-                  </button>
-                  <button type="button" data-showroom-quick-action="door">
-                    <i aria-hidden="true">▯</i><span><strong>Tür</strong><small>Durchgang einsetzen</small></span><em>＋</em>
-                  </button>
-                  <button type="button" data-showroom-quick-action="window">
-                    <i aria-hidden="true">▭</i><span><strong>Fenster</strong><small>Öffnung einsetzen</small></span><em>＋</em>
-                  </button>
-                  <button type="button" data-showroom-quick-action="furnishing">
-                    <i aria-hidden="true">◇</i><span><strong>Möbel</strong><small>Vorhandenes wählen</small></span><em>›</em>
-                  </button>
                 </div>
               </section>
               <details class="showroom-expert-finder" data-showroom-expert-finder>
@@ -949,20 +922,6 @@
                 <button type="button" data-showroom-selection-mode="opening" role="tab" aria-selected="false">Öffnungen</button>
               </div>
               </details>
-              <div class="showroom-focus-opening-actions" data-showroom-focus-opening-actions hidden>
-                <span>Wand</span>
-                <div>
-                  <button type="button" data-showroom-opening-wall="left">Links</button>
-                  <button class="is-active" type="button" data-showroom-opening-wall="back">Rückwand</button>
-                  <button type="button" data-showroom-opening-wall="right">Rechts</button>
-                </div>
-                <span>Hinzufügen</span>
-                <div>
-                  <button type="button" data-showroom-opening-add="singleDoor" data-showroom-opening-kind="door">Einzeltür</button>
-                  <button type="button" data-showroom-opening-add="doubleDoor" data-showroom-opening-kind="door">Doppeltür</button>
-                  <button type="button" data-showroom-opening-add="window" data-showroom-opening-kind="window">Fenster</button>
-                </div>
-              </div>
               <section class="showroom-focus-structure-create" data-showroom-structure-create-panel hidden>
                 <header>
                   <span>Im Raum hinzufügen</span>
@@ -1002,19 +961,6 @@
                   </button>
                 </div>
                 <output data-showroom-structure-create-status aria-live="polite"></output>
-              </section>
-              <section class="showroom-focus-partition-create" data-showroom-partition-create-panel hidden>
-                <header>
-                  <span>Im Raum hinzufügen</span>
-                  <strong>Neue Trennwand</strong>
-                  <small>Die Wand erscheint im Raum und kann danach frei verschoben, gedreht, skaliert und mit Displays oder LED-Flächen bestückt werden.</small>
-                </header>
-                <button type="button" data-showroom-partition-create>
-                  <i aria-hidden="true">▥</i>
-                  <span><strong>Trennwand einsetzen</strong><small data-showroom-partition-create-hint>Freie Trennwand oder Wand mit Durchgang</small></span>
-                  <em aria-hidden="true">＋</em>
-                </button>
-                <output data-showroom-partition-create-status aria-live="polite"></output>
               </section>
               <div class="showroom-selection-list" data-showroom-selection-list aria-live="polite"></div>
               <footer>
