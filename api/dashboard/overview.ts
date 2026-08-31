@@ -81,7 +81,7 @@ export async function GET(request: Request): Promise<Response> {
   const authorized = await authorizeDashboard(request);
   if (isResponse(authorized)) return authorized;
   const { client, profile } = authorized;
-  const [clients, opportunities, projects, tasks, quotes, invoices, founderTransactions, aiJobs, settings, audit, approvals, profiles] = await Promise.all([
+  const [clients, opportunities, projects, tasks, quotes, invoices, founderTransactions, aiJobs, settings, audit, approvals, profiles, contentRequests] = await Promise.all([
     client.from("clients").select("id,customer_number,company_name,contact_name,email,phone,address_line,postal_code,city,country_code,lifecycle,marketing_consent,notes,created_at,updated_at").order("updated_at", { ascending: false }).limit(200),
     client.from("opportunities").select("id,client_id,title,stage,owner_area,value_chf,probability,expected_close,next_action,next_action_at,source,created_at,updated_at,client:clients(company_name)").order("updated_at", { ascending: false }).limit(200),
     client.from("projects").select("id,quote_id,opportunity_id,client_id,order_number,title,status,software_owner,hardware_owner,starts_on,target_completion,payment_plan,deposit_received,installation_payment_received,final_payment_received,created_at,updated_at,client:clients(company_name),opportunity:opportunities(title,stage,value_chf)").order("updated_at", { ascending: false }).limit(100),
@@ -94,8 +94,9 @@ export async function GET(request: Request): Promise<Response> {
     client.from("audit_log").select("id,actor_email,action,entity_type,entity_id,created_at").order("created_at", { ascending: false }).limit(12),
     client.from("approvals").select("id,entity_type,entity_id,action,content_hash,requested_by,marcel_approved_at,thomas_approved_at,invalidated_at,executed_at,created_at").is("invalidated_at", null).order("created_at", { ascending: false }).limit(100),
     client.from("dashboard_profiles").select("user_id,email,display_name,role,security_admin,active").eq("active", true).order("display_name"),
+    client.from("tenant_content").select("id,tenant_id,title,status,payload,created_at,updated_at,tenant:tenants(name)").contains("payload", { serviceRequest: true }).order("created_at", { ascending: false }).limit(200),
   ]);
-  const firstError = [clients, opportunities, projects, tasks, quotes, invoices, founderTransactions, aiJobs, settings, audit, approvals, profiles]
+  const firstError = [clients, opportunities, projects, tasks, quotes, invoices, founderTransactions, aiJobs, settings, audit, approvals, profiles, contentRequests]
     .find((result) => result.error)?.error;
   if (firstError) {
     console.error("dashboard overview:", firstError.message);
@@ -115,6 +116,7 @@ export async function GET(request: Request): Promise<Response> {
     audit: audit.data ?? [],
     approvals: approvals.data ?? [],
     profiles: profiles.data ?? [],
+    contentRequests: contentRequests.data ?? [],
     generatedAt: new Date().toISOString(),
   });
 }

@@ -7,6 +7,7 @@ const acceptanceMigration = read("supabase/migrations/20260829_quote_acceptance.
 const auth = read("api/_lib/dashboard/auth.ts");
 const ui = read("src/dashboard/main.tsx");
 const records = read("api/dashboard/records.ts");
+const overview = read("api/dashboard/overview.ts");
 const publicQuote = read("api/_lib/dashboard/quote-public.ts");
 const lead = read("api/assistant/lead.ts");
 const vercel = JSON.parse(read("vercel.json"));
@@ -37,12 +38,16 @@ assert.match(migration, /"legalStatus":"pre_founding"/);
 assert.match(migration, /'2026-08-05'.*'company_expense'.*'marcel'.*600/s);
 assert.match(migration, /'2026-08-28'.*'settlement_transfer'.*'thomas'.*'marcel'.*300/s);
 
-for (const area of ["Auftragstrichter", "Kundenkartei", "Rechnungen", "Finanzen", "KI-Bots", "Sicherheit & Protokoll"]) {
+for (const area of ["Auftragstrichter", "Kundenkartei", "Produktionsanfragen", "Rechnungen", "Finanzen", "KI-Bots", "Sicherheit & Protokoll"]) {
   assert.ok(ui.includes(area), `UI-Bereich ${area} fehlt`);
 }
-for (const action of ["update_client", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "publish_quote", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "invoice_document_url", "update_task_status"]) {
+for (const action of ["update_client", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "publish_quote", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "invoice_document_url", "update_task_status", "update_service_request_status"]) {
   assert.ok(records.includes(`action === "${action}"`), `CRM-Aktion ${action} fehlt`);
 }
+assert.match(overview, /contentRequests/);
+assert.match(overview, /serviceRequest: true/);
+assert.match(ui, /ProductionRequests/);
+assert.match(ui, /Kunde kontaktieren/);
 assert.ok(ui.includes("ClientDrawer"), "Kunden-Detailansicht fehlt");
 assert.ok(ui.includes("OpportunityDrawer"), "Chancen-Detailansicht fehlt");
 assert.ok(ui.includes("ProjectDrawer"), "Projekt-Detailansicht fehlt");

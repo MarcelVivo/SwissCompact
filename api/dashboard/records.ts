@@ -301,6 +301,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (desiredDate && !/^\d{4}-\d{2}-\d{2}$/.test(desiredDate)) return json({ error: "Der Wunschtermin ist ungültig" }, { status: 400 });
     const payload = {
       serviceRequest: true,
+      serviceRequestStatus: "submitted",
       requestType,
       requestTypeLabel: requestTypes[requestType],
       objective,
@@ -813,6 +814,19 @@ export async function POST(request: Request): Promise<Response> {
   const { client, profile } = authorized;
   const body = await request.json() as Payload;
   const action = cleanText(body.action, 80);
+
+  if (action === "update_service_request_status") {
+    const id = cleanText(body.id, 80);
+    const status = cleanText(body.status, 40);
+    if (!id || !["submitted", "planning", "production", "completed", "declined"].includes(status)) return json({ error: "Ungültiger Produktionsstatus" }, { status: 400 });
+    const existing = await client.from("tenant_content").select("id,title,payload").eq("id", id).contains("payload", { serviceRequest: true }).maybeSingle();
+    if (existing.error || !existing.data) return json({ error: "Produktionsanfrage nicht gefunden" }, { status: 404 });
+    const payload = { ...(existing.data.payload || {}), serviceRequestStatus: status };
+    const result = await client.from("tenant_content").update({ payload, updated_at: new Date().toISOString() }).eq("id", id).select("id,title,status,payload,updated_at").single();
+    if (result.error) return json({ error: "Produktionsstatus konnte nicht gespeichert werden" }, { status: 400 });
+    await writeAudit(client, profile, "status_change", "content_request", id, { serviceRequestStatus: existing.data.payload?.serviceRequestStatus }, { serviceRequestStatus: status });
+    return json({ ok: true, record: result.data });
+  }
 
   if (action === "create_client") {
     const email = optionalEmail(body.email);
