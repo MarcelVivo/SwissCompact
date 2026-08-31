@@ -279,9 +279,24 @@
 }
 
 .campaign-row-actions .row-action,
+.campaign-row-actions .assign-record-action,
 .campaign-row-actions .delete-record-action {
   padding: 8px 11px;
   white-space: nowrap;
+}
+
+.media-missing-notice {
+  display: grid;
+  gap: 8px;
+}
+
+.media-missing-notice > span {
+  line-height: 1.5;
+}
+
+.media-missing-notice > button {
+  justify-self: start;
+  margin-top: 4px;
 }
 
 .delete-backdrop {
