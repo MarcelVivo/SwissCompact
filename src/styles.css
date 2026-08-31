@@ -18099,6 +18099,14 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     --mobile-video-top: calc(67px + env(safe-area-inset-top));
   }
 
+  /* The scene-to-scene glass transition otherwise centers in the full
+     viewport height, which lands it well below the video band once the
+     video is pinned to the top on mobile instead of centre-letterboxed. */
+  #display-portal-transition {
+    align-items: start;
+    padding-top: var(--mobile-video-top);
+  }
+
   #intro {
     background: linear-gradient(180deg, #060607 0%, #060607 55%, #000 100%);
   }
