@@ -6,7 +6,7 @@ const mediaCss = read("src/portal/portal-media.css");
 const records = read("api/dashboard/records.ts");
 const overview = read("api/dashboard/overview.ts");
 const mux = read("api/_lib/portal/mux-video.ts");
-const muxWebhook = read("api/mux-webhook.ts");
+const muxWebhook = read("api/_lib/portal/mux-webhook-handler.ts");
 
 const checks = {
   clientDecodeCheck: ["inspectMediaFile", "loadedmetadata", "videoWidth", "durationSeconds", "Technisch lesbar"].every((value) => portal.includes(value)),

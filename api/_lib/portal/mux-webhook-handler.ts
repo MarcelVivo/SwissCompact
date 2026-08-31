@@ -1,8 +1,6 @@
-import { dashboardSupabase } from "./_lib/dashboard/auth.js";
-import { json } from "./_lib/assistant/security.js";
-import { getMuxAsset, muxReadyRendition, muxVideoEnabled, verifyMuxWebhook, type MuxAsset } from "./_lib/portal/mux-video.js";
-
-export const config = { runtime: "nodejs", maxDuration: 30 };
+import { dashboardSupabase } from "../dashboard/auth.js";
+import { json } from "../assistant/security.js";
+import { getMuxAsset, muxReadyRendition, muxVideoEnabled, verifyMuxWebhook, type MuxAsset } from "./mux-video.js";
 
 type MuxEvent = {
   id?: string;
@@ -144,7 +142,7 @@ async function processMuxEvent(client: any, event: MuxEvent): Promise<void> {
   });
 }
 
-export async function POST(request: Request): Promise<Response> {
+export async function handleMuxWebhookPost(request: Request): Promise<Response> {
   if (!muxVideoEnabled()) return json({ error: "Mux-Videopipeline ist nicht aktiviert" }, { status: 503 });
   const rawBody = await request.text();
   if (!verifyMuxWebhook(rawBody, request.headers.get("mux-signature"))) return json({ error: "Ungültige Webhook-Signatur" }, { status: 401 });

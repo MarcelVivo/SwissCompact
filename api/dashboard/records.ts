@@ -9,6 +9,7 @@ import { handleAiCreditsPost, handleAiCreditsStatusGet } from "../_lib/portal/ai
 import { handleAiImagePost } from "../_lib/portal/ai-image-handler.js";
 import { handleStripeWebhookPost } from "../_lib/portal/stripe-webhook-handler.js";
 import { createMuxDirectUpload, deleteMuxAsset, deleteMuxDirectUpload, getMuxDirectUpload, muxSignedPlaybackUrl, muxVideoEnabled } from "../_lib/portal/mux-video.js";
+import { handleMuxWebhookPost } from "../_lib/portal/mux-webhook-handler.js";
 
 export const config = { runtime: "nodejs", maxDuration: 180 };
 
@@ -1477,6 +1478,7 @@ export async function POST(request: Request): Promise<Response> {
   if (portalAi === "image") return handleAiImagePost(request);
   if (portalAi === "credits") return handleAiCreditsPost(request);
   if (search.get("integration") === "stripe-webhook") return handleStripeWebhookPost(request);
+  if (search.get("integration") === "mux-webhook") return handleMuxWebhookPost(request);
   const deviceMode = search.get("device");
   if (deviceMode) return handleDevicePost(request, deviceMode);
   if (search.get("public") === "quote") return postPublicQuote(request);

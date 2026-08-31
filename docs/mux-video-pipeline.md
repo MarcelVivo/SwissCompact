@@ -19,7 +19,7 @@ Im Mux-Dashboard in der produktiven Umgebung anlegen:
 
 - Access Token mit Video-Lese- und Video-Schreibrechten
 - Signing Key für signierte Wiedergabe
-- Webhook mit Ziel `https://www.swisscompact.com/api/mux-webhook`
+- Webhook mit Ziel `https://www.swisscompact.com/api/dashboard/records?integration=mux-webhook`
 
 Der Signing Key und das Webhook-Geheimnis werden nur einmal vollständig angezeigt. Direkt sicher in den Vercel-Umgebungsvariablen speichern, nicht in Git und nicht im Browser.
 
