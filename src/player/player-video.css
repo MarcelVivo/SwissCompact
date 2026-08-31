@@ -1,0 +1,47 @@
+.video-status {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 30px;
+  background: radial-gradient(circle at 50% 45%, #221217, #050506 68%);
+  color: #d5d5d7;
+  text-align: center;
+}
+
+.video-status strong {
+  font-size: clamp(15px, 2vw, 22px);
+}
+
+.video-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid #ffffff26;
+  border-top-color: #d90d32;
+  border-radius: 50%;
+  animation: video-spin 850ms linear infinite;
+}
+
+.video-status-error .video-spinner,
+.video-status-blocked .video-spinner {
+  display: none;
+}
+
+.video-status button {
+  border: 1px solid #ffffff38;
+  border-radius: 999px;
+  padding: 11px 18px;
+  background: #d90d32;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@keyframes video-spin {
+  to { transform: rotate(360deg); }
+}

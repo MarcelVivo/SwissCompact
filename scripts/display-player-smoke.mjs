@@ -28,6 +28,11 @@ assert.match(records, /targetContentByCampaign/, "Der Player berücksichtigt kei
 assert.match(player, /swisscompact_device_token/);
 assert.match(player, /device=heartbeat/);
 assert.match(player, /device=config/);
+assert.match(player, /videoRef\.current/, "Player überwacht die Videowiedergabe nicht");
+assert.match(player, /preload="auto"/, "Videos werden nicht frühzeitig geladen");
+assert.match(player, /onCanPlay=\{\(\) => void start\(\)\}/, "Video startet nach dem Laden nicht erneut");
+assert.match(player, /onError=\{\(\) => setPlayback\("error"\)\}/, "Videofehler werden nicht behandelt");
+assert.match(player, /loop=\{config\?\.playlist\.length === 1\}/, "Ein einzelnes Video wird nicht wiederholt");
 assert.match(player, /searchParams\.get\("pair"\)|query\.get\("pair"\)/, "Direkter Neuverbindungsmodus fehlt");
 assert.match(player, /query\.get\("code"\)/, "Aktivierungscode aus QR-Link wird nicht übernommen");
 assert.match(player, /query\.get\("connect"\).*=== "1"/, "QR-Verbindung wird nicht automatisch gestartet");

@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./player.css";
+import "./player-video.css";
 
 type PlaylistItem = { contentId: string; title: string; contentType: string; payload?: { text?: string }; mediaUrl?: string | null; durationSeconds: number };
 type DeviceConfig = { display: { id: string; name: string }; configurationVersion: number; playlist: PlaylistItem[]; generatedAt: string };
@@ -14,6 +15,69 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "Verbindung fehlgeschlagen");
   return data as T;
+}
+
+function PlayerVideo({ item, loop }: { item: PlaylistItem; loop: boolean }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const retryTimer = useRef<number | null>(null);
+  const [playback, setPlayback] = useState<"loading" | "playing" | "waiting" | "blocked" | "error">("loading");
+
+  const start = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    try {
+      await video.play();
+      setPlayback("playing");
+    } catch {
+      setPlayback("blocked");
+    }
+  }, []);
+
+  const retry = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (retryTimer.current) window.clearTimeout(retryTimer.current);
+    setPlayback("loading");
+    video.load();
+    retryTimer.current = window.setTimeout(() => void start(), 350);
+  }, [start]);
+
+  useEffect(() => {
+    setPlayback("loading");
+    retryTimer.current = window.setTimeout(() => void start(), 350);
+    return () => { if (retryTimer.current) window.clearTimeout(retryTimer.current); };
+  }, [item.mediaUrl, start]);
+
+  useEffect(() => {
+    if (playback !== "error") return;
+    const timer = window.setTimeout(retry, 8_000);
+    return () => window.clearTimeout(timer);
+  }, [playback, retry]);
+
+  return <>
+    <video
+      ref={videoRef}
+      src={item.mediaUrl || undefined}
+      autoPlay
+      muted
+      loop={loop}
+      playsInline
+      preload="auto"
+      disablePictureInPicture
+      onLoadedData={() => void start()}
+      onCanPlay={() => void start()}
+      onPlaying={() => setPlayback("playing")}
+      onWaiting={() => setPlayback("waiting")}
+      onStalled={() => setPlayback("waiting")}
+      onError={() => setPlayback("error")}
+    />
+    {playback !== "playing" && <div className={`video-status video-status-${playback}`} role="status">
+      <span className="video-spinner" aria-hidden="true"></span>
+      <strong>{playback === "error" ? "Video konnte nicht geladen werden" : playback === "blocked" ? "Video wartet auf den Start" : "Video wird geladen"}</strong>
+      {playback === "error" || playback === "blocked" ? <button type="button" onClick={() => { if (playback === "blocked") void start(); else retry(); }}>{playback === "blocked" ? "Video starten" : "Erneut versuchen"}</button> : null}
+    </div>}
+  </>;
 }
 
 function Pairing({ initialDisplayId, initialCode, autoConnect, onPaired }: { initialDisplayId: string; initialCode: string; autoConnect: boolean; onPaired: (token: string, displayId: string) => void }) {
@@ -117,7 +181,7 @@ function Player() {
     void loadConfig(nextToken);
   }} />;
   const item = config?.playlist[index % Math.max(1, config.playlist.length)];
-  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}`}>{item.contentType === "image" && item.mediaUrl ? <img src={item.mediaUrl} alt=""/> : item.contentType === "video" && item.mediaUrl ? <video src={item.mediaUrl} autoPlay muted playsInline/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p>{!previewDisplayId && <button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button>}</section>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
+  return <main className="stage" onDoubleClick={() => document.documentElement.requestFullscreen?.()}>{item ? <section className={`content content-${item.contentType}`} key={`${item.contentId}-${index}`}>{item.contentType === "image" && item.mediaUrl ? <img src={item.mediaUrl} alt=""/> : item.contentType === "video" && item.mediaUrl ? <PlayerVideo item={item} loop={config?.playlist.length === 1}/> : <div className="text-content">{item.payload?.text || item.title}</div>}</section> : <section className="idle"><div className="brand">Swiss<span>Compact</span></div><p>{message}</p>{!previewDisplayId && <button className="reconnect" onClick={resetPairing}>Aktivierungscode eingeben</button>}</section>}<div className={`connection ${online ? "online" : "offline"}`} title={online ? "Verbunden" : "Offline"}></div></main>;
 }
 
 createRoot(document.getElementById("player-root")!).render(<Player/>);
