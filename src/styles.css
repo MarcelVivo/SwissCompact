@@ -1742,16 +1742,14 @@ button {
 
 /* The whole card is already clickable (mountCardLinks in cardLinks.ts),
    so the "Mehr erfahren" text is redundant visual clutter — kept in the
-   DOM only as the card's sole focusable/accessible element, positioned
-   near its old spot so keyboard focus doesn't jump somewhere unexpected. */
+   DOM only as the card's sole focusable/accessible element. Collapsed to
+   a zero-size box in normal flow (not absolutely positioned) so it can't
+   end up overlapping other content in the card after a layout recalc. */
 .business-platform__card-link {
-  position: absolute;
-  bottom: 34px;
-  left: clamp(22px, 2vw, 32px);
-  width: 1px;
-  height: 1px;
+  display: block;
+  width: 0;
+  height: 0;
   overflow: hidden;
-  clip-path: inset(50%);
   white-space: nowrap;
 }
 
