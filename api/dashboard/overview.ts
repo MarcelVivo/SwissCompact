@@ -14,17 +14,19 @@ export async function GET(request: Request): Promise<Response> {
     if (!customerAdmin) return json({ error: "Kundenvorgänge sind noch nicht konfiguriert" }, { status: 503 });
     const displayHealthRefresh = await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
     if (displayHealthRefresh.error) console.warn("portal display health refresh:", displayHealthRefresh.error.message);
-    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayVersions, displayTests, displayAlerts] = await Promise.all([
+    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
-      client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,last_seen_at,configuration_version,last_acknowledged_version,last_delivery_at,delivery_status,last_delivery_error,fallback_content_id,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
+      client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,last_seen_at,configuration_version,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
       client.from("tenant_content").select("id,title,content_type,status,payload,asset_path,created_by,created_at,updated_at").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
-      client.from("tenant_campaigns").select("id,name,theme,status,priority,starts_at,ends_at,schedule,scope_site_id,scope_area_id,created_by,created_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,preview_path:asset_path)),display_links:tenant_campaign_displays(display_id,display:tenant_displays(id,name,status,site:tenant_sites(name),area:tenant_areas(id,name,kind)))").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
+      client.from("tenant_campaigns").select("id,name,theme,status,starts_at,ends_at,schedule,scope_site_id,scope_area_id,created_by,created_at,updated_at,content_links:tenant_campaign_content(position,duration_seconds,content:tenant_content(id,title,content_type,status,preview_path:asset_path)),display_links:tenant_campaign_displays(display_id,display:tenant_displays(id,name,status,site:tenant_sites(name),area:tenant_areas(id,name,kind)))").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
       client.from("tenant_campaign_display_content").select("campaign_id,display_id,position,duration_seconds,content:tenant_content(id,title,content_type,status)").eq("tenant_id", tenantId).order("position"),
       client.from("tenant_subscriptions").select("package_code,status,starts_on,minimum_ends_on,monthly_amount_chf,included_ai_credits").eq("tenant_id", tenantId).in("status", ["trial","active","past_due","paused"]).maybeSingle(),
       client.from("tenant_memberships").select("id,role,display_name,user_id,active,access_status,invited_at,accepted_at,verified_at").eq("tenant_id", tenantId),
       client.from("tenant_audit_log").select("entity_type,entity_id,actor_user_id,created_at").eq("tenant_id", tenantId).eq("action", "create").in("entity_type", ["display", "content", "campaign"]).order("created_at", { ascending: true }),
       client.rpc("get_ai_credit_balance", { target_tenant: tenantId }),
+      client.from("tenant_displays").select("id,last_acknowledged_version,last_delivery_at,delivery_status,last_delivery_error,fallback_content_id").eq("tenant_id", tenantId),
+      client.from("tenant_campaigns").select("id,priority").eq("tenant_id", tenantId),
       client.from("tenant_display_config_versions").select("id,display_id,version,source,campaign_id,state,previous_version,created_at").eq("tenant_id", tenantId).order("version", { ascending: false }).limit(500),
       client.from("tenant_display_test_publications").select("id,display_id,campaign_id,configuration_version,previous_version,status,expires_at,created_at").eq("tenant_id", tenantId).eq("status", "active").limit(100),
       client.from("tenant_display_alerts").select("id,display_id,kind,severity,status,message,metadata,first_seen_at,last_seen_at,resolved_at").eq("tenant_id", tenantId).neq("status", "resolved").order("last_seen_at", { ascending: false }).limit(200),
@@ -54,6 +56,10 @@ export async function GET(request: Request): Promise<Response> {
       tests: displayTests.error?.message,
       alerts: displayAlerts.error?.message,
     });
+    if (displayDeliveryState.error || campaignPriorities.error) console.warn("portal display delivery metadata is temporarily unavailable", {
+      displays: displayDeliveryState.error?.message,
+      campaigns: campaignPriorities.error?.message,
+    });
     const customerRecordsError = [customerQuotes, customerProjects, customerInvoices, responsibleProfiles].find((result) => result.error)?.error;
     if (customerRecordsError) {
       console.error("portal customer records:", customerRecordsError.message);
@@ -76,8 +82,10 @@ export async function GET(request: Request): Promise<Response> {
       return { ...enriched, preview_url: preview.data?.signedUrl ?? null };
     }));
     const displayHealthCutoff = Date.now() - 90_000;
+    const deliveryStateByDisplay = new Map((displayDeliveryState.data ?? []).map((entry) => [entry.id, entry]));
     const displaysWithHealth = (displays.data ?? []).map((display) => ({
       ...display,
+      ...(deliveryStateByDisplay.get(display.id) ?? {}),
       creator_name: creatorName(auditedCreators.get(`display:${display.id}`)),
       status: display.status === "online" && (!display.last_seen_at || new Date(display.last_seen_at).getTime() < displayHealthCutoff)
         ? "offline"
@@ -90,8 +98,10 @@ export async function GET(request: Request): Promise<Response> {
       if (!byDisplay.has(link.display_id)) byDisplay.set(link.display_id, []);
       byDisplay.get(link.display_id)!.push({ position: link.position, duration_seconds: link.duration_seconds, content: link.content });
     }
+    const priorityByCampaign = new Map((campaignPriorities.data ?? []).map((entry) => [entry.id, entry.priority]));
     const campaignsWithCreators = (campaigns.data ?? []).map((campaign) => ({
       ...campaign,
+      priority: priorityByCampaign.get(campaign.id) ?? 50,
       creator_name: creatorName(campaign.created_by || auditedCreators.get(`campaign:${campaign.id}`)),
       target_assignments: [...(targetContentByCampaign.get(campaign.id) ?? new Map())].map(([display_id, content_links]) => ({ display_id, content_links })),
     }));
