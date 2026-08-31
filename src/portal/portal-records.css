@@ -339,6 +339,36 @@
   cursor: pointer;
 }
 
+.archive-count {
+  border-radius: 999px;
+  padding: 9px 13px;
+  background: #e9e7e3;
+  color: #5f5c57;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.archived-content-card .content-preview {
+  filter: saturate(.72);
+}
+
+.restore-record-action {
+  border: 1px solid #b8dccc;
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: #eefaf5;
+  color: #087343;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.restore-record-action:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
 .record-edit-dialog {
   width: min(600px, 100%);
   max-height: calc(100svh - 36px);
