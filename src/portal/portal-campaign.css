@@ -87,7 +87,7 @@
   cursor: pointer;
 }
 
-.funnel-current-step > span {
+.funnel-current-step > span:first-child {
   width: 34px;
   height: 34px;
   display: grid;
