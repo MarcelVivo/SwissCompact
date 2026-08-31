@@ -1,0 +1,358 @@
+:root {
+  --red: #c8102e;
+  --bg: #060607;
+  --panel: #101013;
+  --line: #26262a;
+  --grey: #9a9aa0;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: #fff;
+  font-family: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+/* Header */
+.pf-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: calc(18px + env(safe-area-inset-top)) 6vw 18px;
+  background: rgba(6, 6, 7, 0.86);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+
+.pf-logo {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pf-logo span {
+  color: var(--red);
+}
+
+.pf-header__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.pf-header__cta:hover,
+.pf-header__cta:focus-visible {
+  border-color: var(--red);
+  background: rgba(200, 16, 46, 0.14);
+  outline: none;
+}
+
+/* Hero */
+.pf-hero {
+  padding: 64px 6vw 48px;
+  max-width: 960px;
+}
+
+.pf-eyebrow {
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin: 0 0 18px;
+}
+
+.pf-hero h1 {
+  margin: 0 0 24px;
+  font-size: clamp(34px, 6vw, 58px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.pf-hero p {
+  margin: 0;
+  max-width: 640px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: clamp(16px, 2vw, 19px);
+  line-height: 1.6;
+}
+
+/* Section heading shared by features / steps / example / body */
+.pf-section {
+  padding: 0 6vw 56px;
+  max-width: 1100px;
+}
+
+.pf-section h2 {
+  font-size: clamp(22px, 3vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 28px;
+}
+
+/* Feature tiles */
+.pf-features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pf-features li {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.pf-features svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  margin-bottom: 14px;
+}
+
+.pf-features strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.pf-features span {
+  display: block;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* Process steps */
+.pf-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: pf-step;
+}
+
+.pf-steps li {
+  position: relative;
+  padding: 24px 20px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(200, 16, 46, 0.08), rgba(16, 16, 19, 0.4));
+}
+
+.pf-steps li::before {
+  counter-increment: pf-step;
+  content: counter(pf-step, decimal-leading-zero);
+  display: block;
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 14px;
+}
+
+.pf-steps strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.pf-steps span {
+  display: block;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* Illustrative example */
+.pf-example {
+  padding: 30px 30px 30px 28px;
+  border-left: 3px solid var(--red);
+  border-radius: 4px 14px 14px 4px;
+  background: var(--panel);
+}
+
+.pf-example__label {
+  display: block;
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.pf-example p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+/* Body copy */
+.pf-body p {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 16px;
+  line-height: 1.7;
+  margin: 0 0 20px;
+  max-width: 760px;
+}
+
+.pf-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* CTA band */
+.pf-cta {
+  margin: 0 6vw 72px;
+  padding: 40px 6vw;
+  max-width: 1100px;
+  border-radius: 20px;
+  background: linear-gradient(140deg, rgba(200, 16, 46, 0.16), rgba(16, 16, 19, 0.4));
+  border: 1px solid rgba(200, 16, 46, 0.28);
+  text-align: center;
+}
+
+.pf-cta h2 {
+  margin: 0 0 12px;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.pf-cta p {
+  margin: 0 0 26px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 16px;
+}
+
+.pf-cta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.pf-cta__actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 26px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.2s, background-color 0.2s, border-color 0.2s;
+}
+
+.pf-cta__actions a.primary {
+  background: var(--red);
+  color: #fff;
+}
+
+.pf-cta__actions a.primary:hover {
+  background: #ed1842;
+}
+
+.pf-cta__actions a.secondary {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.pf-cta__actions a.secondary:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* Footer (mirrors index.html's .site-footer) */
+.pf-footer {
+  display: grid;
+  gap: 6px;
+  padding: 32px 6vw calc(40px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  color: var(--grey);
+  font-size: 13px;
+}
+
+.pf-footer a {
+  text-decoration: none;
+}
+
+.pf-footer a:hover {
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  .pf-features,
+  .pf-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .pf-header {
+    padding: calc(14px + env(safe-area-inset-top)) 20px 14px;
+  }
+
+  .pf-hero,
+  .pf-section,
+  .pf-footer {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .pf-features,
+  .pf-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .pf-example {
+    padding: 24px 22px;
+  }
+
+  .pf-cta {
+    margin-left: 20px;
+    margin-right: 20px;
+    padding: 32px 20px;
+  }
+}

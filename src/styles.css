@@ -1700,6 +1700,26 @@ button {
   content: "";
 }
 
+.business-platform__card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 22px;
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.business-platform__card-link span {
+  transition: transform 200ms ease;
+}
+
+.business-platform__card-link:hover span,
+.business-platform__card-link:focus-visible span {
+  transform: translate(2px, -2px);
+}
+
 .business-platform__service {
   display: grid;
   grid-template-columns: minmax(250px, 0.7fr) minmax(300px, 1fr) auto;

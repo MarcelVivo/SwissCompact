@@ -71,7 +71,8 @@
     "test:portal": "node scripts/portal-foundation-smoke.mjs",
     "test:portal-ai": "node scripts/portal-ai-billing-smoke.mjs",
     "test:player": "node scripts/display-player-smoke.mjs",
-    "test:einsatzbereiche": "node scripts/einsatzbereiche-smoke.mjs"
+    "test:einsatzbereiche": "node scripts/einsatzbereiche-smoke.mjs",
+    "test:plattform-pages": "node scripts/plattform-smoke.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^9.6.1",
