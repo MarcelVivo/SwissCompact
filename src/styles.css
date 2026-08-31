@@ -2155,7 +2155,7 @@ button {
    room itself — it invites a branche choice without gating the room. */
 .showroom-intro {
   position: absolute;
-  z-index: 20;
+  z-index: 32;
   left: 0;
   right: 0;
   bottom: 0;
