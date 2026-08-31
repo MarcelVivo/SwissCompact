@@ -1609,6 +1609,7 @@ button {
   overflow: hidden;
   border-right: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.018);
+  cursor: pointer;
   transition: background-color 220ms ease, border-color 220ms ease;
 }
 
@@ -1701,17 +1702,18 @@ button {
 }
 
 .business-platform__card-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  display: inline-block;
   margin-top: 22px;
   color: var(--red);
   font-size: 12px;
   font-weight: 700;
+  line-height: 15px;
   text-decoration: none;
 }
 
 .business-platform__card-link span {
+  display: inline-block;
+  margin-left: 6px;
   transition: transform 200ms ease;
 }
 
