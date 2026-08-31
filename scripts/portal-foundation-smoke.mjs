@@ -35,6 +35,7 @@ const checks = {
   inWizardMediaCreation: ["Vorhandener Inhalt", "Bild oder Video", "KI-Bild erstellen", "Hochladen und auswählen"].every((label) => portal.includes(label)) && portal.includes("acceptCreatedContent") && portal.includes('status: "approved"') && campaignCss.includes("campaign-child-backdrop"),
   scalableCampaignTargeting: targetingMigration.includes("tenant_areas") && targetingMigration.includes("tenant_campaign_display_content") && targetingMigration.includes("on conflict (campaign_id, display_id, content_id) do nothing") && records.includes("targetAssignments") && records.includes("targetContentByCampaign") && overview.includes("target_assignments") && ["Gleicher Inhalt überall", "Unterschiedlich je Ziel", "Standort / Gebäude", "Stockwerk / Bereich"].every((label) => portal.includes(label)),
   directDisplayAssignment: ["Auf Bildschirm anzeigen", "Inhalt zuweisen", "CampaignPreset"].every((label) => portal.includes(label)) && portal.includes("presetContent && defaultDisplayIds.length ? 4") && portal.includes("presetDisplay ? 3"),
+  guidedCampaignFunnel: ["funnel-current-step", "stepCollapsed", "Schritt öffnen", "Zuklappen", "Öffnen", "Weiter zu Bildschirmen", "Weiter zu Inhalten", "Weiter zur Prüfung"].every((label) => portal.includes(label)) && !portal.includes('className="wizard-progress"') && campaignCss.includes(".wizard-stage.is-collapsed"),
 };
 
 console.log(JSON.stringify(checks, null, 2));
