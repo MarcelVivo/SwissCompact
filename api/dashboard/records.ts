@@ -22,6 +22,72 @@ const PORTAL_MEDIA_TYPES: Record<string, { type: "image" | "video"; extension: s
   "video/webm": { type: "video", extension: "webm", maxBytes: 250 * 1024 * 1024 },
 };
 
+function portalSetupUrl(request: Request): string {
+  const configured = process.env.SITE_URL;
+  if (configured) {
+    try { return `${new URL(configured).origin}/portal?setup=1`; } catch { /* use request origin */ }
+  }
+  return `${new URL(request.url).origin}/portal?setup=1`;
+}
+
+function tenantSlug(value: string): string {
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "kunde";
+}
+
+async function uniqueTenantSlug(client: any, companyName: string): Promise<string> {
+  const base = tenantSlug(companyName);
+  for (let suffix = 0; suffix < 100; suffix += 1) {
+    const candidate = suffix ? `${base}-${suffix + 1}` : base;
+    const existing = await client.from("tenants").select("id").eq("slug", candidate).maybeSingle();
+    if (!existing.data) return candidate;
+  }
+  return `${base}-${randomBytes(4).toString("hex")}`;
+}
+
+async function authUserByEmail(client: any, email: string): Promise<any | null> {
+  for (let page = 1; page <= 10; page += 1) {
+    const users = await client.auth.admin.listUsers({ page, perPage: 100 });
+    if (users.error) throw new Error("Portalbenutzer konnten nicht geprüft werden");
+    const match = users.data.users.find((user: any) => user.email?.toLowerCase() === email.toLowerCase());
+    if (match) return match;
+    if (users.data.users.length < 100) return null;
+  }
+  return null;
+}
+
+async function createPortalInvitation(client: any, request: Request, email: string, displayName: string, tenantId: string): Promise<{ user: any; invitationUrl: string | null }> {
+  let user = await authUserByEmail(client, email);
+  if (user?.email_confirmed_at) return { user, invitationUrl: null };
+  const type = user ? "magiclink" : "invite";
+  const link = await client.auth.admin.generateLink({
+    type,
+    email,
+    options: {
+      redirectTo: portalSetupUrl(request),
+      data: { full_name: displayName, tenant_id: tenantId, audience: "portal" },
+    },
+  });
+  if (link.error || !link.data?.user || !link.data?.properties?.action_link) {
+    throw new Error(link.error?.message || "Einladungslink konnte nicht erstellt werden");
+  }
+  user = link.data.user;
+  return { user, invitationUrl: link.data.properties.action_link };
+}
+
+async function sendPortalInvitation(email: string, displayName: string, companyName: string, invitationUrl: string): Promise<boolean> {
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) return false;
+  const mail = await new Resend(resendKey).emails.send({
+    from: "SwissCompact Portal <kontakt@swisscompact.com>",
+    to: email,
+    replyTo: "kontakt@swisscompact.com",
+    subject: `Ihr SwissCompact Portal für ${companyName}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#18181b"><p style="color:#c8102e;font-weight:800;letter-spacing:.12em">SWISSCOMPACT</p><h1 style="font-size:30px">Ihr Kundenportal ist bereit.</h1><p>Guten Tag ${escapeHtml(displayName)},</p><p>SwissCompact hat den geschützten Portal-Arbeitsbereich für <strong>${escapeHtml(companyName)}</strong> vorbereitet.</p><p style="margin:30px 0"><a href="${escapeHtml(invitationUrl)}" style="display:inline-block;padding:15px 22px;background:#d70b31;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Zugang bestätigen und Passwort festlegen</a></p><p style="font-size:13px;color:#666">Dieser Link ist persönlich. Leiten Sie ihn bitte nicht weiter.</p><p>Freundliche Grüsse<br>Marcel Spahr und Thomas Peter<br>SwissCompact</p></div>`,
+  });
+  if (mail.error) throw new Error(`Einladungs-E-Mail konnte nicht gesendet werden: ${mail.error.message}`);
+  return true;
+}
+
 function resumableStorageUrl(signedUploadUrl: string): string {
   const url = new URL(signedUploadUrl);
   if (url.hostname.endsWith(".supabase.co") && !url.hostname.endsWith(".storage.supabase.co")) {
@@ -866,6 +932,122 @@ export async function POST(request: Request): Promise<Response> {
     if (result.error) return json({ error: "Portal-Verifizierung konnte nicht gespeichert werden" }, { status: 400 });
     await writeAudit(client, profile, verified ? "portal_verify" : "portal_revoke", "client", id, previous.data, result.data);
     return json({ ok: true, record: result.data });
+  }
+
+  if (action === "provision_client_portal") {
+    if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Kundenportale einrichten" }, { status: 403 });
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Portalverwaltung ist nicht konfiguriert" }, { status: 503 });
+    const clientId = cleanText(body.clientId, 80);
+    const packageCode = cleanText(body.packageCode, 40);
+    const ownerNameInput = cleanText(body.ownerName, 160);
+    const ownerEmail = cleanText(body.ownerEmail, 240).toLowerCase();
+    if (!clientId || !["essential", "business", "enterprise"].includes(packageCode)) return json({ error: "Kunde oder Portalpaket fehlt" }, { status: 400 });
+    if (!validEmail(ownerEmail)) return json({ error: "Eine gültige persönliche E-Mail-Adresse ist erforderlich" }, { status: 400 });
+    const packageDetails = await admin.from("subscription_packages").select("code,monthly_base_chf,included_ai_credits,active").eq("code", packageCode).eq("active", true).maybeSingle();
+    if (!packageDetails.data) return json({ error: "Dieses Portalpaket ist nicht verfügbar" }, { status: 409 });
+    const customer = await admin.from("clients").select("id,company_name,contact_name,email,lifecycle,portal_verified_at,tenant:tenants(id,name,slug,status,client_id)").eq("id", clientId).maybeSingle();
+    if (!customer.data) return json({ error: "Kundenkartei nicht gefunden" }, { status: 404 });
+    if (customer.data.lifecycle !== "customer") return json({ error: "Die Kundenkartei muss zuerst den Status Kunde erhalten" }, { status: 409 });
+    const ownerName = ownerNameInput || customer.data.contact_name || ownerEmail.split("@")[0];
+    const existingTenant = Array.isArray(customer.data.tenant) ? customer.data.tenant[0] : customer.data.tenant;
+    const now = new Date().toISOString();
+    const verifiedCustomer = await admin.from("clients").update({ portal_verified_at: customer.data.portal_verified_at || now, portal_verified_by: profile.userId, updated_at: now }).eq("id", clientId).eq("lifecycle", "customer");
+    if (verifiedCustomer.error) return json({ error: "Kunde konnte nicht für das Portal verifiziert werden" }, { status: 400 });
+    let tenant = existingTenant;
+    if (!tenant) {
+      const slug = await uniqueTenantSlug(admin, customer.data.company_name);
+      const createdTenant = await admin.from("tenants").insert({ client_id: clientId, name: customer.data.company_name, slug, status: "onboarding", branding: { accent: "#d90d32" }, enabled_modules: ["portal", "content", "campaigns", "displays", "ai"] }).select("id,name,slug,status,client_id").single();
+      if (createdTenant.error) return json({ error: `Portal-Arbeitsbereich konnte nicht angelegt werden: ${createdTenant.error.message}` }, { status: 400 });
+      tenant = createdTenant.data;
+    }
+    let invitation;
+    try {
+      invitation = await createPortalInvitation(admin, request, ownerEmail, ownerName, tenant.id);
+    } catch (reason) {
+      return json({ error: reason instanceof Error ? reason.message : "Portalbenutzer konnte nicht eingeladen werden" }, { status: 503 });
+    }
+    const alreadyConfirmed = Boolean(invitation.user.email_confirmed_at);
+    const membership = await admin.from("tenant_memberships").upsert({
+      tenant_id: tenant.id,
+      user_id: invitation.user.id,
+      role: "owner",
+      display_name: ownerName,
+      active: alreadyConfirmed,
+      access_status: alreadyConfirmed ? "active" : "invited",
+      invited_at: now,
+      invited_by: profile.userId,
+      accepted_at: alreadyConfirmed ? invitation.user.email_confirmed_at : null,
+      verified_at: alreadyConfirmed ? invitation.user.email_confirmed_at : null,
+      revoked_at: null,
+    }, { onConflict: "tenant_id,user_id" }).select("id,tenant_id,user_id,role,display_name,active,access_status,invited_at,accepted_at,verified_at").single();
+    if (membership.error) return json({ error: `Portalberechtigung konnte nicht gespeichert werden: ${membership.error.message}` }, { status: 400 });
+    const tenantStatus = existingTenant?.status === "active" || alreadyConfirmed ? "active" : "onboarding";
+    await admin.from("tenants").update({ status: tenantStatus, updated_at: now }).eq("id", tenant.id).eq("client_id", clientId);
+    const currentSubscription = await admin.from("tenant_subscriptions").select("id").eq("tenant_id", tenant.id).in("status", ["trial", "active", "past_due", "paused"]).maybeSingle();
+    const minimumEnd = new Date(); minimumEnd.setFullYear(minimumEnd.getFullYear() + 1);
+    const subscriptionRecord = { package_code: packageCode, status: "active", starts_on: now.slice(0, 10), minimum_ends_on: minimumEnd.toISOString().slice(0, 10), monthly_amount_chf: packageDetails.data.monthly_base_chf, included_ai_credits: packageDetails.data.included_ai_credits, updated_at: now };
+    const subscription = currentSubscription.data
+      ? await admin.from("tenant_subscriptions").update(subscriptionRecord).eq("id", currentSubscription.data.id)
+      : await admin.from("tenant_subscriptions").insert({ tenant_id: tenant.id, ...subscriptionRecord });
+    if (subscription.error) return json({ error: `Portalpaket konnte nicht gespeichert werden: ${subscription.error.message}` }, { status: 400 });
+    let invitationSent = false;
+    if (invitation.invitationUrl) {
+      try { invitationSent = await sendPortalInvitation(ownerEmail, ownerName, customer.data.company_name, invitation.invitationUrl); }
+      catch (reason) { return json({ error: reason instanceof Error ? reason.message : "Einladung konnte nicht versendet werden", invitationUrl: invitation.invitationUrl }, { status: 503 }); }
+    }
+    await admin.from("tenant_audit_log").insert({ tenant_id: tenant.id, actor_user_id: profile.userId, action: existingTenant ? "portal_onboarding_updated" : "portal_onboarding_created", entity_type: "tenant", entity_id: tenant.id, metadata: { clientId, packageCode, ownerEmail, membershipId: membership.data.id, invitationSent } });
+    await writeAudit(client, profile, existingTenant ? "portal_onboarding_update" : "portal_onboarding_create", "client", clientId, customer.data, { tenantId: tenant.id, packageCode, ownerEmail, membershipStatus: membership.data.access_status });
+    return json({ ok: true, tenant: { ...tenant, status: tenantStatus }, membership: membership.data, packageCode, invitationSent, invitationUrl: invitationSent ? null : invitation.invitationUrl, alreadyConfirmed });
+  }
+
+  if (action === "resend_portal_invitation") {
+    if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Einladungen versenden" }, { status: 403 });
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Portalverwaltung ist nicht konfiguriert" }, { status: 503 });
+    const membershipId = cleanText(body.membershipId, 80);
+    const membership = await admin.from("tenant_memberships").select("id,tenant_id,user_id,display_name,access_status,tenant:tenants(id,name,client_id,client:clients(company_name,lifecycle,portal_verified_at))").eq("id", membershipId).maybeSingle();
+    if (!membership.data) return json({ error: "Portalbenutzer nicht gefunden" }, { status: 404 });
+    const membershipRecord = membership.data;
+    if (membershipRecord.access_status !== "invited") return json({ error: "Nur offene Einladungen können erneut versendet werden" }, { status: 409 });
+    const userLookup = await admin.auth.admin.getUserById(membershipRecord.user_id);
+    const portalUser = userLookup.data?.user;
+    if (!portalUser?.email) return json({ error: "E-Mail-Adresse des Portalbenutzers fehlt" }, { status: 409 });
+    const tenant = Array.isArray(membershipRecord.tenant) ? membershipRecord.tenant[0] : membershipRecord.tenant;
+    const company = Array.isArray(tenant?.client) ? tenant.client[0] : tenant?.client;
+    if (!tenant || !company || company.lifecycle !== "customer" || !company.portal_verified_at) return json({ error: "Kundenportal ist nicht verifiziert" }, { status: 409 });
+    let invitation;
+    try { invitation = await createPortalInvitation(admin, request, portalUser.email, membershipRecord.display_name || portalUser.email.split("@")[0], tenant.id); }
+    catch (reason) { return json({ error: reason instanceof Error ? reason.message : "Einladungslink konnte nicht erstellt werden" }, { status: 503 }); }
+    if (!invitation.invitationUrl) return json({ error: "Dieser Benutzer ist bereits bestätigt und kann aktiviert werden" }, { status: 409 });
+    try {
+      const sent = await sendPortalInvitation(portalUser.email, membershipRecord.display_name || portalUser.email.split("@")[0], company.company_name, invitation.invitationUrl);
+      await admin.from("tenant_memberships").update({ invited_at: new Date().toISOString(), invited_by: profile.userId }).eq("id", membershipId).eq("access_status", "invited");
+      await writeAudit(client, profile, "portal_invitation_resent", "membership", membershipId, undefined, { email: portalUser.email, sent });
+      return json({ ok: true, invitationSent: sent, invitationUrl: sent ? null : invitation.invitationUrl });
+    } catch (reason) { return json({ error: reason instanceof Error ? reason.message : "Einladung konnte nicht gesendet werden", invitationUrl: invitation.invitationUrl }, { status: 503 }); }
+  }
+
+  if (action === "update_portal_member_access") {
+    if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Portalzugänge ändern" }, { status: 403 });
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Portalverwaltung ist nicht konfiguriert" }, { status: 503 });
+    const membershipId = cleanText(body.membershipId, 80);
+    const accessStatus = cleanText(body.accessStatus, 30);
+    const role = cleanText(body.role, 30);
+    if (!membershipId || !["active", "suspended", "revoked"].includes(accessStatus) || !["owner", "admin", "editor", "viewer"].includes(role)) return json({ error: "Ungültige Rolle oder Zugriffsart" }, { status: 400 });
+    const previous = await admin.from("tenant_memberships").select("*").eq("id", membershipId).maybeSingle();
+    if (!previous.data) return json({ error: "Portalbenutzer nicht gefunden" }, { status: 404 });
+    if ((accessStatus !== "active" || !["owner", "admin"].includes(role)) && ["owner", "admin"].includes(previous.data.role) && previous.data.active) {
+      const administrators = await admin.from("tenant_memberships").select("id").eq("tenant_id", previous.data.tenant_id).eq("access_status", "active").in("role", ["owner", "admin"]).neq("id", membershipId);
+      if (!administrators.data?.length) return json({ error: "Der letzte aktive Inhaber oder Administrator darf nicht gesperrt werden" }, { status: 409 });
+    }
+    const now = new Date().toISOString();
+    const updated = await admin.from("tenant_memberships").update({ role, access_status: accessStatus, active: accessStatus === "active", revoked_at: accessStatus === "revoked" ? now : null }).eq("id", membershipId).select("*").single();
+    if (updated.error) return json({ error: updated.error.message }, { status: 400 });
+    await admin.from("tenant_audit_log").insert({ tenant_id: previous.data.tenant_id, actor_user_id: profile.userId, action: `membership_${accessStatus}`, entity_type: "membership", entity_id: membershipId, metadata: { previousRole: previous.data.role, role } });
+    await writeAudit(client, profile, "portal_member_access", "membership", membershipId, previous.data, updated.data);
+    return json({ ok: true, record: updated.data });
   }
 
   if (action === "create_client") {

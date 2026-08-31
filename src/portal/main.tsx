@@ -1,5 +1,6 @@
 import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { createClient } from "@supabase/supabase-js";
 import { DetailedError, Upload } from "tus-js-client";
 import QRCode from "qrcode";
 import "./portal.css";
@@ -161,6 +162,78 @@ function Login({ onDone }: { onDone: () => void }) {
         {error && <div className="form-error" role="alert">{error}</div>}
         <button className="primary" disabled={busy}>{busy ? "Anmeldung läuft …" : "Anmelden"}</button>
       </form><small>Benötigen Sie Unterstützung? kontakt@swisscompact.com</small>
+    </section>
+  </main>;
+}
+
+function PortalAccessSetup() {
+  const [state, setState] = useState<"loading" | "ready" | "saving" | "success" | "error">("loading");
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+  const client = useMemo(() => {
+    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+    return url && anonKey ? createClient(url, anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }) : null;
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      if (!client) {
+        if (active) { setError("Die sichere Portalaktivierung ist noch nicht konfiguriert. Bitte kontaktieren Sie SwissCompact."); setState("error"); }
+        return;
+      }
+      try {
+        const code = new URLSearchParams(location.search).get("code");
+        if (code) {
+          const exchanged = await client.auth.exchangeCodeForSession(code);
+          if (exchanged.error) throw exchanged.error;
+        }
+        const session = await client.auth.getSession();
+        if (session.error) throw session.error;
+        if (!session.data.session?.user) throw new Error("Dieser Einladungslink ist ungültig oder abgelaufen.");
+        if (!active) return;
+        setEmail(session.data.session.user.email || "");
+        setState("ready");
+      } catch (reason) {
+        if (!active) return;
+        setError(reason instanceof Error ? reason.message : "Der Einladungslink konnte nicht geprüft werden.");
+        setState("error");
+      }
+    })();
+    return () => { active = false; };
+  }, [client]);
+
+  async function setPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!client) return;
+    const fields = new FormData(event.currentTarget);
+    const password = String(fields.get("password") || "");
+    const confirmation = String(fields.get("passwordConfirmation") || "");
+    setError("");
+    if (password.length < 12) { setError("Das Passwort muss mindestens 12 Zeichen lang sein."); return; }
+    if (password !== confirmation) { setError("Die beiden Passwörter stimmen nicht überein."); return; }
+    setState("saving");
+    try {
+      const updated = await client.auth.updateUser({ password });
+      if (updated.error) throw updated.error;
+      await api("/api/dashboard/login", { method: "POST", body: JSON.stringify({ email: updated.data.user.email || email, password, audience: "portal" }) });
+      await client.auth.signOut();
+      history.replaceState({}, "", "/portal");
+      setState("success");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Das Passwort konnte nicht gespeichert werden.");
+      setState("ready");
+    }
+  }
+
+  return <main className="login-shell portal-setup-shell">
+    <section className="login-brand"><a className="wordmark" href="/">Swiss<span>Compact</span></a><p>Persönliche Einladung</p><h1>Ihr Portal ist bereit.</h1><p className="lead">Bestätigen Sie Ihren Zugang einmalig. Danach steuern Sie Kampagnen, Bildschirme und Inhalte zentral.</p></section>
+    <section className="login-panel portal-setup-panel"><div className="eyebrow">Sicherer Zugang</div>
+      {state === "loading" && <><h2>Einladung wird geprüft</h2><p>Bitte einen Moment warten …</p><div className="setup-loader" aria-label="Einladung wird geprüft"/></>}
+      {state === "error" && <><h2>Link nicht verfügbar</h2><p className="form-error" role="alert">{error}</p><a className="primary setup-link" href="mailto:kontakt@swisscompact.com">SwissCompact kontaktieren</a></>}
+      {(state === "ready" || state === "saving") && <><h2>Passwort festlegen</h2><p>Ihr persönlicher Zugang für <strong>{email}</strong>. Das erledigen Sie nur einmal.</p><form onSubmit={setPassword}><label>Neues Passwort<input name="password" type="password" autoComplete="new-password" minLength={12} required autoFocus/></label><label>Passwort wiederholen<input name="passwordConfirmation" type="password" autoComplete="new-password" minLength={12} required/></label><small>Mindestens 12 Zeichen. Verwenden Sie kein Passwort aus einem anderen Dienst.</small>{error && <div className="form-error" role="alert">{error}</div>}<button className="primary" disabled={state === "saving"}>{state === "saving" ? "Zugang wird aktiviert …" : "Passwort speichern und Portal öffnen"}</button></form></>}
+      {state === "success" && <div className="setup-success"><span aria-hidden="true">✓</span><h2>Zugang aktiviert</h2><p>Ihr Passwort ist gespeichert. Sie können das SwissCompact Portal jetzt verwenden.</p><button className="primary" onClick={() => location.assign("/portal")}>Portal öffnen</button></div>}
     </section>
   </main>;
 }
@@ -788,4 +861,10 @@ function CreateDialog({ type, initialContentType = "composition", nested = false
   return <div className={`dialog-backdrop ${nested ? "campaign-child-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Medien & Vorlagen" : "Anzeigen"}</div><h2>{type === "content" ? "Neues Medium hinzufügen" : "Neue Anzeige erstellen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Name der Anzeige"}<input name="title" required autoFocus /></label>{type === "content" ? <><label>Medientyp<select name="contentType" value={contentType} onChange={(event) => setContentType(event.target.value)}><option value="composition">Komposition</option><option value="text">Text</option><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="web">Web-Inhalt</option></select></label>{isMedia ? <label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm,.mp4,.webm"}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4 (H.264) oder WebM · maximal 250 MB"}</small></label> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{busy && isMedia && <div className="upload-progress" role="status"><span style={{ width: `${uploadProgress}%` }}/><small>{uploadProgress > 0 ? `${uploadProgress} % übertragen` : "Upload wird vorbereitet …"}</small></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy}>{busy ? (isMedia ? `Datei wird übertragen${uploadProgress ? ` · ${uploadProgress} %` : " …"}` : "Wird gespeichert …") : nested ? "Hochladen und auswählen" : "Als Entwurf speichern"}</button></form></section></div>;
 }
 
-createRoot(document.getElementById("portal-root")!).render(<Portal />);
+function PortalEntry() {
+  const params = new URLSearchParams(location.search);
+  const invitationCallback = params.get("setup") === "1" || params.has("code") || /(?:^|&)type=invite(?:&|$)/.test(location.hash.slice(1));
+  return invitationCallback ? <PortalAccessSetup/> : <Portal/>;
+}
+
+createRoot(document.getElementById("portal-root")!).render(<PortalEntry />);

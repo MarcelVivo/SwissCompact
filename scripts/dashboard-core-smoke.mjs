@@ -42,7 +42,7 @@ assert.match(migration, /'2026-08-28'.*'settlement_transfer'.*'thomas'.*'marcel'
 for (const area of ["Auftragstrichter", "Kundenkartei", "Produktionsanfragen", "Rechnungen", "Finanzen", "KI-Bots", "Sicherheit & Protokoll"]) {
   assert.ok(ui.includes(area), `UI-Bereich ${area} fehlt`);
 }
-for (const action of ["update_client", "set_client_portal_verification", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "publish_quote", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "invoice_document_url", "update_task_status", "update_service_request_status"]) {
+for (const action of ["update_client", "set_client_portal_verification", "provision_client_portal", "resend_portal_invitation", "update_portal_member_access", "update_opportunity", "create_quote", "update_quote", "request_quote_approval", "publish_quote", "create_project_from_opportunity", "update_project", "request_project_payment_approval", "invoice_document_url", "update_task_status", "update_service_request_status"]) {
   assert.ok(records.includes(`action === "${action}"`), `CRM-Aktion ${action} fehlt`);
 }
 assert.match(overview, /contentRequests/);
@@ -52,6 +52,12 @@ assert.match(ui, /Kunde kontaktieren/);
 assert.match(ui, /Kundenkartei öffnen/);
 assert.match(ui, /Offerte vorbereiten/);
 assert.match(ui, /Verifizierter SwissCompact-Kunde/);
+assert.match(ui, /Geführte Einrichtung/);
+assert.match(ui, /Portal anlegen und Inhaber einladen/);
+assert.match(ui, /Portalbenutzer/);
+assert.match(overview, /portalMemberships/);
+assert.match(records, /createPortalInvitation/);
+assert.match(records, /tenant_subscriptions/);
 assert.match(ui, /Produktionsanfragen/);
 assert.match(portalCustomerMigration, /clients[\s\S]*portal_verified_at/);
 assert.match(portalCustomerMigration, /tenants[\s\S]*client_id/);

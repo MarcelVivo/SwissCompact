@@ -1,4 +1,4 @@
-import { authorizeDashboard, authorizePortal, isResponse } from "../_lib/dashboard/auth.js";
+import { authorizeDashboard, authorizePortal, dashboardSupabase, isResponse } from "../_lib/dashboard/auth.js";
 import { json } from "../_lib/assistant/security.js";
 import { publicAiConfiguration } from "../_lib/portal/ai-config.js";
 
@@ -81,8 +81,8 @@ export async function GET(request: Request): Promise<Response> {
   const authorized = await authorizeDashboard(request);
   if (isResponse(authorized)) return authorized;
   const { client, profile } = authorized;
-  const [clients, opportunities, projects, tasks, quotes, invoices, founderTransactions, aiJobs, settings, audit, approvals, profiles, contentRequests] = await Promise.all([
-    client.from("clients").select("id,customer_number,company_name,contact_name,email,phone,address_line,postal_code,city,country_code,lifecycle,marketing_consent,notes,portal_verified_at,portal_verified_by,created_at,updated_at,tenant:tenants(id,name,slug,status)").order("updated_at", { ascending: false }).limit(200),
+  const [clients, opportunities, projects, tasks, quotes, invoices, founderTransactions, aiJobs, settings, audit, approvals, profiles, contentRequests, portalMemberships] = await Promise.all([
+    client.from("clients").select("id,customer_number,company_name,contact_name,email,phone,address_line,postal_code,city,country_code,lifecycle,marketing_consent,notes,portal_verified_at,portal_verified_by,created_at,updated_at,tenant:tenants(id,name,slug,status,subscriptions:tenant_subscriptions(id,package_code,status,minimum_ends_on))").order("updated_at", { ascending: false }).limit(200),
     client.from("opportunities").select("id,client_id,portal_request_id,title,stage,owner_area,value_chf,probability,expected_close,next_action,next_action_at,source,created_at,updated_at,client:clients(company_name)").order("updated_at", { ascending: false }).limit(200),
     client.from("projects").select("id,quote_id,opportunity_id,client_id,order_number,title,status,software_owner,hardware_owner,starts_on,target_completion,payment_plan,deposit_received,installation_payment_received,final_payment_received,created_at,updated_at,client:clients(company_name),opportunity:opportunities(title,stage,value_chf)").order("updated_at", { ascending: false }).limit(100),
     client.from("tasks").select("id,project_id,opportunity_id,title,description,responsibility,assignee_user_id,status,priority,due_at,created_at,project:projects(order_number,title)").neq("status", "done").order("due_at", { ascending: true, nullsFirst: false }).limit(200),
@@ -95,13 +95,21 @@ export async function GET(request: Request): Promise<Response> {
     client.from("approvals").select("id,entity_type,entity_id,action,content_hash,requested_by,marcel_approved_at,thomas_approved_at,invalidated_at,executed_at,created_at").is("invalidated_at", null).order("created_at", { ascending: false }).limit(100),
     client.from("dashboard_profiles").select("user_id,email,display_name,role,security_admin,active").eq("active", true).order("display_name"),
     client.from("tenant_content").select("id,tenant_id,title,status,payload,created_at,updated_at,tenant:tenants(name,client_id)").contains("payload", { serviceRequest: true }).order("created_at", { ascending: false }).limit(200),
+    client.from("tenant_memberships").select("id,tenant_id,user_id,role,display_name,active,access_status,invited_at,accepted_at,verified_at,revoked_at,tenant:tenants(id,name,client_id)").order("created_at", { ascending: true }).limit(1000),
   ]);
-  const firstError = [clients, opportunities, projects, tasks, quotes, invoices, founderTransactions, aiJobs, settings, audit, approvals, profiles, contentRequests]
+  const firstError = [clients, opportunities, projects, tasks, quotes, invoices, founderTransactions, aiJobs, settings, audit, approvals, profiles, contentRequests, portalMemberships]
     .find((result) => result.error)?.error;
   if (firstError) {
     console.error("dashboard overview:", firstError.message);
     return json({ error: "Dashboard-Datenmodell ist noch nicht vollständig eingerichtet" }, { status: 503 });
   }
+  const authAdmin = dashboardSupabase();
+  const authUsers = authAdmin ? await authAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 }) : null;
+  const usersById = new Map((authUsers?.data?.users ?? []).map((user) => [user.id, user]));
+  const enrichedPortalMemberships = (portalMemberships.data ?? []).map((membership) => {
+    const portalUser = usersById.get(membership.user_id);
+    return { ...membership, email: portalUser?.email ?? null, email_confirmed_at: portalUser?.email_confirmed_at ?? null, last_sign_in_at: portalUser?.last_sign_in_at ?? null };
+  });
   return json({
     profile,
     clients: clients.data ?? [],
@@ -117,6 +125,7 @@ export async function GET(request: Request): Promise<Response> {
     approvals: approvals.data ?? [],
     profiles: profiles.data ?? [],
     contentRequests: contentRequests.data ?? [],
+    portalMemberships: enrichedPortalMemberships,
     generatedAt: new Date().toISOString(),
   });
 }

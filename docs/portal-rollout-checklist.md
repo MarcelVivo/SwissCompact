@@ -86,3 +86,14 @@ Jedes aktive Portal benötigt eine Kundenkartei mit Status `customer`, einen Zei
 4. Login eines gesperrten oder unbestätigten Kontos testen.
 5. Produktionsanfrage absenden und Verknüpfung in Kundenkartei und Auftragstrichter prüfen.
 
+## 5. Geführte Einrichtung neuer Kunden
+
+Für persönliche Einladungen müssen in Vercel zusätzlich `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `RESEND_API_KEY` und `SITE_URL=https://www.swisscompact.com` gesetzt sein. In Supabase unter **Authentication → URL Configuration** muss `https://www.swisscompact.com/portal?setup=1` als erlaubte Redirect-URL hinterlegt sein.
+
+Danach im internen Dashboard:
+
+1. Kundenkartei öffnen und den Status **Kunde** wählen.
+2. **Portal einrichten** öffnen, Paket sowie persönliche Inhaber-E-Mail prüfen und Einladung senden.
+3. In einem privaten Browserfenster den Einladungslink öffnen, ein Passwort mit mindestens 12 Zeichen festlegen und das Portal öffnen.
+4. Im Dashboard prüfen, dass der Benutzer **Aktiv** und der Arbeitsbereich freigeschaltet ist.
+5. Testweise sperren und reaktivieren. Der letzte aktive Inhaber oder Administrator muss gegen Sperrung geschützt bleiben.

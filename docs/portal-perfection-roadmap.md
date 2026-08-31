@@ -12,24 +12,24 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 
 ## Phasen
 
-### 1. Verifizierter Zugang und sichere Bestandsübernahme – in Arbeit
+### 1. Verifizierter Zugang und sichere Bestandsübernahme – abgeschlossen
 
 - [x] Portal zwingend mit genau einer CRM-Kundenkartei verknüpfen
 - [x] Produktionsanfragen automatisch als Auftrag im CRM erfassen
 - [x] Bestätigte E-Mail und aktive persönliche Mitgliedschaft verlangen
 - [x] Benutzerzustände `eingeladen`, `aktiv`, `gesperrt`, `widerrufen` im Datenmodell abbilden
 - [x] Mehrdeutige Bestandszuordnungen und unvollständige Migrationen technisch abbrechen
-- [ ] Migration anhand `portal-rollout-checklist.md` prüfen und ausführen
-- [ ] Produktionsdeployment prüfen
+- [x] Migration anhand `portal-rollout-checklist.md` prüfen und ausführen
+- [x] Produktionsdeployment und bestätigten Kundenlogin prüfen
 
-### 2. Interner Kunden-Onboarding-Assistent
+### 2. Interner Kunden-Onboarding-Assistent – umgesetzt
 
-- [ ] Kunde erfassen oder bestehende Kundenkartei wählen
-- [ ] Kundenstatus und Portalberechtigung intern bestätigen
-- [ ] Portal-Arbeitsbereich anlegen und Paket wählen
-- [ ] Inhaber per E-Mail einladen
-- [ ] Bestätigung und ersten Login überwachen
-- [ ] Benutzer sperren, erneut einladen und Rollen ändern
+- [x] Kunde erfassen oder bestehende Kundenkartei wählen
+- [x] Kundenstatus und Portalberechtigung intern bestätigen
+- [x] Portal-Arbeitsbereich anlegen und Paket wählen
+- [x] Inhaber per E-Mail einladen und Passwort sicher festlegen lassen
+- [x] Bestätigung und ersten Login überwachen
+- [x] Benutzer sperren, erneut einladen und Rollen ändern
 
 ### 3. Kundenbereich „Meine Vorgänge“
 
@@ -86,4 +86,3 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 | Umsetzung | Projekt beziehungsweise Produktionsauftrag |
 | Wiederverwendbare Medien | Medienarchiv |
 | Ausspielung | Kampagne, Zielbildschirm und Playlist |
-

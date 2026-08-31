@@ -210,6 +210,29 @@ export async function ensurePortalProfile(
   } as PortalProfile;
 }
 
+export async function activatePendingPortalMembership(user: User): Promise<void> {
+  if (!user.email || !user.email_confirmed_at) return;
+  const admin = dashboardSupabase();
+  if (!admin) return;
+  const pending = await admin
+    .from("tenant_memberships")
+    .select("id,tenant_id,access_status,tenant:tenants(id,status,client_id)")
+    .eq("user_id", user.id)
+    .eq("access_status", "invited");
+  if (pending.error) return;
+  for (const membership of pending.data ?? []) {
+    const tenant = Array.isArray(membership.tenant) ? membership.tenant[0] : membership.tenant;
+    if (!tenant?.client_id) continue;
+    const customer = await admin.from("clients").select("id,lifecycle,portal_verified_at").eq("id", tenant.client_id).maybeSingle();
+    if (!customer.data || customer.data.lifecycle !== "customer" || !customer.data.portal_verified_at) continue;
+    const now = new Date().toISOString();
+    const activated = await admin.from("tenant_memberships").update({ access_status: "active", active: true, accepted_at: now, verified_at: now, revoked_at: null }).eq("id", membership.id).eq("access_status", "invited");
+    if (activated.error) continue;
+    await admin.from("tenants").update({ status: "active", updated_at: now }).eq("id", membership.tenant_id).eq("client_id", tenant.client_id).in("status", ["onboarding", "active"]);
+    await admin.from("tenant_audit_log").insert({ tenant_id: membership.tenant_id, actor_user_id: user.id, action: "portal_invitation_accepted", entity_type: "membership", entity_id: membership.id, metadata: { email: user.email.toLowerCase() } });
+  }
+}
+
 export async function authorizeDashboard(request: Request, requireMfa = true): Promise<{
   client: SupabaseClient<any, any, any>;
   user: User;
