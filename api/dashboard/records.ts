@@ -27,7 +27,7 @@ function resumableStorageUrl(signedUploadUrl: string): string {
   if (url.hostname.endsWith(".supabase.co") && !url.hostname.endsWith(".storage.supabase.co")) {
     url.hostname = url.hostname.replace(/\.supabase\.co$/, ".storage.supabase.co");
   }
-  url.pathname = "/storage/v1/upload/resumable";
+  url.pathname = "/storage/v1/upload/resumable/sign";
   url.search = "";
   url.hash = "";
   return url.toString();
@@ -173,7 +173,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const month = now.slice(0, 7);
     const assetPath = `${profile.tenantId}/${month}/${randomBytes(16).toString("hex")}.${media.extension}`;
     const signed = await client.storage.from(PORTAL_MEDIA_BUCKET).createSignedUploadUrl(assetPath);
-    if (signed.error) return json({ error: `Upload konnte nicht vorbereitet werden: ${signed.error.message}` }, { status: 503 });
+    if (signed.error || !signed.data?.token) return json({ error: `Upload konnte nicht vorbereitet werden${signed.error?.message ? `: ${signed.error.message}` : ""}` }, { status: 503 });
     const result = await client.from("tenant_content").insert({
       tenant_id: profile.tenantId,
       title,

@@ -67,6 +67,7 @@ function storageUploadMessage(reason: unknown): string {
   if (/maximum.*size|file.*size|too large|payload.*large|413/i.test(detail)) {
     return "Das Video überschreitet das Upload-Limit von Supabase Storage. Bitte verkleinern Sie die Datei oder erhöhen Sie dort das globale Dateilimit.";
   }
+  if (/invalid compact jws|signature|signatur/i.test(detail)) return "Die Upload-Freigabe ist ungültig oder abgelaufen. Bitte starten Sie den Upload erneut.";
   if (/mime|content.?type/i.test(detail)) return "Dieses Videoformat wird nicht unterstützt. Bitte verwenden Sie MP4 (H.264) oder WebM.";
   if (!navigator.onLine) return "Die Internetverbindung wurde unterbrochen. Bitte starten Sie den Upload erneut.";
   return detail ? `Die Datei konnte nicht übertragen werden: ${detail.slice(0, 240)}` : "Die Datei konnte nicht übertragen werden.";
