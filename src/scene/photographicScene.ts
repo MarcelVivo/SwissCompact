@@ -7,6 +7,8 @@ export interface PhotographicSceneOptions {
   chapterIndex: number;
   entryLead?: number;
   entryDuration?: number;
+  exitStart?: number;
+  exitDuration?: number;
   motion?: PhotographicSceneMotion;
 }
 
@@ -52,6 +54,8 @@ export function updatePhotographicScene({
   chapterIndex,
   entryLead = 0.02,
   entryDuration = 0.04,
+  exitStart = 0.98,
+  exitDuration = 0.04,
   motion,
 }: PhotographicSceneOptions): void {
   const journey = clamp01(progress) * chapterCount;
@@ -59,7 +63,9 @@ export function updatePhotographicScene({
   const entry = smoothstep(
     (journey - chapterIndex + entryLead) / Math.max(0.001, entryDuration),
   );
-  const exit = 1 - smoothstep((journey - chapterIndex - 0.98) / 0.04);
+  const exit = 1 - smoothstep(
+    (journey - chapterIndex - exitStart) / Math.max(0.001, exitDuration),
+  );
   const opacity = Math.min(entry, exit);
   const visible = opacity > 0.001;
 

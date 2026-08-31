@@ -727,6 +727,14 @@ if (prefersReducedMotion) {
             progress,
             chapterCount: stations.length,
             chapterIndex: 10,
+            // The default exit fade (start 0.98, duration 0.04) assumes a
+            // next chapter to crossfade into, finishing at local progress
+            // 1.02 — journey can never exceed chapterCount though, so for
+            // the last station that finish line is unreachable and its
+            // video gets stuck at ~50% opacity once scrolled into the
+            // marketing-entry-dissolve section below. Shrink the duration
+            // so the fade actually completes by local progress 1.0.
+            exitDuration: 0.02,
           });
         }
       },
