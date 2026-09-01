@@ -17,7 +17,7 @@ export async function GET(request: Request): Promise<Response> {
     const partnerNetworkPromise = loadPartnerNetwork(customerAdmin, tenantId);
     const displayHealthRefresh = await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
     if (displayHealthRefresh.error) console.warn("portal display health refresh:", displayHealthRefresh.error.message);
-    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers, campaignVersions] = await Promise.all([
+    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers, campaignVersions, legalDocuments, legalAcceptances] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,last_seen_at,configuration_version,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
@@ -37,6 +37,8 @@ export async function GET(request: Request): Promise<Response> {
       client.from("tenant_display_groups").select("id,name,description,created_at,updated_at").eq("tenant_id", tenantId).order("name").limit(250),
       client.from("tenant_display_group_members").select("group_id,display_id").eq("tenant_id", tenantId).limit(5000),
       client.from("tenant_campaign_versions").select("id,campaign_id,version,source,configuration,restored_from_version_id,created_by,created_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(500),
+      client.from("legal_documents").select("id,document_type,acceptance_scope,version,title,summary,content_markdown,content_hash,requires_acceptance,status,effective_at,published_at").in("status", ["published", "superseded"]).lte("effective_at", new Date().toISOString()).order("published_at", { ascending: false }),
+      client.from("legal_acceptances").select("id,document_id,user_id,acceptance_scope_snapshot,accepted_at,membership:tenant_memberships(display_name)").eq("tenant_id", tenantId).order("accepted_at", { ascending: false }).limit(500),
     ]);
     const [customerQuotes, customerProjects, customerInvoices, responsibleProfiles] = await Promise.all([
       customerAdmin.from("quotes").select("id,quote_number,opportunity_id,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at,opportunity:opportunities(title)").eq("client_id", profile.clientId).in("status", ["sent", "viewed", "accepted", "declined", "expired"]).order("updated_at", { ascending: false }).limit(100),
@@ -76,6 +78,8 @@ export async function GET(request: Request): Promise<Response> {
     if (!displayGroupsAvailable) console.warn("portal display groups are not migrated yet", displayGroups.error?.message || displayGroupMembers.error?.message);
     const campaignVersionsAvailable = !campaignVersions.error;
     if (!campaignVersionsAvailable) console.warn("portal campaign versions are not migrated yet", campaignVersions.error?.message);
+    const legalComplianceAvailable = !legalDocuments.error && !legalAcceptances.error;
+    if (!legalComplianceAvailable) console.warn("portal legal compliance is not migrated yet", legalDocuments.error?.message || legalAcceptances.error?.message);
     const customerRecordsError = [customerQuotes, customerProjects, customerInvoices, responsibleProfiles].find((result) => result.error)?.error;
     if (customerRecordsError) {
       console.error("portal customer records:", customerRecordsError.message);
@@ -139,6 +143,29 @@ export async function GET(request: Request): Promise<Response> {
       software_owner_name: project.software_owner ? responsibleNames.get(project.software_owner) || "SwissCompact Team" : "SwissCompact Team",
       hardware_owner_name: project.hardware_owner ? responsibleNames.get(project.hardware_owner) || "SwissCompact Team" : "SwissCompact Team",
     }));
+    const acceptanceForDocument = (document: any) => (legalAcceptances.data ?? []).find((acceptance: any) =>
+      acceptance.document_id === document.id
+      && (document.acceptance_scope === "tenant" || acceptance.user_id === profile.userId)
+    );
+    const currentLegalDocuments = legalComplianceAvailable ? (legalDocuments.data ?? []).map((document: any) => {
+      const acceptance = acceptanceForDocument(document);
+      const membership = Array.isArray(acceptance?.membership) ? acceptance.membership[0] : acceptance?.membership;
+      return {
+        id: document.id,
+        documentType: document.document_type,
+        acceptanceScope: document.acceptance_scope,
+        version: document.version,
+        title: document.title,
+        summary: document.summary,
+        content: document.content_markdown,
+        contentHash: document.content_hash,
+        effectiveAt: document.effective_at,
+        requiresAcceptance: document.requires_acceptance,
+        status: document.status,
+        acceptedAt: acceptance?.accepted_at ?? null,
+        acceptedByName: membership?.display_name ?? null,
+      };
+    }) : [];
     return json({
       profile,
       sites: sites.data ?? [],
@@ -189,6 +216,11 @@ export async function GET(request: Request): Promise<Response> {
               displayIds: (displayGroupMembers.data ?? []).filter((member) => member.group_id === group.id).map((member) => member.display_id),
             }))
           : [],
+      },
+      legalCompliance: {
+        available: legalComplianceAvailable,
+        documents: currentLegalDocuments,
+        pendingDocumentIds: currentLegalDocuments.filter((document: any) => document.status === "published" && document.requiresAcceptance && !document.acceptedAt).map((document: any) => document.id),
       },
       subscription: subscription.data ?? null,
       members: (members.data ?? []).filter((member) => member.active && member.access_status === "active" && member.verified_at),

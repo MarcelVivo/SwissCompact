@@ -1,0 +1,265 @@
+.legal-consent-backdrop {
+  z-index: 260;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.legal-consent-dialog {
+  width: min(920px, 100%);
+  max-height: calc(100svh - 48px);
+  display: grid;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.legal-consent-dialog > h2 {
+  margin: 4px 0 0;
+  font-size: clamp(1.7rem, 4vw, 2.5rem);
+}
+
+.legal-consent-intro {
+  max-width: 720px;
+  margin: 0;
+  color: #66625e;
+  line-height: 1.55;
+}
+
+.legal-consent-documents,
+.legal-settings-list {
+  display: grid;
+  gap: 12px;
+}
+
+.legal-consent-documents > article {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid #dcd8d2;
+  border-radius: 17px;
+  background: #fff;
+}
+
+.legal-consent-documents article > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.legal-consent-documents header span,
+.legal-settings-heading span {
+  color: #77736e;
+  font-size: .66rem;
+  font-weight: 850;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.legal-consent-documents h3,
+.legal-settings-heading h3 {
+  margin: 4px 0;
+  font-size: 1.18rem;
+}
+
+.legal-consent-documents header small {
+  color: #817d78;
+}
+
+.legal-consent-documents header > b {
+  flex: 0 0 auto;
+  padding: 7px 9px;
+  border-radius: 999px;
+  background: #f0eeea;
+  color: #5f5b57;
+  font-size: .68rem;
+}
+
+.legal-consent-documents article > p {
+  margin: 0;
+  color: #68645f;
+  line-height: 1.45;
+}
+
+.legal-consent-documents details,
+.legal-settings-list details {
+  border: 1px solid #e2ded8;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.legal-consent-documents summary,
+.legal-settings-list summary {
+  padding: 13px 15px;
+  background: #f8f7f4;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.legal-document-copy {
+  padding: 18px;
+  border-top: 1px solid #e2ded8;
+  background: #fff;
+  color: #363431;
+  font-family: inherit;
+  font-size: .82rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.legal-confirmation {
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  align-items: flex-start;
+  gap: 10px !important;
+  padding: 13px 14px;
+  border: 1px solid var(--state-confirmed-border);
+  border-radius: 12px;
+  background: var(--state-confirmed-bg);
+  cursor: pointer;
+}
+
+.legal-confirmation input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--state-confirmed);
+}
+
+.legal-owner-required {
+  padding: 13px 14px;
+  border: 1px solid #e6c679;
+  border-radius: 12px;
+  background: #fff8e8;
+  color: #75520e;
+  line-height: 1.45;
+}
+
+.legal-consent-dialog > footer {
+  position: sticky;
+  bottom: -1px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+  background: #f7f5f1;
+}
+
+.legal-settings-card {
+  grid-column: 1 / -1;
+}
+
+.legal-settings-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.legal-settings-heading > b {
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: .7rem;
+}
+
+.legal-settings-heading > b.complete,
+.legal-settings-list em.accepted {
+  background: var(--state-confirmed-bg);
+  color: var(--state-confirmed-dark);
+}
+
+.legal-settings-list em.informational {
+  background: #eeece8;
+  color: #625e59;
+}
+
+.legal-settings-heading > b.pending,
+.legal-settings-list em.pending {
+  background: #fff0d5;
+  color: #805706;
+}
+
+.legal-settings-list summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  list-style-position: inside;
+}
+
+.legal-settings-list summary > span {
+  display: inline-grid;
+  gap: 3px;
+  margin-right: auto;
+}
+
+.legal-settings-list summary small {
+  color: #77736f;
+}
+
+.legal-settings-list summary em {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: .68rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.legal-settings-list details > div {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.legal-settings-list details p {
+  margin: 0;
+  color: #66625e;
+}
+
+.legal-settings-list details .legal-document-copy {
+  border: 1px solid #e2ded8;
+  border-radius: 10px;
+}
+
+.legal-settings-list details code {
+  width: max-content;
+  max-width: 100%;
+  overflow: hidden;
+  color: #77736f;
+  font-size: .68rem;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 680px) {
+  .legal-consent-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .legal-consent-dialog {
+    width: 100%;
+    max-height: 92svh;
+    padding: 24px 18px calc(20px + env(safe-area-inset-bottom));
+    border-radius: 22px 22px 0 0;
+  }
+
+  .legal-consent-documents > article {
+    padding: 16px;
+  }
+
+  .legal-consent-documents article > header,
+  .legal-settings-heading,
+  .legal-settings-list summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .legal-consent-dialog > footer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .legal-consent-dialog > footer button {
+    width: 100%;
+  }
+}

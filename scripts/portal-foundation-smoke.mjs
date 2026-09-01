@@ -10,6 +10,7 @@ const partnerMigration = read("supabase/migrations/20260907_partner_network.sql"
 const campaignTemplateMigration = read("supabase/migrations/20260908_campaign_templates.sql");
 const displayGroupMigration = read("supabase/migrations/20260909_display_groups.sql");
 const campaignVersionMigration = read("supabase/migrations/20260910_campaign_versions.sql");
+const legalComplianceMigration = read("supabase/migrations/20260911_legal_compliance.sql");
 const partnerApi = read("api/_lib/portal/partner-network.ts");
 const partnerView = read("src/portal/PartnerNetworkView.tsx");
 const campaignTemplates = read("src/portal/CampaignTemplates.tsx");
@@ -17,6 +18,7 @@ const displayManagement = read("src/portal/DisplayManagementView.tsx");
 const campaignHierarchy = read("src/portal/CampaignHierarchyPlanner.tsx");
 const campaignVersionHistory = read("src/portal/CampaignVersionHistory.tsx");
 const operationalStatus = read("src/portal/OperationalStatusView.tsx");
+const legalCompliance = read("src/portal/LegalCompliance.tsx");
 const auth = read("api/_lib/dashboard/auth.ts");
 const records = read("api/dashboard/records.ts");
 const overview = read("api/dashboard/overview.ts");
@@ -32,6 +34,7 @@ const campaignVersionCss = read("src/portal/portal-campaign-versions.css");
 const operationalStatusCss = read("src/portal/portal-operational-status.css");
 const mobileNavigationCss = read("src/portal/portal-mobile-navigation.css");
 const visualPolishCss = read("src/portal/portal-visual-polish.css");
+const legalCss = read("src/portal/portal-legal.css");
 const vercel = JSON.parse(read("vercel.json"));
 const vite = read("vite.config.ts");
 
@@ -78,6 +81,7 @@ const checks = {
   operationalStatusCenter: ["Systemstatus", "Alles läuft", "Handlungsbedarf", "Was jetzt zu tun ist", "Automatische Prüfungen", "Offline-Ersatzinhalt", "operationalOpenIssueCount"].every((label) => operationalStatus.includes(label)) && ["OperationalStatusView", "system-status-overview", "nav-status-count", "acknowledge_display_alert"].every((label) => portal.includes(label)) && ["operational-summary", "operational-issues", "operational-checks", "system-status-overview"].every((label) => operationalStatusCss.includes(label)) && ["refresh_display_delivery_health", "tenant_display_alerts", "delivery_status"].every((label) => overview.includes(label)),
   mobileMoreNavigation: ["mobile-more-title", "mobile-more-copy", "secondaryDescriptions", "Weitere Bereiche Ihres Kundenportals"].every((label) => portal.includes(label)) && [".mobile-more-nav button", "grid-template-columns: 24px minmax(0, 1fr) auto", ".mobile-more-copy", ".mobile-more-logout", "@media (min-width: 681px)"].every((label) => mobileNavigationCss.includes(label)),
   consistentPortalLayout: ["ProjectPaymentProgress", "project-record-summary", "Zahlungsplan", "Zahlungen bestätigt"].every((label) => portal.includes(label)) && ["max-width: 1560px", ".project-payment-progress", ".project-record-summary", ".dialog-close", "overflow-x: clip", "@media (max-width: 520px)"].every((label) => visualPolishCss.includes(label)),
+  legalCompliance: ["legal_documents", "legal_acceptances", "protect_legal_records", "publish_legal_document", "accept_legal_documents", "content_hash", "enable row level security", "ENTWURF"].every((label) => legalComplianceMigration.includes(label)) && ["accept_legal_documents", "target_documents", "acceptance_metadata"].every((label) => records.includes(label)) && ["legalCompliance", "pendingDocumentIds", "legal_acceptances"].every((label) => overview.includes(label)) && ["LegalConsentDialog", "LegalSettingsCard", "Dokumente und Zustimmungen", "verbindlich bestätigen"].every((label) => legalCompliance.concat(portal).includes(label)) && ["legal-consent-dialog", "legal-settings-card", "legal-document-copy"].every((label) => legalCss.includes(label)),
   funnelStepHeaderLayout: campaignCss.includes(".funnel-current-step > span:first-child") && !campaignCss.includes(".funnel-current-step > span {"),
   editablePortalRecords: ["update_content", "update_display"].every((action) => records.includes(action) && portal.includes(action)) && ["ContentEditDialog", "DisplayEditDialog", "Änderungen live übernehmen", "(activate || isRunning)"].every((label) => portal.includes(label)) && !records.includes("müssen zuerst pausiert werden"),
   visibleRecordLabels: ["record-kind", "record-title-line", "record-assignment", "campaign-identity"].every((label) => portal.includes(label) && campaignCss.concat(read("src/portal/portal-records.css")).includes(label)),

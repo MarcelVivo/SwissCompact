@@ -514,10 +514,27 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   const authorized = await authorizePortal(request);
   if (isResponse(authorized)) return authorized;
   const { client, profile } = authorized;
-  if (profile.role === "viewer") return json({ error: "Nur Lesezugriff" }, { status: 403 });
   const body = await request.json() as Payload;
   const action = cleanText(body.action, 80);
   const now = new Date().toISOString();
+
+  if (action === "accept_legal_documents") {
+    const documentIds = Array.isArray(body.documentIds)
+      ? [...new Set(body.documentIds.map((value) => cleanText(value, 80)).filter((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)))].slice(0, 10)
+      : [];
+    if (!documentIds.length) return json({ error: "Wählen Sie mindestens ein gültiges Dokument" }, { status: 400 });
+    const accepted = await client.rpc("accept_legal_documents", {
+      target_tenant: profile.tenantId,
+      target_documents: documentIds,
+      acceptance_metadata: {
+        language: (request.headers.get("accept-language") || "de-CH").slice(0, 80),
+      },
+    });
+    if (accepted.error) return json({ error: accepted.error.message || "Zustimmung konnte nicht protokolliert werden" }, { status: 409 });
+    return json({ ok: true, accepted: Number(accepted.data || 0) });
+  }
+
+  if (profile.role === "viewer") return json({ error: "Nur Lesezugriff" }, { status: 403 });
 
   if (action.includes("partner")) {
     const admin = dashboardSupabase();

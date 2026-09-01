@@ -75,7 +75,7 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 ### 7. Compliance und Betriebsreife
 
 - [x] Verständliches Systemstatus- und Warnungscenter für Displays, Auslieferung, Medien und Kampagnen
-- [ ] AGB-, Datenschutz- und Auftragsverarbeitungs-Versionen protokollieren
+- [x] AGB-, Datenschutz- und Auftragsverarbeitungs-Versionen technisch protokollieren; Veröffentlichung geprüfter Texte ausstehend
 - [ ] Datenexport, Aufbewahrung und Löschanfragen
 - [ ] Sitzungs- und Geräteverwaltung, Passkeys und optionale MFA
 - [ ] Backup-Wiederherstellung regelmässig testen
