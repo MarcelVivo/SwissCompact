@@ -1,0 +1,79 @@
+.content-mode { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.hierarchy-shortcuts,
+.hierarchy-playlist-tabs {
+  display: grid;
+  gap: .8rem;
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid #dedbd6;
+  border-radius: 18px;
+  background: #faf9f7;
+}
+.hierarchy-shortcuts > div:first-child,
+.hierarchy-playlist-tabs > div:first-child { display: grid; gap: .2rem; }
+.hierarchy-shortcuts > div:first-child small,
+.hierarchy-playlist-tabs > div:first-child small { color: #74716d; }
+.hierarchy-shortcuts > div:last-child,
+.hierarchy-playlist-tabs > div:last-child { display: flex; flex-wrap: wrap; gap: .55rem; padding: .1rem 0 .35rem; }
+.hierarchy-shortcuts button,
+.hierarchy-playlist-tabs button {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .05rem .45rem;
+  min-width: 150px;
+  padding: .7rem .8rem;
+  margin-left: calc(var(--hierarchy-depth, 0) * .3rem);
+  border: 1px solid #d9d5d0;
+  border-radius: 13px;
+  background: #fff;
+  color: #201f1d;
+  text-align: left;
+  cursor: pointer;
+}
+.hierarchy-shortcuts button > span { grid-row: 1 / 3; align-self: center; font-weight: 900; }
+.hierarchy-shortcuts button small,
+.hierarchy-playlist-tabs button small { color: #77736e; font-size: .72rem; }
+.hierarchy-shortcuts button.selected,
+.hierarchy-playlist-tabs button.active {
+  border-color: var(--state-confirmed, #16875f);
+  background: #edf8f3;
+  color: #116b4d;
+  box-shadow: 0 0 0 2px rgba(22, 135, 95, .12);
+}
+.hierarchy-playlist-tabs button.configured:not(.active) { border-color: #9ccfba; }
+.hierarchy-playlist-tabs button.inherited:not(.active) { border-style: dashed; }
+.hierarchy-inheritance-note {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin: .75rem 0;
+  padding: .8rem 1rem;
+  border-radius: 13px;
+  background: #edf8f3;
+  color: #116b4d;
+}
+.hierarchy-inheritance-note span { display: grid; gap: .15rem; }
+.hierarchy-inheritance-note small { color: #4b7967; }
+.hierarchy-inheritance-note button { white-space: nowrap; }
+.priority-explanation {
+  display: grid;
+  gap: .35rem;
+  margin-top: .75rem;
+  padding: .85rem 1rem;
+  border-radius: 13px;
+  background: #f3f1ee;
+  color: #5e5a55;
+}
+.priority-explanation strong { color: #1f1e1c; }
+@media (max-width: 760px) {
+  .content-mode { grid-template-columns: minmax(0, 1fr); }
+  .hierarchy-shortcuts,
+  .hierarchy-playlist-tabs { padding: .8rem; }
+  .hierarchy-shortcuts > div:last-child,
+  .hierarchy-playlist-tabs > div:last-child { display: grid; overflow: visible; }
+  .hierarchy-shortcuts button,
+  .hierarchy-playlist-tabs button { width: 100%; min-width: 0; margin-left: 0; }
+  .hierarchy-inheritance-note { align-items: flex-start; flex-direction: column; }
+}

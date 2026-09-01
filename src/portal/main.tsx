@@ -20,10 +20,12 @@ import "./portal-scroll.css";
 import "./portal-partners.css";
 import "./portal-templates.css";
 import "./portal-display-management.css";
+import "./portal-hierarchy.css";
 import "./portal-semantics.css";
 import { PartnerNetworkView, type PartnerNetworkData } from "./PartnerNetworkView";
 import { CampaignQuickStartDialog, SaveCampaignTemplateDialog, type CampaignTemplateChoice, type CampaignTemplatesData } from "./CampaignTemplates";
 import { DisplayManagementView, type DisplayGroupsData } from "./DisplayManagementView";
+import { areaLineage, buildHierarchyTargets, HierarchyPlaylistTabs, HierarchySelectionShortcuts } from "./CampaignHierarchyPlanner";
 
 type PortalProfile = { displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
 type Site = { id: string; name: string; active: boolean; address?: Record<string, string> };
@@ -43,7 +45,7 @@ const LED_AUTO_THRESHOLD_INCHES = 75;
 type MediaMetadata = { width: number; height: number; durationSeconds?: number; aspectRatio: number; orientation: "landscape" | "portrait" | "square"; inspectedAt: string; validationVersion: number };
 type Content = { id: string; title: string; content_type: string; status: string; payload?: { text?: string; uploadState?: string; processingState?: string; processingError?: string; compatibilityStatus?: string; mediaProvider?: "supabase" | "mux"; posterPath?: string; mediaMetadata?: MediaMetadata; serviceRequest?: boolean; serviceRequestStatus?: string; requestType?: string; requestTypeLabel?: string; objective?: string; deliverables?: string; desiredDate?: string | null; budget?: string | null; requesterEmail?: string; requesterName?: string }; preview_url?: string | null; poster_url?: string | null; created_at?: string; creator_name?: string; updated_at: string };
 type CampaignContentLink = { position: number; duration_seconds: number; content: { id: string; title: string; content_type: string; status: string } | null };
-type Campaign = { id: string; name: string; theme?: string | null; status: string; priority?: number; starts_at?: string; ends_at?: string; schedule?: { portalSetupStep?: number } | null; scope_site_id?: string | null; scope_area_id?: string | null; created_at?: string; creator_name?: string; updated_at: string; content_links?: CampaignContentLink[]; target_assignments?: Array<{ display_id: string; content_links: CampaignContentLink[] }>; display_links?: Array<{ display_id: string; display: { id: string; name: string; status: string; site?: { name?: string }; area?: { id?: string; name?: string; kind?: string } } | null }> };
+type Campaign = { id: string; name: string; theme?: string | null; status: string; priority?: number; starts_at?: string; ends_at?: string; schedule?: { portalSetupStep?: number; portalPlaylistStrategy?: CampaignContentMode; portalHierarchyPlaylists?: Record<string, PlaylistEntry[]> } | null; scope_site_id?: string | null; scope_area_id?: string | null; created_at?: string; creator_name?: string; updated_at: string; content_links?: CampaignContentLink[]; target_assignments?: Array<{ display_id: string; content_links: CampaignContentLink[] }>; display_links?: Array<{ display_id: string; display: { id: string; name: string; status: string; site?: { name?: string }; area?: { id?: string; name?: string; kind?: string } } | null }> };
 type Subscription = { package_code: string; status: string; starts_on: string; minimum_ends_on?: string; monthly_amount_chf?: number; included_ai_credits?: number } | null;
 type Member = { id: string; role: string; display_name?: string; active: boolean; access_status: "invited" | "active" | "suspended" | "revoked"; invited_at?: string; accepted_at?: string; verified_at?: string };
 type PairingInfo = { displayId: string; code: string; expiresAt: string; displayName?: string };
@@ -70,7 +72,7 @@ type DisplaySafety = { versions: Array<{ id: string; display_id: string; version
 type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; archivedContent: Content[]; serviceRequests: Content[]; customerRecords: CustomerRecords; projectCollaboration: ProjectCollaboration; partnerNetwork: PartnerNetworkData; campaignTemplates: CampaignTemplatesData; displayGroups: DisplayGroupsData; displaySafety: DisplaySafety; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits; mediaPipeline?: { muxVideoEnabled: boolean; maxVideoBytes: number } };
 type View = "overview" | "records" | "content" | "archive" | "campaigns" | "displays" | "partners" | "settings";
 type DeleteTarget = { kind: "archived_content" | "campaign" | "display"; id: string; name: string };
-type CampaignPreset = { contentId?: string; displayId?: string; name?: string; theme?: string | null; priority?: number; scopeSiteId?: string | null; scopeAreaId?: string | null; displayIds?: string[]; targetAssignments?: Array<{ displayId: string; contentItems: Array<{ contentId: string; durationSeconds: number }> }>; templateName?: string; defaultDurationDays?: number | null; startStep?: 1 | 2 | 3 | 4; fromTemplate?: boolean };
+type CampaignPreset = { contentId?: string; displayId?: string; name?: string; theme?: string | null; priority?: number; scopeSiteId?: string | null; scopeAreaId?: string | null; displayIds?: string[]; targetAssignments?: Array<{ displayId: string; contentItems: Array<{ contentId: string; durationSeconds: number }> }>; playlistStrategy?: CampaignContentMode; hierarchyPlaylists?: Record<string, PlaylistEntry[]>; templateName?: string; defaultDurationDays?: number | null; startStep?: 1 | 2 | 3 | 4; fromTemplate?: boolean };
 
 type PreparedMediaUpload = {
   provider: "supabase" | "mux";
@@ -714,9 +716,10 @@ function Portal() {
     const targetAssignments = (choice.targetAssignments || [])
       .filter((assignment) => displayIds.includes(assignment.displayId))
       .map((assignment) => ({ ...assignment, contentItems: (assignment.contentItems || []).filter((item) => availableContentIds.has(item.contentId)) }));
+    const hierarchyPlaylists = Object.fromEntries(Object.entries(choice.hierarchyPlaylists || {}).map(([key, entries]) => [key, entries.filter((entry) => availableContentIds.has(entry.contentId))]));
     const completeTemplate = displayIds.length > 0 && displayIds.every((displayId) => targetAssignments.some((assignment) => assignment.displayId === displayId && assignment.contentItems.length > 0));
     const datedName = `${choice.name} · ${new Date().toLocaleDateString("de-CH")}`;
-    setCampaignPreset({ ...choice, name: datedName, displayIds, targetAssignments, startStep: completeTemplate ? 3 : 1, fromTemplate: true });
+    setCampaignPreset({ ...choice, name: datedName, displayIds, targetAssignments, hierarchyPlaylists, startStep: completeTemplate ? 3 : 1, fromTemplate: true });
     setCampaignInitialStep(completeTemplate ? 3 : 1);
     setCampaignQuickStart(false);
     setCreatingCampaign(true);
@@ -997,6 +1000,7 @@ function localDateTime(value?: string): string {
 }
 
 type PlaylistEntry = { contentId: string; durationSeconds: number };
+type CampaignContentMode = "shared" | "hierarchy" | "individual";
 
 function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, displays, displayGroups, aiCredits, canEdit, canManageDevices, onContentCreated, onWaitForContentReady, onDraftCreated, onCreateDisplay, onClose, onSaved }: { campaign: Campaign | null; preset: CampaignPreset | null; initialStep: 1 | 2 | 3 | 4; sites: Site[]; areas: Area[]; content: Content[]; displays: Display[]; displayGroups: DisplayGroupsData; aiCredits: AiCredits; canEdit: boolean; canManageDevices: boolean; onContentCreated: (id: string) => Promise<Content | null>; onWaitForContentReady: (id: string) => Promise<Content>; onDraftCreated: () => Promise<PortalData | null>; onCreateDisplay: () => void; onClose: () => void; onSaved: () => void }) {
   const legacyPlaylist = [...(campaign?.content_links || [])].sort((a,b) => a.position - b.position).flatMap((link) => link.content ? [{ contentId: link.content.id, durationSeconds: link.duration_seconds || 10 }] : []);
@@ -1015,9 +1019,13 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
   const defaultPlaylist = campaign ? (initialPlaylists[0] || legacyPlaylist) : presetPlaylists[0]?.length ? presetPlaylists[0] : presetPlaylist;
   const templateEnd = !campaign && preset?.defaultDurationDays ? new Date(Date.now() + preset.defaultDurationDays * 86_400_000).toISOString() : undefined;
   const [selectedDisplays, setSelectedDisplays] = useState(() => new Set(defaultDisplayIds));
-  const [contentMode, setContentMode] = useState<"shared" | "individual">(initialIndividual || presetIndividual ? "individual" : "shared");
+  const savedContentMode = campaign?.schedule?.portalPlaylistStrategy || preset?.playlistStrategy;
+  const savedHierarchyPlaylists = campaign?.schedule?.portalHierarchyPlaylists || preset?.hierarchyPlaylists || {};
+  const [contentMode, setContentMode] = useState<CampaignContentMode>(savedContentMode === "hierarchy" ? "hierarchy" : savedContentMode === "individual" || initialIndividual || presetIndividual ? "individual" : "shared");
   const [sharedPlaylist, setSharedPlaylist] = useState<PlaylistEntry[]>(defaultPlaylist);
   const [targetPlaylists, setTargetPlaylists] = useState<Record<string, PlaylistEntry[]>>(() => Object.fromEntries(defaultDisplayIds.map((id) => [id, campaign ? initialTargetPlaylists[id] || legacyPlaylist : presetTargetPlaylists[id] || presetPlaylist])));
+  const [hierarchyPlaylists, setHierarchyPlaylists] = useState<Record<string, PlaylistEntry[]>>(() => Object.keys(savedHierarchyPlaylists).length ? savedHierarchyPlaylists : { all: [...defaultPlaylist] });
+  const [activeHierarchyKey, setActiveHierarchyKey] = useState("all");
   const [activeTargetId, setActiveTargetId] = useState(defaultDisplayIds[0] || "");
   const [name, setName] = useState(campaign?.name || preset?.name || "");
   const [theme, setTheme] = useState(campaign?.theme || preset?.theme || "");
@@ -1051,8 +1059,43 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
   }
   const targetableDisplays = displays.filter((display) => scopeAreaId ? Boolean(display.area_id && scopedAreaIds.has(display.area_id)) : scopeSiteId ? display.site_id === scopeSiteId : true);
   const chosenDisplays = targetableDisplays.filter((display) => selectedDisplays.has(display.id));
+  const selectionHierarchyTargets = buildHierarchyTargets(sites, areas, targetableDisplays);
+  const hierarchyTargets = buildHierarchyTargets(sites, areas, chosenDisplays);
+  const hierarchyTarget = hierarchyTargets.find((target) => target.key === activeHierarchyKey) || hierarchyTargets[0];
   const currentTargetId = selectedDisplays.has(activeTargetId) ? activeTargetId : chosenDisplays[0]?.id || "";
-  const playlistFor = (displayId: string) => contentMode === "shared" ? sharedPlaylist : targetPlaylists[displayId] || [];
+  function inheritedHierarchyPlaylist(display: Display): PlaylistEntry[] {
+    const exact = hierarchyPlaylists[`display:${display.id}`];
+    if (exact) return exact;
+    const lineage = areaLineage(areas, display.area_id);
+    for (const areaId of [...lineage].reverse()) {
+      const areaPlaylist = hierarchyPlaylists[`area:${areaId}`];
+      if (areaPlaylist) return areaPlaylist;
+    }
+    if (display.site_id && hierarchyPlaylists[`site:${display.site_id}`]) return hierarchyPlaylists[`site:${display.site_id}`];
+    return hierarchyPlaylists.all || sharedPlaylist;
+  }
+  const playlistFor = (displayId: string) => {
+    if (contentMode === "shared") return sharedPlaylist;
+    if (contentMode === "hierarchy") {
+      const display = displays.find((candidate) => candidate.id === displayId);
+      return display ? inheritedHierarchyPlaylist(display) : hierarchyPlaylists.all || sharedPlaylist;
+    }
+    return targetPlaylists[displayId] || [];
+  };
+  function inheritedPlaylistForTarget(targetKey: string): PlaylistEntry[] {
+    if (hierarchyPlaylists[targetKey]) return hierarchyPlaylists[targetKey];
+    if (targetKey.startsWith("area:")) {
+      const areaId = targetKey.slice(5);
+      const area = areas.find((candidate) => candidate.id === areaId);
+      const lineage = areaLineage(areas, areaId).slice(0, -1).reverse();
+      for (const parentId of lineage) if (hierarchyPlaylists[`area:${parentId}`]) return hierarchyPlaylists[`area:${parentId}`];
+      if (area?.site_id && hierarchyPlaylists[`site:${area.site_id}`]) return hierarchyPlaylists[`site:${area.site_id}`];
+    }
+    return hierarchyPlaylists.all || sharedPlaylist;
+  }
+  const hierarchyEditorPlaylist = inheritedPlaylistForTarget(hierarchyTarget?.key || "all");
+  const currentEditorTarget = contentMode === "hierarchy" ? hierarchyTarget?.key || "all" : currentTargetId;
+  const editorPlaylist = contentMode === "shared" ? sharedPlaylist : contentMode === "hierarchy" ? hierarchyEditorPlaylist : playlistFor(currentTargetId);
   const usedContentIds = [...new Set(chosenDisplays.flatMap((display) => playlistFor(display.id).map((entry) => entry.contentId)))];
   const selectedContent = usedContentIds.flatMap((id) => { const item = content.find((candidate) => candidate.id === id); return item ? [item] : []; });
   const hasUnapprovedContent = selectedContent.some((item) => !["approved", "published"].includes(item.status));
@@ -1078,6 +1121,7 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
 
   function updatePlaylist(displayId: string, updater: (playlist: PlaylistEntry[]) => PlaylistEntry[]) {
     if (contentMode === "shared") setSharedPlaylist(updater);
+    else if (contentMode === "hierarchy") setHierarchyPlaylists((current) => ({ ...current, [displayId]: updater(inheritedPlaylistForTarget(displayId)) }));
     else setTargetPlaylists((current) => ({ ...current, [displayId]: updater(current[displayId] || []) }));
   }
   function toggleContent(contentId: string, displayId = currentTargetId) {
@@ -1103,9 +1147,19 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
     setTargetPlaylists((current) => ({ ...current, ...Object.fromEntries(displayIds.filter((id) => !current[id]).map((id) => [id, [...sharedPlaylist]])) }));
     if (selected && displayIds[0]) setActiveTargetId(displayIds[0]);
   }
-  function chooseContentMode(mode: "shared" | "individual") {
-    if (mode === "individual") setTargetPlaylists((current) => ({ ...current, ...Object.fromEntries(chosenDisplays.filter((display) => !current[display.id]).map((display) => [display.id, [...sharedPlaylist]])) }));
+  function chooseContentMode(mode: CampaignContentMode) {
+    if (mode === "hierarchy" && contentMode === "shared") setHierarchyPlaylists((current) => ({ ...current, all: [...sharedPlaylist] }));
+    if (mode === "individual") setTargetPlaylists((current) => ({ ...current, ...Object.fromEntries(chosenDisplays.filter((display) => !current[display.id]).map((display) => [display.id, [...playlistFor(display.id)]])) }));
+    if (mode === "shared" && contentMode === "hierarchy") setSharedPlaylist([...(hierarchyPlaylists.all || sharedPlaylist)]);
     setContentMode(mode);
+  }
+  function removeHierarchyOverride() {
+    if (!hierarchyTarget || hierarchyTarget.key === "all") return;
+    setHierarchyPlaylists((current) => {
+      const next = { ...current };
+      delete next[hierarchyTarget.key];
+      return next;
+    });
   }
   async function acceptCreatedContent(id?: string) {
     if (!id) throw new Error("Das neue Motiv konnte nicht übernommen werden.");
@@ -1116,11 +1170,13 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
     if (!["approved", "published"].includes(created.status)) {
       await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id, status: "approved" }) });
     }
-    updatePlaylist(currentTargetId, (playlist) => playlist.some((entry) => entry.contentId === id) ? playlist : [...playlist, { contentId: id, durationSeconds: 10 }]);
+    updatePlaylist(currentEditorTarget, (playlist) => playlist.some((entry) => entry.contentId === id) ? playlist : [...playlist, { contentId: id, durationSeconds: 10 }]);
     setContentNotice(`„${created.title}“ wurde erstellt, freigegeben und ausgewählt.`);
     setContentDialog(null);
   }
-  const campaignData = { name: effectiveName, theme: theme || null, priority, scopeSiteId: scopeSiteId || null, scopeAreaId: scopeAreaId || null, startsAt: scheduleMode === "now" ? campaign?.starts_at || new Date().toISOString() : startsAt ? new Date(startsAt).toISOString() : null, endsAt: scheduleMode === "scheduled" && endsAt ? new Date(endsAt).toISOString() : null };
+  const activeHierarchyKeys = new Set(hierarchyTargets.map((target) => target.key));
+  const effectiveHierarchyPlaylists = Object.fromEntries(Object.entries(hierarchyPlaylists).filter(([key]) => activeHierarchyKeys.has(key)));
+  const campaignData = { name: effectiveName, theme: theme || null, priority, scopeSiteId: scopeSiteId || null, scopeAreaId: scopeAreaId || null, startsAt: scheduleMode === "now" ? campaign?.starts_at || new Date().toISOString() : startsAt ? new Date(startsAt).toISOString() : null, endsAt: scheduleMode === "scheduled" && endsAt ? new Date(endsAt).toISOString() : null, playlistStrategy: contentMode, hierarchyPlaylists: contentMode === "hierarchy" ? effectiveHierarchyPlaylists : {} };
 
   async function ensureCampaignDraft() {
     if (draftCampaignId) return draftCampaignId;
@@ -1134,7 +1190,8 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
   async function persistDraftConfiguration(includeContent: boolean, nextStep: 2 | 3 | 4) {
     const campaignId = await ensureCampaignDraft();
     const targetAssignments = chosenDisplays.map((display) => ({ displayId: display.id, contentItems: includeContent ? playlistFor(display.id) : [] }));
-    await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "configure_campaign", id: campaignId, ...campaignData, targetAssignments, setupStep: nextStep }) });
+    const draftCampaignData = includeContent ? campaignData : { ...campaignData, playlistStrategy: "shared", hierarchyPlaylists: {} };
+    await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "configure_campaign", id: campaignId, ...draftCampaignData, targetAssignments, setupStep: nextStep }) });
     setDraftNotice(nextStep === 4
       ? "Bildschirme und Inhalte sind gespeichert. Prüfen Sie jetzt alles vor dem Start."
       : nextStep === 3
@@ -1218,9 +1275,28 @@ function CampaignEditor({ campaign, preset, initialStep, sites, areas, content, 
     {isRunning && <div className="wizard-success" role="status">Änderungen an dieser laufenden Ausspielung werden beim Speichern direkt auf die betroffenen Bildschirme übertragen.</div>}
     <div className={`wizard-stage ${stepCollapsed ? "is-collapsed" : ""}`}>
       {step === 1 && displays.length > 0 && canManageDevices && <div className="wizard-inline-action"><span>Der gewünschte Bildschirm fehlt?</span><button type="button" className="secondary compact" onClick={onCreateDisplay}>+ Neuen Bildschirm vorbereiten</button></div>}
-      {step === 1 && <section><div className="wizard-stage-head"><div><span>Schritt 1 · Wo?</span><h3>Wo soll etwas erscheinen?</h3><p>Wählen Sie einen oder mehrere Bildschirme. Ein neuer Bildschirm wird zunächst nur vorbereitet.</p></div><b>{chosenDisplays.length} gewählt</b></div>{displayGroups.items.length > 0 && <div className="campaign-display-group-picks"><span>Schnellauswahl nach Gruppe</span>{displayGroups.items.map((group) => { const groupIds = group.displayIds.filter((id) => targetableDisplays.some((display) => display.id === id)); const selected = groupIds.length > 0 && groupIds.every((id) => selectedDisplays.has(id)); return <button type="button" className={selected ? "selected" : ""} disabled={!canEdit || !groupIds.length} onClick={() => setDisplayGroup(groupIds, !selected)} key={group.id}>{selected ? "✓ " : ""}{group.name} · {groupIds.length}</button>; })}</div>}<div className="target-tree">{siteGroups.map((site) => { const siteIds = site.displays.map((display) => display.id); const allSiteSelected = siteIds.every((id) => selectedDisplays.has(id)); const areaGroups = [...areas.filter((area) => area.site_id === site.id).map((area) => ({ id: area.id, name: area.name, displays: site.displays.filter((display) => display.area_id === area.id) })), { id: `${site.id}-other`, name: "Ohne Bereich", displays: site.displays.filter((display) => !display.area_id) }].filter((group) => group.displays.length); return <article className="target-site" key={site.id}><header><div><strong>{site.name}</strong><small>{site.displays.length} {site.displays.length === 1 ? "Bildschirm" : "Bildschirme"}</small></div><button type="button" onClick={() => setDisplayGroup(siteIds, !allSiteSelected)} disabled={!canEdit}>{allSiteSelected ? "Alle entfernen" : "Alle wählen"}</button></header>{areaGroups.map((area) => <div className="target-area" key={area.id}><div className="target-area-name"><strong>{area.name}</strong><button type="button" onClick={() => setDisplayGroup(area.displays.map((display) => display.id), !area.displays.every((display) => selectedDisplays.has(display.id)))} disabled={!canEdit}>Bereich wählen</button></div><div className="display-selection">{area.displays.map((display) => <label className={selectedDisplays.has(display.id) ? "selected" : ""} key={display.id}><input type="checkbox" checked={selectedDisplays.has(display.id)} onChange={() => toggleDisplay(display.id)} disabled={!canEdit}/><span><strong>{display.name}</strong><small>{labels[display.status] || display.status}</small></span></label>)}</div></div>)}</article>})}{!targetableDisplays.length && <div className="wizard-empty"><strong>Noch kein Bildschirm vorhanden</strong><p>Bereiten Sie zuerst den Bildschirm mit Name und Standort vor. Verbunden wird das Gerät erst ganz am Schluss.</p>{canManageDevices && <button type="button" className="secondary" onClick={onCreateDisplay}>Ersten Bildschirm vorbereiten</button>}</div>}</div></section>}
-      {step === 2 && <section><div className="wizard-stage-head"><div><span>Schritt 2 · Was?</span><h3>Was soll dort laufen?</h3><p>Wählen Sie vorhandene Inhalte oder laden Sie direkt ein neues Bild oder Video hoch.</p></div></div>{chosenDisplays.length > 1 && <div className="content-mode"><button type="button" className={contentMode === "shared" ? "selected" : ""} onClick={() => chooseContentMode("shared")} disabled={!canEdit}><strong>Überall gleich</strong><small>Ein Inhalt für alle gewählten Bildschirme</small></button><button type="button" className={contentMode === "individual" ? "selected" : ""} onClick={() => chooseContentMode("individual")} disabled={!canEdit}><strong>Je Bildschirm anders</strong><small>Eigene Auswahl pro Bildschirm</small></button></div>}{canEdit && <div className="motif-source-actions" aria-label="Inhalt auswählen oder erstellen"><button type="button" onClick={() => mediaListRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}><span>✓</span><strong>Vorhandenen Inhalt wählen</strong><small>Aus Ihrer Mediathek</small></button><button type="button" onClick={() => { setContentNotice(""); setContentDialog("upload"); }}><span>↑</span><strong>Bild oder Video hochladen</strong><small>Neue Datei verwenden</small></button><button type="button" onClick={() => { setContentNotice(""); setContentDialog("ai"); }}><span>✦</span><strong>KI-Bild erstellen</strong><small>{aiCredits.balance?.available ?? "–"} Credits verfügbar</small></button></div>}{contentNotice && <div className="wizard-success" role="status">✓ {contentNotice}</div>}{contentMode === "individual" && <div className="target-tabs">{chosenDisplays.map((display) => <button type="button" className={currentTargetId === display.id ? "active" : ""} onClick={() => setActiveTargetId(display.id)} key={display.id}><strong>{display.name}</strong><small>{playlistFor(display.id).length} Inhalte</small></button>)}</div>}<div className="content-target-heading"><span>{contentMode === "shared" ? "Diese Inhalte laufen auf allen gewählten Bildschirmen" : `Inhalte für ${displays.find((display) => display.id === currentTargetId)?.name || "Bildschirm"}`}</span><b>{(contentMode === "shared" ? sharedPlaylist : playlistFor(currentTargetId)).length} gewählt</b></div>{contentSelection(contentMode === "shared" ? sharedPlaylist : playlistFor(currentTargetId), currentTargetId)}</section>}
-      {step === 3 && <section><div className="wizard-stage-head"><div><span>Schritt 3 · Wann?</span><h3>Wann soll die Anzeige laufen?</h3><p>Für den einfachen Start genügt eine Auswahl. Weitere Angaben sind freiwillig.</p></div></div><div className="simple-schedule"><button type="button" className={scheduleMode === "now" ? "selected" : ""} onClick={() => setScheduleMode("now")} disabled={!canEdit}><strong>Jetzt starten</strong><small>Läuft nach der Veröffentlichung, bis Sie sie stoppen.</small></button><button type="button" className={scheduleMode === "scheduled" ? "selected" : ""} onClick={() => setScheduleMode("scheduled")} disabled={!canEdit}><strong>Für später planen</strong><small>Start und auf Wunsch ein Ende festlegen.</small></button></div>{scheduleMode === "scheduled" && <div className="wizard-date-pair"><label>Start<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} disabled={!canEdit}/><small>Ab diesem Zeitpunkt wird der Inhalt angezeigt.</small></label><label>Ende <small>Optional</small><input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} disabled={!canEdit}/><small>Ohne Ende läuft die Anzeige, bis Sie sie stoppen.</small></label></div>}<button type="button" className="advanced-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((current) => !current)}>{advancedOpen ? "Erweiterte Einstellungen ausblenden ↑" : "Erweiterte Einstellungen anzeigen ↓"}</button>{advancedOpen && <div className="advanced-campaign-settings"><div className="campaign-basics"><label>Interner Name <small>Optional</small><input value={name} onChange={(event) => setName(event.target.value)} disabled={!canEdit} placeholder={automaticName}/><small>Ohne Eingabe wird der Name automatisch erstellt.</small></label><label>Notiz oder Thema <small>Optional</small><input value={theme} onChange={(event) => setTheme(event.target.value)} disabled={!canEdit} placeholder="z. B. Herbstaktion"/></label></div><label className="campaign-priority">Priorität bei mehreren gleichzeitigen Anzeigen<select value={priority} onChange={(event) => setPriority(Number(event.target.value))} disabled={!canEdit}><option value={25}>Hintergrund</option><option value={50}>Normal</option><option value={75}>Wichtig</option><option value={100}>Dringend</option></select><small>Normal ist für die meisten Anzeigen richtig.</small></label></div>}</section>}
+      {step === 1 && <section>
+        <div className="wizard-stage-head"><div><span>Schritt 1 · Wo?</span><h3>Wo soll etwas erscheinen?</h3><p>Wählen Sie ganze Standorte, Gebäude oder Bereiche – oder einzelne Bildschirme.</p></div><b>{chosenDisplays.length} gewählt</b></div>
+        <HierarchySelectionShortcuts targets={selectionHierarchyTargets} selectedIds={selectedDisplays} disabled={!canEdit} onChange={setDisplayGroup}/>
+        {displayGroups.items.length > 0 && <div className="campaign-display-group-picks"><span>Schnellauswahl nach Gruppe</span>{displayGroups.items.map((group) => { const groupIds = group.displayIds.filter((id) => targetableDisplays.some((display) => display.id === id)); const selected = groupIds.length > 0 && groupIds.every((id) => selectedDisplays.has(id)); return <button type="button" className={selected ? "selected" : ""} disabled={!canEdit || !groupIds.length} onClick={() => setDisplayGroup(groupIds, !selected)} key={group.id}>{selected ? "✓ " : ""}{group.name} · {groupIds.length}</button>; })}</div>}
+        <div className="target-tree">{siteGroups.map((site) => { const siteIds = site.displays.map((display) => display.id); const allSiteSelected = siteIds.every((id) => selectedDisplays.has(id)); const areaGroups = [...areas.filter((area) => area.site_id === site.id).map((area) => ({ id: area.id, name: area.name, displays: site.displays.filter((display) => display.area_id === area.id) })), { id: `${site.id}-other`, name: "Ohne Bereich", displays: site.displays.filter((display) => !display.area_id) }].filter((group) => group.displays.length); return <article className="target-site" key={site.id}><header><div><strong>{site.name}</strong><small>{site.displays.length} {site.displays.length === 1 ? "Bildschirm" : "Bildschirme"}</small></div><button type="button" onClick={() => setDisplayGroup(siteIds, !allSiteSelected)} disabled={!canEdit}>{allSiteSelected ? "Alle entfernen" : "Alle wählen"}</button></header>{areaGroups.map((area) => <div className="target-area" key={area.id}><div className="target-area-name"><strong>{area.name}</strong><button type="button" onClick={() => setDisplayGroup(area.displays.map((display) => display.id), !area.displays.every((display) => selectedDisplays.has(display.id)))} disabled={!canEdit}>Bereich wählen</button></div><div className="display-selection">{area.displays.map((display) => <label className={selectedDisplays.has(display.id) ? "selected" : ""} key={display.id}><input type="checkbox" checked={selectedDisplays.has(display.id)} onChange={() => toggleDisplay(display.id)} disabled={!canEdit}/><span><strong>{display.name}</strong><small>{labels[display.status] || display.status}</small></span></label>)}</div></div>)}</article>})}{!targetableDisplays.length && <div className="wizard-empty"><strong>Noch kein Bildschirm vorhanden</strong><p>Bereiten Sie zuerst den Bildschirm mit Name und Standort vor. Verbunden wird das Gerät erst ganz am Schluss.</p>{canManageDevices && <button type="button" className="secondary" onClick={onCreateDisplay}>Ersten Bildschirm vorbereiten</button>}</div>}</div>
+      </section>}
+      {step === 2 && <section>
+        <div className="wizard-stage-head"><div><span>Schritt 2 · Was?</span><h3>Was soll dort laufen?</h3><p>Beginnen Sie mit einem Standard und passen Sie nur die Orte an, die etwas anderes zeigen sollen.</p></div></div>
+        {chosenDisplays.length > 1 && <div className="content-mode">
+          <button type="button" className={contentMode === "shared" ? "selected" : ""} onClick={() => chooseContentMode("shared")} disabled={!canEdit}><strong>Überall gleich</strong><small>Eine Playlist für alle gewählten Bildschirme</small></button>
+          <button type="button" className={contentMode === "hierarchy" ? "selected" : ""} onClick={() => chooseContentMode("hierarchy")} disabled={!canEdit}><strong>Nach Ort anpassen</strong><small>Standard → Standort → Gebäude oder Bereich</small></button>
+          <button type="button" className={contentMode === "individual" ? "selected" : ""} onClick={() => chooseContentMode("individual")} disabled={!canEdit}><strong>Je Bildschirm anders</strong><small>Volle Kontrolle für jeden Bildschirm</small></button>
+        </div>}
+        {contentMode === "hierarchy" && <HierarchyPlaylistTabs targets={hierarchyTargets} activeKey={hierarchyTarget?.key || "all"} overriddenKeys={new Set(Object.keys(hierarchyPlaylists))} onChange={setActiveHierarchyKey}/>}
+        {contentMode === "hierarchy" && hierarchyTarget?.key !== "all" && <div className="hierarchy-inheritance-note"><span><strong>{hierarchyTarget?.label}</strong><small>{hierarchyPlaylists[hierarchyTarget.key] ? "Verwendet eine eigene Playlist." : "Übernimmt momentan automatisch die nächsthöhere Playlist."}</small></span>{hierarchyPlaylists[hierarchyTarget.key] && <button type="button" className="secondary compact" onClick={removeHierarchyOverride} disabled={!canEdit}>Eigene Playlist entfernen</button>}</div>}
+        {canEdit && <div className="motif-source-actions" aria-label="Inhalt auswählen oder erstellen"><button type="button" onClick={() => mediaListRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}><span>✓</span><strong>Vorhandenen Inhalt wählen</strong><small>Aus Ihrer Mediathek</small></button><button type="button" onClick={() => { setContentNotice(""); setContentDialog("upload"); }}><span>↑</span><strong>Bild oder Video hochladen</strong><small>Neue Datei verwenden</small></button><button type="button" onClick={() => { setContentNotice(""); setContentDialog("ai"); }}><span>✦</span><strong>KI-Bild erstellen</strong><small>{aiCredits.balance?.available ?? "–"} Credits verfügbar</small></button></div>}
+        {contentNotice && <div className="wizard-success" role="status">✓ {contentNotice}</div>}
+        {contentMode === "individual" && <div className="target-tabs">{chosenDisplays.map((display) => <button type="button" className={currentTargetId === display.id ? "active" : ""} onClick={() => setActiveTargetId(display.id)} key={display.id}><strong>{display.name}</strong><small>{playlistFor(display.id).length} Inhalte</small></button>)}</div>}
+        <div className="content-target-heading"><span>{contentMode === "shared" ? "Diese Playlist läuft auf allen gewählten Bildschirmen" : contentMode === "hierarchy" ? `Playlist für ${hierarchyTarget?.label || "alle"}` : `Inhalte für ${displays.find((display) => display.id === currentTargetId)?.name || "Bildschirm"}`}</span><b>{editorPlaylist.length} gewählt</b></div>
+        {contentSelection(editorPlaylist, currentEditorTarget)}
+      </section>}
+      {step === 3 && <section><div className="wizard-stage-head"><div><span>Schritt 3 · Wann?</span><h3>Wann soll die Anzeige laufen?</h3><p>Für den einfachen Start genügt eine Auswahl. Weitere Angaben sind freiwillig.</p></div></div><div className="simple-schedule"><button type="button" className={scheduleMode === "now" ? "selected" : ""} onClick={() => setScheduleMode("now")} disabled={!canEdit}><strong>Jetzt starten</strong><small>Läuft nach der Veröffentlichung, bis Sie sie stoppen.</small></button><button type="button" className={scheduleMode === "scheduled" ? "selected" : ""} onClick={() => setScheduleMode("scheduled")} disabled={!canEdit}><strong>Für später planen</strong><small>Start und auf Wunsch ein Ende festlegen.</small></button></div>{scheduleMode === "scheduled" && <div className="wizard-date-pair"><label>Start<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} disabled={!canEdit}/><small>Ab diesem Zeitpunkt wird der Inhalt angezeigt.</small></label><label>Ende <small>Optional</small><input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} disabled={!canEdit}/><small>Ohne Ende läuft die Anzeige, bis Sie sie stoppen.</small></label></div>}<button type="button" className="advanced-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((current) => !current)}>{advancedOpen ? "Erweiterte Einstellungen ausblenden ↑" : "Erweiterte Einstellungen anzeigen ↓"}</button>{advancedOpen && <div className="advanced-campaign-settings"><div className="campaign-basics"><label>Interner Name <small>Optional</small><input value={name} onChange={(event) => setName(event.target.value)} disabled={!canEdit} placeholder={automaticName}/><small>Ohne Eingabe wird der Name automatisch erstellt.</small></label><label>Notiz oder Thema <small>Optional</small><input value={theme} onChange={(event) => setTheme(event.target.value)} disabled={!canEdit} placeholder="z. B. Herbstaktion"/></label></div><label className="campaign-priority">Priorität bei mehreren gleichzeitigen Anzeigen<select value={priority} onChange={(event) => setPriority(Number(event.target.value))} disabled={!canEdit}><option value={25}>Hintergrund</option><option value={50}>Normal</option><option value={75}>Wichtig</option><option value={100}>Dringend</option></select><small>Normal ist für die meisten Anzeigen richtig.</small></label><div className="priority-explanation"><strong>Was passiert bei Überschneidungen?</strong><span>Die Anzeige mit der höheren Priorität gewinnt. Zwei Anzeigen mit derselben Priorität dürfen auf demselben Bildschirm zeitlich nicht kollidieren – das Portal warnt vor dem Start.</span></div></div>}</section>}
       {step === 4 && <section><div className="wizard-stage-head"><div><span>Schritt 4 · Prüfen</span><h3>Alles richtig?</h3><p>Kontrollieren Sie Bildschirm, Inhalt und Zeitpunkt. Danach ist die Anzeige bereit.</p></div></div><div className="wizard-review"><div className="wizard-preview">{previewContent?.preview_url && previewContent.content_type === "image" ? <img src={previewContent.preview_url} alt="Vorschau des gewählten Inhalts"/> : previewContent?.preview_url && previewContent.content_type === "video" ? <video src={previewContent.preview_url} poster={previewContent.poster_url || undefined} autoPlay muted loop playsInline preload="metadata" aria-label={`Videovorschau ${previewContent.title}`}/> : <div><span>Vorschau</span><strong>{previewContent?.title || "Kein Inhalt"}</strong></div>}</div><div className="wizard-summary"><div><span>Ausspielung</span><strong>{effectiveName}{theme ? ` · ${theme}` : ""}</strong></div><div><span>Standort</span><strong>{scopeLabel || "Gewählte Bildschirme"}</strong></div><div><span>Zeitpunkt</span><strong>{scheduleMode === "now" ? "Sofort · bis Sie die Anzeige stoppen" : `${startsAt ? new Date(startsAt).toLocaleString("de-CH", { dateStyle: "medium", timeStyle: "short" }) : "Start offen"}${endsAt ? ` – ${new Date(endsAt).toLocaleString("de-CH", { dateStyle: "medium", timeStyle: "short" })}` : " · ohne Enddatum"}`}</strong></div></div></div><div className="target-review-list">{chosenDisplays.map((display) => <div key={display.id}><span><strong>{display.name}</strong><small>{display.site?.name || "Ohne Standort"}{display.area?.name ? ` · ${display.area.name}` : ""}</small></span><b>{playlistFor(display.id).map((entry) => content.find((item) => item.id === entry.contentId)?.title).filter(Boolean).join(", ") || "Kein Inhalt"}</b></div>)}</div>{hasUnapprovedContent && <div className="editor-notice">{isRunning ? "Beim Speichern werden neue Inhalte automatisch freigegeben und live übernommen." : "Beim Veröffentlichen werden die ausgewählten Inhalte automatisch für die Bildschirme freigegeben."}</div>}</section>}
     </div>
     {step === 4 && campaign && chosenDisplays.length > 0 && <div className="campaign-safe-preview"><span><strong>Auf dem Bildschirm prüfen</strong><small>Öffnet dieselbe Anzeige wie auf dem ersten gewählten Bildschirm – noch ohne Veröffentlichung.</small></span><a href={`/player?preview=${encodeURIComponent(chosenDisplays[0].id)}&campaign=${encodeURIComponent(campaign.id)}`} target="_blank" rel="noreferrer">Vorschau öffnen</a></div>}

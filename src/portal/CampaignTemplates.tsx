@@ -9,6 +9,8 @@ export type CampaignTemplateConfiguration = {
   defaultDurationDays?: number | null;
   displayIds?: string[];
   targetAssignments?: Array<{ displayId: string; contentItems: TemplatePlaylistEntry[] }>;
+  playlistStrategy?: "shared" | "hierarchy" | "individual";
+  hierarchyPlaylists?: Record<string, TemplatePlaylistEntry[]>;
 };
 
 export type CampaignTemplate = {

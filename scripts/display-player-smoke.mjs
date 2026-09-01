@@ -10,6 +10,7 @@ const player = read("src/player/main.tsx");
 const playerHtml = read("player.html");
 const playerManifest = JSON.parse(read("public/site/player.webmanifest"));
 const portal = read("src/portal/main.tsx");
+const displayManagement = read("src/portal/DisplayManagementView.tsx");
 const vercel = JSON.parse(read("vercel.json"));
 
 assert.ok(existsSync(new URL("../player.html", import.meta.url)), "Player-Einstieg fehlt");
@@ -51,12 +52,12 @@ assert.match(player, /parsePairingQr/, "Gescannte QR-Codes werden nicht sicher v
 assert.match(player, /QR-Bild auswählen/, "QR-Bild-Fallback fehlt");
 assert.match(player, /Aktivierungscode eingeben/, "Manuelle Neuverbindung auf der Leerlaufseite fehlt");
 assert.match(portal, /pair=1/, "Portal-Link öffnet den Player nicht im Neuverbindungsmodus");
-assert.match(portal, /Player öffnen/, "Direkter Player-Button bei Bildschirmen fehlt");
+assert.match(portal.concat(displayManagement), /Player öffnen/, "Direkter Player-Button bei Bildschirmen fehlt");
 assert.match(portal, /QRCode\.toDataURL/, "QR-Code für die Bildschirmverbindung fehlt");
 assert.match(portal, /1 · Bildschirm-ID[\s\S]*2 · Aktivierungscode/, "Bildschirm-ID und Aktivierungscode sind im Portal nicht logisch geordnet");
 assert.match(player, /portalPreview=/, "Player lädt die Portal-Vorschau nicht");
 assert.match(portal, /Bildschirm einrichten/);
-assert.match(portal, /Aktivierungscode erstellen/);
+assert.match(portal.concat(displayManagement), /Aktivierungscode erstellen/);
 assert.match(portal, /Code wird erstellt/);
 assert.match(portal, /deferredPairings/, "Die Geräteaktivierung wird in der Kampagnenplanung nicht bis zum Abschluss zurückgestellt");
 assert.match(portal, /Der QR-Code zur Geräteverbindung erscheint erst nach dem Abschluss der Kampagne/, "Der verschobene Aktivierungsschritt wird nicht verständlich erklärt");

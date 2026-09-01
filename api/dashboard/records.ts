@@ -1014,7 +1014,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const description = cleanText(body.description, 500) || null;
     if (!campaignId || !templateName) return json({ error: "Kampagne und Vorlagenname sind erforderlich" }, { status: 400 });
     const campaign = await client.from("tenant_campaigns")
-      .select("id,name,theme,priority,scope_site_id,scope_area_id,starts_at,ends_at")
+      .select("id,name,theme,priority,scope_site_id,scope_area_id,starts_at,ends_at,schedule")
       .eq("id", campaignId).eq("tenant_id", profile.tenantId).maybeSingle();
     if (!campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
     const [displayLinks, targetLinks] = await Promise.all([
@@ -1043,6 +1043,8 @@ async function handlePortalRecords(request: Request): Promise<Response> {
         : null,
       displayIds,
       targetAssignments,
+      playlistStrategy: ["shared", "hierarchy", "individual"].includes(campaign.data.schedule?.portalPlaylistStrategy) ? campaign.data.schedule.portalPlaylistStrategy : "shared",
+      hierarchyPlaylists: campaign.data.schedule?.portalPlaylistStrategy === "hierarchy" && campaign.data.schedule?.portalHierarchyPlaylists && typeof campaign.data.schedule.portalHierarchyPlaylists === "object" ? campaign.data.schedule.portalHierarchyPlaylists : {},
     };
     const created = await client.from("tenant_campaign_templates").insert({
       tenant_id: profile.tenantId,
@@ -1368,6 +1370,26 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const startsAt = optionalDate(body.startsAt);
     const endsAt = optionalDate(body.endsAt);
     const setupStep = Math.min(4, Math.max(1, Math.round(Number(body.setupStep) || 1)));
+    const requestedPlaylistStrategy = cleanText(body.playlistStrategy, 24);
+    const playlistStrategy = ["shared", "hierarchy", "individual"].includes(requestedPlaylistStrategy) ? requestedPlaylistStrategy : "shared";
+    const rawHierarchyPlaylists = body.hierarchyPlaylists && typeof body.hierarchyPlaylists === "object" && !Array.isArray(body.hierarchyPlaylists) ? body.hierarchyPlaylists as Record<string, unknown> : {};
+    if (Object.keys(rawHierarchyPlaylists).length > 250) return json({ error: "Die Playlist-Struktur enthält zu viele Ebenen" }, { status: 400 });
+    let hierarchyPlaylists: Record<string, Array<{ contentId: string; durationSeconds: number }>>;
+    try {
+      hierarchyPlaylists = Object.fromEntries(Object.entries(rawHierarchyPlaylists).map(([rawKey, rawItems]) => {
+        const key = cleanText(rawKey, 90);
+        if (!/^(all|site:[0-9a-f-]{36}|area:[0-9a-f-]{36})$/i.test(key) || !Array.isArray(rawItems) || rawItems.length > 100) throw new Error("Ungültige hierarchische Playlist");
+        const items = rawItems.map((rawItem) => {
+          const item = rawItem && typeof rawItem === "object" ? rawItem as Record<string, unknown> : {};
+          return { contentId: cleanText(item.contentId, 80), durationSeconds: Math.min(3600, Math.max(5, Math.round(Number(item.durationSeconds) || 10))) };
+        }).filter((item) => item.contentId);
+        if (new Set(items.map((item) => item.contentId)).size !== items.length) throw new Error("Ein Motiv darf pro Playlist-Ebene nur einmal vorkommen");
+        return [key, items];
+      }));
+    } catch (reason) {
+      return json({ error: reason instanceof Error ? reason.message : "Ungültige hierarchische Playlist" }, { status: 400 });
+    }
+    if (playlistStrategy === "hierarchy" && !hierarchyPlaylists.all?.length) return json({ error: "Legen Sie zuerst eine Standard-Playlist für alle Ziele fest" }, { status: 400 });
     const rawAssignments = Array.isArray(body.targetAssignments) ? body.targetAssignments : [];
     const legacyContent = Array.isArray(body.contentItems) ? body.contentItems : [];
     const legacyDisplays = Array.isArray(body.displayIds) ? body.displayIds : [];
@@ -1390,11 +1412,13 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (new Set(displayIds).size !== displayIds.length) return json({ error: "Ein Ziel-Bildschirm darf nur einmal vorkommen" }, { status: 400 });
     if (assignments.some((assignment) => new Set(assignment.contentItems.map((item) => item.contentId)).size !== assignment.contentItems.length)) return json({ error: "Ein Motiv darf pro Bildschirm nur einmal vorkommen" }, { status: 400 });
     const contentIds = [...new Set(assignments.flatMap((assignment) => assignment.contentItems.map((item) => item.contentId)))];
+    const hierarchyContentIds = [...new Set(Object.values(hierarchyPlaylists).flatMap((items) => items.map((item) => item.contentId)))];
+    const referencedContentIds = [...new Set([...contentIds, ...hierarchyContentIds])];
     const campaign = await client.from("tenant_campaigns").select("id,status,schedule").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
     if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
-    if (contentIds.length) {
-      const available = await client.from("tenant_content").select("id,content_type,status,asset_path,payload").eq("tenant_id", profile.tenantId).in("id", contentIds);
-      if (available.error || available.data?.length !== contentIds.length) return json({ error: "Mindestens ein Motiv gehört nicht zu diesem Kunden" }, { status: 403 });
+    if (referencedContentIds.length) {
+      const available = await client.from("tenant_content").select("id,content_type,status,asset_path,payload").eq("tenant_id", profile.tenantId).in("id", referencedContentIds);
+      if (available.error || available.data?.length !== referencedContentIds.length) return json({ error: "Mindestens ein Motiv gehört nicht zu diesem Kunden" }, { status: 403 });
       if (available.data.some((item) => item.status === "archived" || (["image", "video"].includes(item.content_type) && (!item.asset_path || !mediaPayloadIsReady(item.payload))))) {
         return json({ error: "Mindestens ein Medium ist noch nicht displaybereit" }, { status: 409 });
       }
@@ -1404,6 +1428,18 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       const available = await client.from("tenant_displays").select("id,site_id,area_id").eq("tenant_id", profile.tenantId).in("id", displayIds);
       if (available.error || available.data?.length !== displayIds.length) return json({ error: "Mindestens ein Bildschirm gehört nicht zu diesem Kunden" }, { status: 403 });
       availableDisplays = available.data;
+    }
+    if (playlistStrategy === "hierarchy") {
+      const hierarchySiteIds = Object.keys(hierarchyPlaylists).filter((key) => key.startsWith("site:")).map((key) => key.slice(5));
+      const hierarchyAreaIds = Object.keys(hierarchyPlaylists).filter((key) => key.startsWith("area:")).map((key) => key.slice(5));
+      if (hierarchySiteIds.length) {
+        const linkedSites = await client.from("tenant_sites").select("id").eq("tenant_id", profile.tenantId).in("id", hierarchySiteIds);
+        if (linkedSites.error || (linkedSites.data ?? []).length !== new Set(hierarchySiteIds).size) return json({ error: "Eine Playlist verweist auf einen fremden Standort" }, { status: 403 });
+      }
+      if (hierarchyAreaIds.length) {
+        const linkedAreas = await client.from("tenant_areas").select("id").eq("tenant_id", profile.tenantId).in("id", hierarchyAreaIds);
+        if (linkedAreas.error || (linkedAreas.data ?? []).length !== new Set(hierarchyAreaIds).size) return json({ error: "Eine Playlist verweist auf einen fremden Bereich" }, { status: 403 });
+      }
     }
     if (scopeAreaId && availableDisplays.length) {
       const tenantAreas = await client.from("tenant_areas").select("id,parent_id").eq("tenant_id", profile.tenantId);
@@ -1437,7 +1473,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       if (inserted.error) return json({ error: inserted.error.message }, { status: 400 });
     }
     const schedule = campaign.data.schedule && typeof campaign.data.schedule === "object" && !Array.isArray(campaign.data.schedule) ? campaign.data.schedule : {};
-    await client.from("tenant_campaigns").update({ name, theme, priority, scope_site_id: scopeSiteId, scope_area_id: scopeAreaId, starts_at: startsAt, ends_at: endsAt, schedule: { ...schedule, portalSetupStep: setupStep }, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId);
+    await client.from("tenant_campaigns").update({ name, theme, priority, scope_site_id: scopeSiteId, scope_area_id: scopeAreaId, starts_at: startsAt, ends_at: endsAt, schedule: { ...schedule, portalSetupStep: setupStep, portalPlaylistStrategy: playlistStrategy, portalHierarchyPlaylists: playlistStrategy === "hierarchy" ? hierarchyPlaylists : {} }, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId);
     await bumpDisplayConfigurations(client, [...(previousTargets.data ?? []).map((entry) => entry.display_id), ...displayIds], "campaign", id);
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "configure", entity_type: "campaign", entity_id: id, metadata: { contentCount: contentIds.length, displayCount: displayIds.length, targetedContentCount: totalContentItems } });
     return json({ ok: true });
