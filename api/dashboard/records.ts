@@ -1473,10 +1473,38 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       if (inserted.error) return json({ error: inserted.error.message }, { status: 400 });
     }
     const schedule = campaign.data.schedule && typeof campaign.data.schedule === "object" && !Array.isArray(campaign.data.schedule) ? campaign.data.schedule : {};
-    await client.from("tenant_campaigns").update({ name, theme, priority, scope_site_id: scopeSiteId, scope_area_id: scopeAreaId, starts_at: startsAt, ends_at: endsAt, schedule: { ...schedule, portalSetupStep: setupStep, portalPlaylistStrategy: playlistStrategy, portalHierarchyPlaylists: playlistStrategy === "hierarchy" ? hierarchyPlaylists : {} }, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId);
+    const updatedCampaign = await client.from("tenant_campaigns").update({ name, theme, priority, scope_site_id: scopeSiteId, scope_area_id: scopeAreaId, starts_at: startsAt, ends_at: endsAt, schedule: { ...schedule, portalSetupStep: setupStep, portalPlaylistStrategy: playlistStrategy, portalHierarchyPlaylists: playlistStrategy === "hierarchy" ? hierarchyPlaylists : {} }, updated_at: now }).eq("id", id).eq("tenant_id", profile.tenantId);
+    if (updatedCampaign.error) return json({ error: "Die Kampagneneinstellungen konnten nicht gespeichert werden" }, { status: 400 });
+    if (setupStep === 4) {
+      const captured = await client.rpc("capture_campaign_version", { target_campaign: id, version_source: "saved", restored_from: null });
+      if (captured.error) {
+        if (["42883", "42P01", "PGRST202", "PGRST205"].includes(captured.error.code)) console.warn("portal campaign versions are not migrated yet", captured.error.message);
+        else return json({ error: "Die Kampagne wurde gespeichert, der Versionsstand konnte aber nicht gesichert werden" }, { status: 500 });
+      }
+    }
     await bumpDisplayConfigurations(client, [...(previousTargets.data ?? []).map((entry) => entry.display_id), ...displayIds], "campaign", id);
     await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "configure", entity_type: "campaign", entity_id: id, metadata: { contentCount: contentIds.length, displayCount: displayIds.length, targetedContentCount: totalContentItems } });
     return json({ ok: true });
+  }
+
+  if (action === "restore_campaign_version") {
+    const id = cleanText(body.id, 80);
+    const versionId = cleanText(body.versionId, 80);
+    if (!id || !versionId) return json({ error: "Kampagne und Version sind erforderlich" }, { status: 400 });
+    const campaign = await client.from("tenant_campaigns").select("id,name,status").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (campaign.error || !campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
+    if (["active", "scheduled"].includes(campaign.data.status)) return json({ error: "Pausieren Sie die laufende Kampagne vor der Wiederherstellung" }, { status: 409 });
+    const version = await client.from("tenant_campaign_versions").select("id,version").eq("id", versionId).eq("campaign_id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (version.error) return json({ error: ["42P01", "PGRST205"].includes(version.error.code) ? "Führen Sie zuerst die Kampagnenversions-Migration aus" : "Der Versionsverlauf konnte nicht geprüft werden" }, { status: ["42P01", "PGRST205"].includes(version.error.code) ? 503 : 400 });
+    if (!version.data) return json({ error: "Kampagnenversion nicht gefunden" }, { status: 404 });
+    const previousTargets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
+    const restored = await client.rpc("restore_campaign_version", { target_version: versionId });
+    if (restored.error) return json({ error: restored.error.message || "Die Kampagnenversion konnte nicht wiederhergestellt werden" }, { status: 409 });
+    const currentTargets = await client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", id);
+    const affectedDisplays = [...new Set([...(previousTargets.data ?? []).map((entry) => entry.display_id), ...(currentTargets.data ?? []).map((entry) => entry.display_id)])];
+    await bumpDisplayConfigurations(client, affectedDisplays, "campaign", id);
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "restore_version", entity_type: "campaign", entity_id: id, metadata: { restoredFromVersion: version.data.version, restoredVersionId: restored.data } });
+    return json({ ok: true, versionId: restored.data });
   }
 
   if (action === "activate_campaign") {

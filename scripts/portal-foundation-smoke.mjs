@@ -9,11 +9,13 @@ const customerVerificationMigration = read("supabase/migrations/20260903_verifie
 const partnerMigration = read("supabase/migrations/20260907_partner_network.sql");
 const campaignTemplateMigration = read("supabase/migrations/20260908_campaign_templates.sql");
 const displayGroupMigration = read("supabase/migrations/20260909_display_groups.sql");
+const campaignVersionMigration = read("supabase/migrations/20260910_campaign_versions.sql");
 const partnerApi = read("api/_lib/portal/partner-network.ts");
 const partnerView = read("src/portal/PartnerNetworkView.tsx");
 const campaignTemplates = read("src/portal/CampaignTemplates.tsx");
 const displayManagement = read("src/portal/DisplayManagementView.tsx");
 const campaignHierarchy = read("src/portal/CampaignHierarchyPlanner.tsx");
+const campaignVersionHistory = read("src/portal/CampaignVersionHistory.tsx");
 const auth = read("api/_lib/dashboard/auth.ts");
 const records = read("api/dashboard/records.ts");
 const overview = read("api/dashboard/overview.ts");
@@ -25,6 +27,7 @@ const scrollCss = read("src/portal/portal-scroll.css");
 const templateCss = read("src/portal/portal-templates.css");
 const displayManagementCss = read("src/portal/portal-display-management.css");
 const hierarchyCss = read("src/portal/portal-hierarchy.css");
+const campaignVersionCss = read("src/portal/portal-campaign-versions.css");
 const vercel = JSON.parse(read("vercel.json"));
 const vite = read("vite.config.ts");
 
@@ -67,6 +70,7 @@ const checks = {
   campaignTemplateQuickstart: ["tenant_campaign_templates", "validate_campaign_template_scope", "enable row level security"].every((label) => campaignTemplateMigration.includes(label)) && ["save_campaign_template", "delete_campaign_template", "targetAssignments"].every((label) => records.includes(label)) && ["campaignTemplates", "tenant_campaign_templates"].every((label) => overview.includes(label)) && ["Kampagnen-Schnellstart", "Wochenangebot", "Aktion", "Information", "Partnerwerbung", "Meine Vorlagen", "Vorlage speichern"].every((label) => campaignTemplates.includes(label)) && ["CampaignQuickStartDialog", "SaveCampaignTemplateDialog", "Schnellstart", "Als Vorlage speichern"].every((label) => portal.includes(label)) && ["campaign-template-grid", "campaign-quickstart-banner"].every((label) => templateCss.includes(label)),
   scalableDisplayManagement: ["tenant_display_groups", "tenant_display_group_members", "validate_display_group_member_scope", "save_display_group", "enable row level security"].every((label) => displayGroupMigration.includes(label)) && ["save_display_group", "delete_display_group", "bulk_set_display_fallback", "bumpDisplayConfigurations"].every((label) => records.includes(label)) && ["displayGroups", "tenant_display_group_members"].every((label) => overview.includes(label)) && ["Bildschirm suchen", "Alle Status", "Alle Standorte", "Alle Formate", "Gruppe erstellen", "Kampagne erstellen", "Ersatzinhalt festlegen", "Sichtbare Auswahl"].every((label) => displayManagement.includes(label)) && ["DisplayManagementView", "displayGroups={data.displayGroups}", "Schnellauswahl nach Gruppe"].every((label) => portal.includes(label)) && ["managed-display-card.selected", "display-bulk-actions", "campaign-display-group-picks"].every((label) => displayManagementCss.includes(label)),
   hierarchicalCampaignPlaylists: ["areaDescendants", "areaLineage", "buildHierarchyTargets", "Standard für alle", "Schnellauswahl nach Ort", "Playlist-Ebene wählen", "Erbt automatisch"].every((label) => campaignHierarchy.includes(label)) && ["shared", "hierarchy", "individual", "hierarchyPlaylists", "inheritedHierarchyPlaylist", "Nach Ort anpassen", "Eigene Playlist entfernen", "Was passiert bei Überschneidungen?"].every((label) => portal.includes(label)) && ["portalPlaylistStrategy", "portalHierarchyPlaylists", "referencedContentIds", "fremden Standort", "fremden Bereich"].every((label) => records.includes(label)) && ["hierarchy-shortcuts", "hierarchy-playlist-tabs", "hierarchy-inheritance-note", "priority-explanation"].every((label) => hierarchyCss.includes(label)),
+  campaignVersionHistory: ["tenant_campaign_versions", "build_campaign_snapshot", "capture_campaign_version", "restore_campaign_version", "enable row level security", "Pausieren Sie die laufende Kampagne", "status = 'draft'"].every((label) => campaignVersionMigration.includes(label)) && ["capture_campaign_version", "restore_campaign_version", "restoredFromVersion"].every((label) => records.includes(label)) && ["campaignVersions", "tenant_campaign_versions", "created_by_name"].every((label) => overview.includes(label)) && ["Kampagnenverlauf", "Neuester Stand", "Als Entwurf wiederherstellen", "Pausieren Sie sie zuerst"].every((label) => campaignVersionHistory.includes(label)) && ["CampaignVersionHistoryDialog", "campaignVersions.available", "Versionen"].every((label) => portal.includes(label)) && ["campaign-version-list", "campaign-version-confirmation", "campaign-version-warning"].every((label) => campaignVersionCss.includes(label)),
   funnelStepHeaderLayout: campaignCss.includes(".funnel-current-step > span:first-child") && !campaignCss.includes(".funnel-current-step > span {"),
   editablePortalRecords: ["update_content", "update_display"].every((action) => records.includes(action) && portal.includes(action)) && ["ContentEditDialog", "DisplayEditDialog", "Änderungen live übernehmen", "(activate || isRunning)"].every((label) => portal.includes(label)) && !records.includes("müssen zuerst pausiert werden"),
   visibleRecordLabels: ["record-kind", "record-title-line", "record-assignment", "campaign-identity"].every((label) => portal.includes(label) && campaignCss.concat(read("src/portal/portal-records.css")).includes(label)),

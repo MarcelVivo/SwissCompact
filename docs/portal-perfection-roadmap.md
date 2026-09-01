@@ -70,7 +70,7 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 - [x] Kampagnenvorlagen und wiederverwendbare Abläufe
 - [x] Bildschirmgruppen, Suche, Filter und Massenaktionen
 - [x] Prioritäten und Playlists je Standort, Gebäude, Stockwerk und Bereich
-- [ ] Versionsverlauf und Wiederherstellung
+- [x] Versionsverlauf und Wiederherstellung
 
 ### 7. Compliance und Betriebsreife
 

@@ -17,7 +17,7 @@ export async function GET(request: Request): Promise<Response> {
     const partnerNetworkPromise = loadPartnerNetwork(customerAdmin, tenantId);
     const displayHealthRefresh = await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
     if (displayHealthRefresh.error) console.warn("portal display health refresh:", displayHealthRefresh.error.message);
-    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers] = await Promise.all([
+    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers, campaignVersions] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,last_seen_at,configuration_version,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
@@ -36,6 +36,7 @@ export async function GET(request: Request): Promise<Response> {
       client.from("tenant_campaign_templates").select("id,name,description,template_kind,configuration,source_campaign_id,created_at,updated_at").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(100),
       client.from("tenant_display_groups").select("id,name,description,created_at,updated_at").eq("tenant_id", tenantId).order("name").limit(250),
       client.from("tenant_display_group_members").select("group_id,display_id").eq("tenant_id", tenantId).limit(5000),
+      client.from("tenant_campaign_versions").select("id,campaign_id,version,source,configuration,restored_from_version_id,created_by,created_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(500),
     ]);
     const [customerQuotes, customerProjects, customerInvoices, responsibleProfiles] = await Promise.all([
       customerAdmin.from("quotes").select("id,quote_number,opportunity_id,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at,opportunity:opportunities(title)").eq("client_id", profile.clientId).in("status", ["sent", "viewed", "accepted", "declined", "expired"]).order("updated_at", { ascending: false }).limit(100),
@@ -73,6 +74,8 @@ export async function GET(request: Request): Promise<Response> {
     if (campaignTemplates.error) console.warn("portal campaign templates are not migrated yet", campaignTemplates.error.message);
     const displayGroupsAvailable = !displayGroups.error && !displayGroupMembers.error;
     if (!displayGroupsAvailable) console.warn("portal display groups are not migrated yet", displayGroups.error?.message || displayGroupMembers.error?.message);
+    const campaignVersionsAvailable = !campaignVersions.error;
+    if (!campaignVersionsAvailable) console.warn("portal campaign versions are not migrated yet", campaignVersions.error?.message);
     const customerRecordsError = [customerQuotes, customerProjects, customerInvoices, responsibleProfiles].find((result) => result.error)?.error;
     if (customerRecordsError) {
       console.error("portal customer records:", customerRecordsError.message);
@@ -168,6 +171,15 @@ export async function GET(request: Request): Promise<Response> {
       campaignTemplates: {
         available: !campaignTemplates.error,
         items: campaignTemplates.error ? [] : campaignTemplates.data ?? [],
+      },
+      campaignVersions: {
+        available: campaignVersionsAvailable,
+        items: campaignVersionsAvailable
+          ? (campaignVersions.data ?? []).map((version) => ({
+              ...version,
+              created_by_name: creatorName(version.created_by),
+            }))
+          : [],
       },
       displayGroups: {
         available: displayGroupsAvailable,
