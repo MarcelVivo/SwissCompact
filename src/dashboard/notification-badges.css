@@ -1,0 +1,15 @@
+.dashboard-shell > aside nav button > .notification-badge {
+  min-width: 38px;
+  padding: 0 7px;
+  background: #d90d32;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+
+.dashboard-shell > aside nav button.active > .notification-badge {
+  background: #fff;
+  color: #d90d32;
+}

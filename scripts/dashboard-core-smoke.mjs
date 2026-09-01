@@ -12,6 +12,8 @@ const portalCustomerMigration = read("supabase/migrations/20260903_verified_port
 const authSecurityMigration = read("supabase/migrations/20260913_auth_security.sql");
 const operationalReadinessMigration = read("supabase/migrations/20260914_operational_readiness.sql");
 const supportSlaMigration = read("supabase/migrations/20260915_support_sla.sql");
+const notificationMigration = read("supabase/migrations/20260916_notification_read_cursors.sql");
+const notificationCss = read("src/dashboard/notification-badges.css");
 const legalAdministration = read("src/dashboard/LegalAdministration.tsx");
 const operationalReadiness = read("src/dashboard/OperationalReadiness.tsx");
 const supportOperations = read("src/dashboard/SupportOperations.tsx");
@@ -52,6 +54,13 @@ assert.match(overview, /supportTicketsAdmin/);
 assert.match(ui, /LegalAdministration/);
 assert.match(ui, /OperationalReadiness/);
 assert.match(ui, /SupportOperations/);
+assert.match(notificationMigration, /create table if not exists swisscompact\.notification_read_cursors/);
+assert.match(notificationMigration, /create or replace function swisscompact\.mark_notification_section_read/);
+assert.match(records, /action === "mark_notification_section_read"/);
+assert.match(overview, /dashboardReadTimes/);
+assert.match(ui, /notification-badge/);
+assert.match(ui, /ungelesen/);
+assert.match(notificationCss, /\.notification-badge/);
 
 for (const table of ["dashboard_profiles", "audit_log", "clients", "opportunities", "projects", "approvals", "quotes", "invoices", "journal_entries", "journal_lines", "founder_transactions", "owner_settlements", "subscription_packages", "ai_jobs", "marketing_campaigns"]) {
   assert.match(migration, new RegExp(`create table if not exists swisscompact\\.${table}`), `${table} fehlt`);

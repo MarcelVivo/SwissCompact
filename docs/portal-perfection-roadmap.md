@@ -81,6 +81,7 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 - [x] Kontrollierten Backup-Wiederherstellungsablauf mit Testnachweisen bereitstellen; erster isolierter Praxistest ausstehend
 - [x] Fehlerquellen, Zustellversuche und Betriebsalarme zentral überwachen; externe Alarmweiterleitung optional ergänzen
 - [x] Support- und SLA-Prozess je Abonnement mit Paketregeln, Kunden-Supportcenter, interner Warteschlange und Erstreaktionsnachweis bereitstellen; produktiver End-to-End-Test nach Migration ausstehend
+- [x] Persönliche `(01)`-Ungelesen-Zähler je zuständigem Register in Kundenportal und Verwaltung bereitstellen
 
 ## Verbindliche Datenquellen
 

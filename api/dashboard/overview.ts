@@ -7,6 +7,7 @@ import { loadPartnerNetwork } from "../_lib/portal/partner-network.js";
 export const config = { runtime: "nodejs", maxDuration: 15 };
 
 export async function GET(request: Request): Promise<Response> {
+  const snapshotAt = new Date().toISOString();
   if (new URL(request.url).searchParams.get("audience") === "portal") {
     const authorized = await authorizePortal(request);
     if (isResponse(authorized)) return authorized;
@@ -59,6 +60,11 @@ export async function GET(request: Request): Promise<Response> {
       customerAdmin.from("project_revision_rounds").select("id,project_id,deliverable_id,round_number,status,request_text,response_text,included,additional_cost_chf,approved_at,created_at,updated_at").eq("client_id", profile.clientId).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(300),
     ]);
     const partnerNetwork = await partnerNetworkPromise;
+    const notificationCursors = await client.from("notification_read_cursors")
+      .select("section,last_read_at")
+      .eq("user_id", profile.userId)
+      .eq("audience", "portal")
+      .eq("scope_key", tenantId);
     const portalDataQueries = { sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents };
     const portalDataErrors = Object.entries(portalDataQueries)
       .filter(([, result]) => result.error)
@@ -86,6 +92,8 @@ export async function GET(request: Request): Promise<Response> {
     if (!legalComplianceAvailable) console.warn("portal legal compliance is not migrated yet", legalDocuments.error?.message || legalAcceptances.error?.message);
     const dataRightsAvailable = !dataRightsRequests.error;
     if (!dataRightsAvailable) console.warn("portal data rights are not migrated yet", dataRightsRequests.error?.message);
+    const notificationsAvailable = !notificationCursors.error;
+    if (!notificationsAvailable) console.warn("portal notification read cursors are not migrated yet", notificationCursors.error?.message);
     const supportAvailable = !supportPolicies.error && !supportTickets.error && !supportMessages.error;
     if (!supportAvailable) console.warn("portal support SLA is not migrated yet", supportPolicies.error?.message || supportTickets.error?.message || supportMessages.error?.message);
     const customerRecordsError = [customerQuotes, customerProjects, customerInvoices, responsibleProfiles].find((result) => result.error)?.error;
@@ -103,6 +111,11 @@ export async function GET(request: Request): Promise<Response> {
       if (event.actor_user_id && !auditedCreators.has(key)) auditedCreators.set(key, event.actor_user_id);
     }
     const creatorName = (userId?: string | null) => userId ? creatorNames.get(userId) || "Ehemaliger Benutzer" : "Nicht erfasst";
+    const portalReadTimes = new Map((notificationCursors.data ?? []).map((entry: any) => [entry.section, new Date(entry.last_read_at).getTime()]));
+    const unreadAfter = (section: string, value: unknown) => {
+      const timestamp = value ? new Date(String(value)).getTime() : 0;
+      return Number.isFinite(timestamp) && timestamp > (portalReadTimes.get(section) ?? 0);
+    };
     const contentWithPreviews = await Promise.all((content.data ?? []).map(async (item) => {
       const enriched = { ...item, creator_name: creatorName(item.created_by || auditedCreators.get(`content:${item.id}`)) };
       const posterPath = typeof item.payload?.posterPath === "string" ? item.payload.posterPath : "";
@@ -248,6 +261,20 @@ export async function GET(request: Request): Promise<Response> {
           canDownload: entry.status === "completed" && Boolean(entry.export_expires_at) && new Date(entry.export_expires_at).getTime() > Date.now(),
         })) : [],
       },
+      notifications: {
+        available: notificationsAvailable,
+        unreadBySection: notificationsAvailable ? {
+          status: (displayAlerts.data ?? []).filter((entry: any) => entry.status !== "resolved" && unreadAfter("status", entry.last_seen_at)).length,
+          records: (projectMessages.data ?? []).filter((entry: any) => entry.author_type !== "customer" && unreadAfter("records", entry.created_at)).length,
+          partners: [
+            ...(partnerNetwork.partnerships ?? []).filter((entry: any) => entry.direction === "incoming" && entry.status === "pending" && unreadAfter("partners", entry.created_at)),
+            ...(partnerNetwork.offers ?? []).filter((entry: any) => entry.direction === "incoming" && entry.status === "pending" && unreadAfter("partners", entry.created_at)),
+          ].length,
+          support: (supportMessages.data ?? []).filter((entry: any) => entry.author_type !== "customer" && unreadAfter("support", entry.created_at)).length,
+          settings: (currentLegalDocuments ?? []).filter((entry: any) => entry.status === "published" && entry.requiresAcceptance && !entry.acceptedAt && unreadAfter("settings", entry.published_at)).length
+            + (dataRightsRequests.data ?? []).filter((entry: any) => entry.updated_at !== entry.created_at && unreadAfter("settings", entry.updated_at)).length,
+        } : {},
+      },
       support: {
         available: supportAvailable,
         policy: supportAvailable ? (supportPolicies.data ?? []).find((entry: any) => entry.package_code === subscription.data?.package_code) ?? null : null,
@@ -261,7 +288,7 @@ export async function GET(request: Request): Promise<Response> {
         balance: aiBalance.error ? null : (Array.isArray(aiBalance.data) ? aiBalance.data[0] ?? null : aiBalance.data),
       },
       mediaPipeline: { muxVideoEnabled: muxVideoEnabled(), maxVideoBytes: muxVideoEnabled() ? 5 * 1024 * 1024 * 1024 : 250 * 1024 * 1024 },
-      generatedAt: new Date().toISOString(),
+      generatedAt: snapshotAt,
     });
   }
   const authorized = await authorizeDashboard(request);
@@ -327,6 +354,18 @@ export async function GET(request: Request): Promise<Response> {
   const dataRightsRequests = await client.from("tenant_data_rights_requests").select("id,tenant_id,membership_id,requested_by,request_type,status,reason,retention_resolution,review_note,reviewed_by,reviewed_at,completed_at,cancelled_at,created_at,updated_at,tenant:tenants(name,client_id),membership:tenant_memberships(display_name)").order("created_at", { ascending: false }).limit(250);
   const dataRightsAvailable = !dataRightsRequests.error;
   if (!dataRightsAvailable) console.warn("dashboard data rights are not migrated yet", dataRightsRequests.error?.message);
+  const notificationCursors = await client.from("notification_read_cursors")
+    .select("section,last_read_at")
+    .eq("user_id", profile.userId)
+    .eq("audience", "dashboard")
+    .eq("scope_key", "dashboard");
+  const notificationsAvailable = !notificationCursors.error;
+  if (!notificationsAvailable) console.warn("dashboard notification read cursors are not migrated yet", notificationCursors.error?.message);
+  const dashboardReadTimes = new Map((notificationCursors.data ?? []).map((entry: any) => [entry.section, new Date(entry.last_read_at).getTime()]));
+  const unreadAfter = (section: string, value: unknown) => {
+    const timestamp = value ? new Date(String(value)).getTime() : 0;
+    return Number.isFinite(timestamp) && timestamp > (dashboardReadTimes.get(section) ?? 0);
+  };
   return json({
     profile,
     clients: clients.data ?? [],
@@ -343,6 +382,23 @@ export async function GET(request: Request): Promise<Response> {
     profiles: profiles.data ?? [],
     contentRequests: contentRequests.data ?? [],
     portalMemberships: enrichedPortalMemberships,
+    notifications: {
+      available: notificationsAvailable,
+      unreadBySection: notificationsAvailable ? {
+        pipeline: (opportunities.data ?? []).filter((entry: any) => entry.stage === "request" && unreadAfter("pipeline", entry.created_at)).length,
+        projects: (projectMessages.data ?? []).filter((entry: any) => entry.author_type === "customer" && unreadAfter("projects", entry.created_at)).length,
+        production: (contentRequests.data ?? []).filter((entry: any) => unreadAfter("production", entry.created_at)).length,
+        support: (supportMessagesAdmin?.data ?? []).filter((entry: any) => entry.author_type === "customer" && unreadAfter("support", entry.created_at)).length,
+        systems: [
+          ...(operationalIncidents?.data ?? []).filter((entry: any) => entry.status !== "resolved" && unreadAfter("systems", entry.last_seen_at)),
+          ...(fleetAlerts?.data ?? []).filter((entry: any) => unreadAfter("systems", entry.last_seen_at)),
+          ...(mediaFailures?.data ?? []).filter((entry: any) => unreadAfter("systems", entry.updated_at)),
+          ...(stripeFailures?.data ?? []).filter((entry: any) => unreadAfter("systems", entry.created_at)),
+          ...(aiJobs.data ?? []).filter((entry: any) => entry.status === "failed" && unreadAfter("systems", entry.created_at)),
+        ].length,
+        security: (dataRightsRequests.data ?? []).filter((entry: any) => unreadAfter("security", entry.created_at)).length,
+      } : {},
+    },
     dataRights: {
       available: dataRightsAvailable,
       requests: dataRightsAvailable ? (dataRightsRequests.data ?? []).map((entry: any) => ({
@@ -380,6 +436,6 @@ export async function GET(request: Request): Promise<Response> {
       revisions: collaborationAvailable ? projectRevisions.data ?? [] : [],
       campaigns: collaborationAvailable ? projectCampaigns.data ?? [] : [],
     },
-    generatedAt: new Date().toISOString(),
+    generatedAt: snapshotAt,
   });
 }

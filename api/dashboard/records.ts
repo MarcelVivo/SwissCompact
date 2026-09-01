@@ -597,6 +597,18 @@ async function handlePortalRecords(request: Request): Promise<Response> {
   const action = cleanText(body.action, 80);
   const now = new Date().toISOString();
 
+  if (action === "mark_notification_section_read") {
+    const section = cleanText(body.section, 40);
+    const marked = await client.rpc("mark_notification_section_read", {
+      target_audience: "portal",
+      target_scope: profile.tenantId,
+      target_section: section,
+      target_read_through: cleanText(body.readThrough, 80) || null,
+    });
+    if (marked.error) return json({ error: marked.error.message || "Lesestatus konnte nicht gespeichert werden" }, { status: 409 });
+    return json({ ok: true, readAt: marked.data });
+  }
+
   if (action === "accept_legal_documents") {
     const documentIds = Array.isArray(body.documentIds)
       ? [...new Set(body.documentIds.map((value) => cleanText(value, 80)).filter((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)))].slice(0, 10)
@@ -1919,6 +1931,18 @@ export async function POST(request: Request): Promise<Response> {
   const { client, profile } = authorized;
   const body = await request.json() as Payload;
   const action = cleanText(body.action, 80);
+
+  if (action === "mark_notification_section_read") {
+    const section = cleanText(body.section, 40);
+    const marked = await client.rpc("mark_notification_section_read", {
+      target_audience: "dashboard",
+      target_scope: "dashboard",
+      target_section: section,
+      target_read_through: cleanText(body.readThrough, 80) || null,
+    });
+    if (marked.error) return json({ error: marked.error.message || "Lesestatus konnte nicht gespeichert werden" }, { status: 409 });
+    return json({ ok: true, readAt: marked.data });
+  }
 
   if (["create_legal_document", "update_legal_document", "publish_legal_document"].includes(action)) {
     if (!profile.securityAdmin) return json({ error: "Nur der Hauptadmin darf verbindliche Rechtsdokumente verwalten" }, { status: 403 });

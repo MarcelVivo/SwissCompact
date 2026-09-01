@@ -1,0 +1,67 @@
+.portal > aside > nav button {
+  position: relative;
+}
+
+.portal > aside > nav button > span {
+  min-width: 0;
+}
+
+.nav-unread-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #d90d32;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: .02em;
+}
+
+.portal > aside > nav button.active .nav-unread-count {
+  color: currentColor;
+}
+
+.mobile-more-nav .nav-unread-count {
+  min-width: 42px;
+  margin-left: 12px;
+  padding: 8px 9px;
+  border-radius: 999px;
+  background: #fde8ed;
+}
+
+@media (max-width: 680px) {
+  .portal > aside > nav button > .nav-unread-count {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    min-width: 26px;
+    min-height: 20px;
+    margin: 0;
+    padding: 3px 4px;
+    border: 2px solid #fff;
+    border-radius: 999px;
+    background: #d90d32;
+    color: #fff;
+    font-size: 9px;
+  }
+
+  .portal > aside > nav button.active > .nav-unread-count {
+    border-color: #151515;
+    color: #fff;
+  }
+
+  .mobile-more-nav .nav-unread-count {
+    position: static;
+    min-width: 42px;
+    min-height: auto;
+    margin-left: 12px;
+    padding: 8px 9px;
+    border: 0;
+    background: #fde8ed;
+    color: #d90d32;
+    font-size: 12px;
+  }
+}

@@ -32,6 +32,7 @@ import "./portal-legal.css";
 import "./portal-data-rights.css";
 import "./portal-security.css";
 import "./portal-support.css";
+import "./portal-notifications.css";
 import { PartnerNetworkView, type PartnerNetworkData } from "./PartnerNetworkView";
 import { CampaignQuickStartDialog, SaveCampaignTemplateDialog, type CampaignTemplateChoice, type CampaignTemplatesData } from "./CampaignTemplates";
 import { DisplayManagementView, type DisplayGroupsData } from "./DisplayManagementView";
@@ -86,8 +87,10 @@ type CustomerInvoice = { id: string; quote_id?: string | null; project_id?: stri
 type CustomerRecords = { quotes: CustomerQuote[]; projects: CustomerProject[]; invoices: CustomerInvoice[] };
 type ProjectCollaboration = { available: boolean; briefings: Record<string, any>[]; messages: Record<string, any>[]; deliverables: Record<string, any>[]; versions: Record<string, any>[]; reviews: Record<string, any>[]; revisions: Record<string, any>[] };
 type DisplaySafety = { versions: Array<{ id: string; display_id: string; version: number; source: string; campaign_id?: string | null; state: string; previous_version?: number | null; created_at: string }>; tests: Array<{ id: string; display_id: string; campaign_id: string; configuration_version: number; previous_version?: number | null; status: string; expires_at: string; created_at: string }>; alerts: Array<{ id: string; display_id: string; kind: string; severity: string; status: string; message: string; last_seen_at: string }> };
-type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; archivedContent: Content[]; serviceRequests: Content[]; customerRecords: CustomerRecords; projectCollaboration: ProjectCollaboration; partnerNetwork: PartnerNetworkData; campaignTemplates: CampaignTemplatesData; campaignVersions: CampaignVersionsData; displayGroups: DisplayGroupsData; displaySafety: DisplaySafety; legalCompliance: LegalComplianceData; dataRights: DataRightsData; support: SupportData; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits; mediaPipeline?: { muxVideoEnabled: boolean; maxVideoBytes: number }; generatedAt?: string };
+type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; archivedContent: Content[]; serviceRequests: Content[]; customerRecords: CustomerRecords; projectCollaboration: ProjectCollaboration; partnerNetwork: PartnerNetworkData; campaignTemplates: CampaignTemplatesData; campaignVersions: CampaignVersionsData; displayGroups: DisplayGroupsData; displaySafety: DisplaySafety; legalCompliance: LegalComplianceData; dataRights: DataRightsData; support: SupportData; notifications: { available: boolean; unreadBySection: Record<string, number> }; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits; mediaPipeline?: { muxVideoEnabled: boolean; maxVideoBytes: number }; generatedAt?: string };
 type View = "overview" | "status" | "records" | "content" | "archive" | "campaigns" | "displays" | "partners" | "support" | "settings";
+const notificationSections: View[] = ["status", "records", "partners", "support", "settings"];
+const unreadCountLabel = (count: number) => count > 99 ? "99+" : String(Math.max(0, count)).padStart(2, "0");
 type DeleteTarget = { kind: "archived_content" | "campaign" | "display"; id: string; name: string };
 type CampaignPreset = { contentId?: string; displayId?: string; name?: string; theme?: string | null; priority?: number; scopeSiteId?: string | null; scopeAreaId?: string | null; displayIds?: string[]; targetAssignments?: Array<{ displayId: string; contentItems: Array<{ contentId: string; durationSeconds: number }> }>; playlistStrategy?: CampaignContentMode; hierarchyPlaylists?: Record<string, PlaylistEntry[]>; templateName?: string; defaultDurationDays?: number | null; startStep?: 1 | 2 | 3 | 4; fromTemplate?: boolean };
 
@@ -686,6 +689,8 @@ function Portal() {
       overview.dataRights = { available: dataRights.available === true, requests: Array.isArray(dataRights.requests) ? dataRights.requests : [] };
       const support = overview.support || {} as SupportData;
       overview.support = { available: support.available === true, policy: support.policy || null, tickets: Array.isArray(support.tickets) ? support.tickets : [], messages: Array.isArray(support.messages) ? support.messages : [] };
+      const notifications = overview.notifications || {} as PortalData["notifications"];
+      overview.notifications = { available: notifications.available === true, unreadBySection: notifications.unreadBySection && typeof notifications.unreadBySection === "object" ? notifications.unreadBySection : {} };
       setData(overview); setSession("ready");
       return overview;
     } catch (reason) {
@@ -705,6 +710,13 @@ function Portal() {
     const timer = window.setInterval(() => void load(false), 5_000);
     return () => window.clearInterval(timer);
   }, [data, load, session]);
+  useEffect(() => {
+    if (session !== "ready") return;
+    const refreshVisiblePortal = () => { if (document.visibilityState === "visible") void load(false); };
+    const timer = window.setInterval(refreshVisiblePortal, 60_000);
+    window.addEventListener("focus", refreshVisiblePortal);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refreshVisiblePortal); };
+  }, [load, session]);
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -743,6 +755,16 @@ function Portal() {
     })();
     return () => { active = false; };
   }, [load]);
+  useEffect(() => {
+    if (!data?.notifications.available || !notificationSections.includes(view)) return;
+    const unread = Number(data.notifications.unreadBySection[view] || 0);
+    if (unread < 1) return;
+    setData((current) => current ? { ...current, notifications: { ...current.notifications, unreadBySection: { ...current.notifications.unreadBySection, [view]: 0 } } } : current);
+    void api("/api/dashboard/records?audience=portal", {
+      method: "POST",
+      body: JSON.stringify({ action: "mark_notification_section_read", section: view, readThrough: data.generatedAt }),
+    }).catch(() => void load(false));
+  }, [data?.notifications.available, data?.notifications.unreadBySection?.[view], load, view]);
   const online = useMemo(() => data?.displays?.filter((display) => display.status === "online").length || 0, [data]);
   if (session === "loading") return <div className="boot"><div className="boot-mark">SC</div><span>Portal wird geladen</span></div>;
   if (session === "mfa" && authChallenge?.factorId) return <PortalMfaChallenge factorId={authChallenge.factorId} onVerified={() => { setAuthChallenge(null); void load(); }} onLogout={() => void logout()}/>;
@@ -756,6 +778,8 @@ function Portal() {
   const secondaryDescriptions: Partial<Record<View, string>> = { status: "Bildschirme und Warnungen prüfen", records: "Offerten, Aufträge und Rechnungen", partners: "Werbung mit Partnerbetrieben", archive: "Archivierte Medien verwalten", support: "Hilfe und Supportanfragen", settings: "Konto, Paket und Sicherheit" };
   const primaryMobileViews: View[] = ["overview","campaigns","displays","content"];
   const secondaryNav = nav.filter(([id]) => !primaryMobileViews.includes(id));
+  const notificationCount = (section: View) => Number(data.notifications.unreadBySection[section] || 0);
+  const secondaryUnread = secondaryNav.reduce((sum, [section]) => sum + notificationCount(section), 0);
   const onboardingComplete = data.campaigns.some((campaign) => ["active", "scheduled"].includes(campaign.status));
   const onboardingCampaign = [...data.campaigns]
     .filter((campaign) => ["draft", "paused"].includes(campaign.status))
@@ -897,9 +921,9 @@ function Portal() {
   }
   return <div className="portal" style={{ "--accent": data.profile.branding?.accent || "#d90d32" } as React.CSSProperties}>
     <aside><a className="wordmark" href="/">Swiss<span>Compact</span></a><div className="tenant"><span>Arbeitsbereich</span><strong>{data.profile.tenantName}</strong></div>
-      <nav>{nav.map(([id,label]) => <button key={id} className={`${view === id ? "active" : ""} ${primaryMobileViews.includes(id) ? "" : "nav-secondary"}`.trim()} onClick={() => setView(id)}><Icon name={id}/>{label}{id === "status" && operationalIssues > 0 && <b className="nav-status-count">{operationalIssues}</b>}</button>)}<button type="button" className={`nav-more ${secondaryNav.some(([id]) => id === view) ? "active" : ""}`.trim()} onClick={() => setMobileMore(true)}><Icon name="more"/>Mehr</button></nav>
+      <nav>{nav.map(([id,label]) => { const unread = notificationCount(id); return <button key={id} className={`${view === id ? "active" : ""} ${primaryMobileViews.includes(id) ? "" : "nav-secondary"}`.trim()} onClick={() => setView(id)}><Icon name={id}/><span>{label}</span>{unread > 0 && <b className="nav-unread-count" aria-label={`${unread} ungelesen`}>({unreadCountLabel(unread)})</b>}</button>; })}<button type="button" className={`nav-more ${secondaryNav.some(([id]) => id === view) ? "active" : ""}`.trim()} onClick={() => setMobileMore(true)}><Icon name="more"/><span>Mehr</span>{secondaryUnread > 0 && <b className="nav-unread-count" aria-label={`${secondaryUnread} ungelesen`}>({unreadCountLabel(secondaryUnread)})</b>}</button></nav>
       <button className="logout" onClick={() => void logout()}><Icon name="logout"/>Abmelden</button>
-      {mobileMore && <div className="dialog-backdrop mobile-more-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMobileMore(false)}><section className="dialog mobile-more-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-more-title"><button className="dialog-close" onClick={() => setMobileMore(false)} aria-label="Schließen">×</button><div className="eyebrow">Mehr</div><h2 id="mobile-more-title">Navigation</h2><p>Weitere Bereiche Ihres Kundenportals.</p><div className="mobile-more-nav">{secondaryNav.map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => { setView(id); setMobileMore(false); }}><Icon name={id}/><span className="mobile-more-copy"><strong>{label}</strong><small>{secondaryDescriptions[id]}</small></span>{id === "status" && operationalIssues > 0 ? <b className="nav-status-count">{operationalIssues}</b> : <i>›</i>}</button>)}</div><button type="button" className="mobile-more-logout" onClick={() => { setMobileMore(false); void logout(); }}><Icon name="logout"/>Abmelden</button></section></div>}
+      {mobileMore && <div className="dialog-backdrop mobile-more-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMobileMore(false)}><section className="dialog mobile-more-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-more-title"><button className="dialog-close" onClick={() => setMobileMore(false)} aria-label="Schließen">×</button><div className="eyebrow">Mehr</div><h2 id="mobile-more-title">Navigation</h2><p>Weitere Bereiche Ihres Kundenportals.</p><div className="mobile-more-nav">{secondaryNav.map(([id,label]) => { const unread = notificationCount(id); return <button key={id} className={view === id ? "active" : ""} onClick={() => { setView(id); setMobileMore(false); }}><Icon name={id}/><span className="mobile-more-copy"><strong>{label}</strong><small>{secondaryDescriptions[id]}</small></span>{unread > 0 ? <b className="nav-unread-count" aria-label={`${unread} ungelesen`}>({unreadCountLabel(unread)})</b> : <i>›</i>}</button>; })}</div><button type="button" className="mobile-more-logout" onClick={() => { setMobileMore(false); void logout(); }}><Icon name="logout"/>Abmelden</button></section></div>}
       {iosInstallHint && <div className="dialog-backdrop mobile-more-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setIosInstallHint(false)}><section className="dialog ios-install-dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={() => setIosInstallHint(false)} aria-label="Schließen">×</button><div className="eyebrow">App installieren</div><h2>Zum Home-Bildschirm hinzufügen</h2><ol><li><Icon name="ios-share"/>Tippen Sie unten in Safari auf <b>Teilen</b>.</li><li><Icon name="plus"/>Wählen Sie <b>„Zum Home-Bildschirm“</b>.</li></ol></section></div>}
     </aside>
     <main className="workspace"><header><div><div className="eyebrow">{data.profile.tenantName}</div><h1>{nav.find(([id]) => id === view)?.[1]}</h1></div><div className="profile"><button type="button" className="pwa-install-button" data-pwa-install aria-label="App installieren"><Icon name="install"/><span>App installieren</span></button><span>{data.profile.displayName.slice(0,1).toUpperCase()}</span><div><strong>{data.profile.displayName}</strong><small>{labels[data.profile.role]}</small></div></div></header>
