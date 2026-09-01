@@ -1128,6 +1128,62 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true, record: result.data });
   }
 
+  if (action === "save_display_group") {
+    const groupId = cleanText(body.id, 80) || null;
+    const name = cleanText(body.name, 180);
+    const description = cleanText(body.description, 500) || null;
+    const displayIds = [...new Set((Array.isArray(body.displayIds) ? body.displayIds : []).map((id) => cleanText(id, 80)).filter(Boolean))];
+    if (!name) return json({ error: "Geben Sie einen Gruppennamen ein" }, { status: 400 });
+    if (displayIds.length > 500) return json({ error: "Eine Gruppe kann höchstens 500 Bildschirme enthalten" }, { status: 400 });
+    if (displayIds.length) {
+      const available = await client.from("tenant_displays").select("id").eq("tenant_id", profile.tenantId).in("id", displayIds);
+      if (available.error || (available.data ?? []).length !== displayIds.length) return json({ error: "Mindestens ein Bildschirm gehört nicht zu diesem Kundenportal" }, { status: 403 });
+    }
+    const saved = await client.rpc("save_display_group", {
+      target_tenant: profile.tenantId,
+      target_group: groupId,
+      group_name: name,
+      group_description: description,
+      target_display_ids: displayIds,
+    });
+    if (saved.error) {
+      const missingMigration = ["42883", "PGRST202"].includes(saved.error.code);
+      return json({ error: missingMigration ? "Bildschirmgruppen müssen zuerst in Supabase aktiviert werden" : saved.error.code === "23505" ? "Eine Gruppe mit diesem Namen besteht bereits" : saved.error.message }, { status: missingMigration ? 503 : 400 });
+    }
+    const id = String(saved.data || groupId || "");
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: groupId ? "display_group_updated" : "display_group_created", entity_type: "display_group", entity_id: id, metadata: { name, displayCount: displayIds.length } });
+    return json({ ok: true, id });
+  }
+
+  if (action === "delete_display_group") {
+    const id = cleanText(body.id, 80);
+    if (!id) return json({ error: "Bildschirmgruppe fehlt" }, { status: 400 });
+    const existing = await client.from("tenant_display_groups").select("id,name").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (!existing.data) return json({ error: "Bildschirmgruppe nicht gefunden" }, { status: 404 });
+    const removed = await client.from("tenant_display_groups").delete().eq("id", id).eq("tenant_id", profile.tenantId);
+    if (removed.error) return json({ error: "Bildschirmgruppe konnte nicht gelöscht werden" }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "display_group_deleted", entity_type: "display_group", entity_id: id, metadata: { name: existing.data.name } });
+    return json({ ok: true });
+  }
+
+  if (action === "bulk_set_display_fallback") {
+    const displayIds = [...new Set((Array.isArray(body.displayIds) ? body.displayIds : []).map((id) => cleanText(id, 80)).filter(Boolean))];
+    const contentId = cleanText(body.contentId, 80) || null;
+    if (!displayIds.length) return json({ error: "Wählen Sie mindestens einen Bildschirm aus" }, { status: 400 });
+    if (displayIds.length > 500) return json({ error: "Es können höchstens 500 Bildschirme gleichzeitig geändert werden" }, { status: 400 });
+    if (contentId) {
+      const content = await client.from("tenant_content").select("id,status").eq("id", contentId).eq("tenant_id", profile.tenantId).in("status", ["approved", "published"]).maybeSingle();
+      if (!content.data) return json({ error: "Wählen Sie einen freigegebenen Ersatzinhalt" }, { status: 409 });
+    }
+    const available = await client.from("tenant_displays").select("id").eq("tenant_id", profile.tenantId).in("id", displayIds);
+    if (available.error || (available.data ?? []).length !== displayIds.length) return json({ error: "Mindestens ein Bildschirm gehört nicht zu diesem Kundenportal" }, { status: 403 });
+    const updated = await client.from("tenant_displays").update({ fallback_content_id: contentId, updated_at: now }).eq("tenant_id", profile.tenantId).in("id", displayIds).select("id");
+    if (updated.error || (updated.data ?? []).length !== displayIds.length) return json({ error: "Die Ersatzinhalte konnten nicht vollständig gespeichert werden" }, { status: 400 });
+    await bumpDisplayConfigurations(client, displayIds, "fallback");
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "display_bulk_fallback_changed", entity_type: "display_group", metadata: { displayIds, contentId } });
+    return json({ ok: true, count: displayIds.length });
+  }
+
   if (action === "create_display") {
     if (!['owner', 'admin'].includes(profile.role)) return json({ error: "Nur Portal-Administratoren können Bildschirme registrieren" }, { status: 403 });
     const name = cleanText(body.name, 180);
