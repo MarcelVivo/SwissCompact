@@ -46,6 +46,8 @@ where document_type = 'terms'
 
 Dasselbe kontrolliert für `privacy` und `data_processing` durchführen. Entwürfe dürfen beliebig bearbeitet werden; veröffentlichte Versionen sind technisch unveränderbar.
 
+Im normalen Betrieb erfolgt dies ohne direkte SQL-Änderung im internen Dashboard unter **Sicherheit & Protokoll → Rechtsdokumente**. Nur der Hauptadmin kann dort Entwürfe anlegen oder bearbeiten.
+
 ## 3. Bewusst veröffentlichen
 
 Die ID jedes geprüften Entwurfs kontrollieren:
@@ -56,7 +58,13 @@ from swisscompact.legal_documents
 order by document_type, created_at desc;
 ```
 
-Anschliessend jedes Dokument einzeln veröffentlichen:
+Anschliessend jedes Dokument einzeln veröffentlichen. Bevorzugt wird im Dashboard die Aktion **Geprüfte Fassung veröffentlichen** verwendet. Sie verlangt:
+
+1. die Bestätigung, dass exakt diese Fassung fachlich beziehungsweise rechtlich freigegeben wurde;
+2. die ausdrückliche Eingabe `VERÖFFENTLICHEN`;
+3. eine Hauptadmin-Sitzung mit starker Anmeldung.
+
+Alternativ kann die Funktion im SQL Editor einzeln aufgerufen werden:
 
 ```sql
 select swisscompact.publish_legal_document('DOKUMENT-ID-HIER'::uuid);

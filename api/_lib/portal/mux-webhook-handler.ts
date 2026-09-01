@@ -1,6 +1,7 @@
 import { dashboardSupabase } from "../dashboard/auth.js";
 import { json } from "../assistant/security.js";
 import { getMuxAsset, muxReadyRendition, muxVideoEnabled, verifyMuxWebhook, type MuxAsset } from "./mux-video.js";
+import { recordOperationalDelivery, reportOperationalIncident } from "../dashboard/operations.js";
 
 type MuxEvent = {
   id?: string;
@@ -152,9 +153,15 @@ export async function handleMuxWebhookPost(request: Request): Promise<Response> 
   if (!client) return json({ error: "Datenbank ist nicht konfiguriert" }, { status: 503 });
   try {
     await processMuxEvent(client, event);
+    await recordOperationalDelivery(client, { channel: "webhook", eventType: "mux_webhook", entityType: "mux_event", entityId: text(event.id, 180) || null, providerReference: text(event.id, 180) || null, status: "delivered", metadata: { eventType: text(event.type, 120) } });
     return json({ received: true });
   } catch (reason) {
     console.error("Mux webhook processing failed", reason);
+    const message = reason instanceof Error ? reason.message : "Mux-Ereignis konnte nicht verarbeitet werden";
+    await Promise.all([
+      recordOperationalDelivery(client, { channel: "webhook", eventType: "mux_webhook", entityType: "mux_event", entityId: text(event.id, 180) || null, providerReference: text(event.id, 180) || null, status: "failed", error: message, metadata: { eventType: text(event.type, 120) } }),
+      reportOperationalIncident(client, { key: `mux:${text(event.id, 180) || text(event.type, 120)}`, source: "mux", kind: "webhook_failed", severity: "critical", title: "Mux-Ereignis konnte nicht verarbeitet werden", message, metadata: { eventType: text(event.type, 120) } }),
+    ]);
     return json({ error: "Ereignis konnte nicht verarbeitet werden" }, { status: 500 });
   }
 }

@@ -1,4 +1,4 @@
-import { activatePendingPortalMembership, dashboardSupabase, ensurePortalProfile, ensureProfile, isBuiltInAdmin, sessionCookieHeaders } from "../_lib/dashboard/auth.js";
+import { activatePendingPortalMembership, dashboardSupabase, ensurePortalProfile, ensureProfile, isBuiltInAdmin, recordSecuritySession, sessionCookieHeaders } from "../_lib/dashboard/auth.js";
 import { json, validatePublicPost } from "../_lib/assistant/security.js";
 
 export const config = { runtime: "nodejs", maxDuration: 15 };
@@ -29,7 +29,17 @@ export async function POST(request: Request): Promise<Response> {
       await activatePendingPortalMembership(data.user);
       const portalProfile = await ensurePortalProfile(authClient, data.user, request);
       if (!portalProfile) return json({ error: "Für dieses Konto ist kein registriertes und verifiziertes Kundenportal freigeschaltet" }, { status: 403 });
-      return json({ ok: true, audience, profile: portalProfile }, {
+      await recordSecuritySession(request, data.user.id, "portal", data.session.access_token, data.session.refresh_token, portalProfile.tenantId);
+      const verifiedFactors = data.user.factors?.filter((factor) => factor.status === "verified") ?? [];
+      const totpFactor = verifiedFactors.find((factor) => factor.factor_type === "totp");
+      return json({
+        ok: true,
+        audience,
+        profile: portalProfile,
+        mfaRequired: verifiedFactors.length > 0 && portalProfile.aal !== "aal2" && !portalProfile.passkeyVerified,
+        factorId: totpFactor?.id ?? verifiedFactors[0]?.id,
+        totpFactorId: totpFactor?.id,
+      }, {
         headers: sessionCookieHeaders(data.session.access_token, data.session.refresh_token, data.session.expires_in),
       });
     }
@@ -40,6 +50,7 @@ export async function POST(request: Request): Promise<Response> {
     const profileClient = dashboardSupabase();
     const profile = profileClient ? await ensureProfile(profileClient, data.user) : null;
     if (!profile) return json({ error: "Adminprofil fehlt. Bitte zuerst die Datenbankmigration ausführen." }, { status: 503 });
+    await recordSecuritySession(request, data.user.id, "dashboard", data.session.access_token, data.session.refresh_token);
     const verifiedFactors = data.user.factors?.filter((factor) => factor.status === "verified") ?? [];
     const totpFactor = verifiedFactors.find((factor) => factor.factor_type === "totp");
     return json({

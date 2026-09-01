@@ -11,6 +11,7 @@ import { handleStripeWebhookPost } from "../_lib/portal/stripe-webhook-handler.j
 import { createMuxDirectUpload, deleteMuxAsset, deleteMuxDirectUpload, getMuxDirectUpload, muxSignedPlaybackUrl, muxVideoEnabled } from "../_lib/portal/mux-video.js";
 import { handleMuxWebhookPost } from "../_lib/portal/mux-webhook-handler.js";
 import { handlePartnerNetworkAction } from "../_lib/portal/partner-network.js";
+import { recordOperationalDelivery, reportOperationalIncident } from "../_lib/dashboard/operations.js";
 
 export const config = { runtime: "nodejs", maxDuration: 180 };
 
@@ -138,15 +139,26 @@ async function createPortalInvitation(client: any, request: Request, email: stri
 async function sendPortalInvitation(email: string, displayName: string, companyName: string, invitationUrl: string): Promise<boolean> {
   const resendKey = process.env.RESEND_API_KEY;
   if (!resendKey) return false;
-  const mail = await new Resend(resendKey).emails.send({
-    from: "SwissCompact Portal <kontakt@swisscompact.com>",
-    to: email,
-    replyTo: "kontakt@swisscompact.com",
-    subject: `Ihr SwissCompact Portal für ${companyName}`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#18181b"><p style="color:#c8102e;font-weight:800;letter-spacing:.12em">SWISSCOMPACT</p><h1 style="font-size:30px">Ihr Kundenportal ist bereit.</h1><p>Guten Tag ${escapeHtml(displayName)},</p><p>SwissCompact hat den geschützten Portal-Arbeitsbereich für <strong>${escapeHtml(companyName)}</strong> vorbereitet.</p><p style="margin:30px 0"><a href="${escapeHtml(invitationUrl)}" style="display:inline-block;padding:15px 22px;background:#d70b31;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Zugang bestätigen und Passwort festlegen</a></p><p style="font-size:13px;color:#666">Dieser Link ist persönlich. Leiten Sie ihn bitte nicht weiter.</p><p>Freundliche Grüsse<br>Marcel Spahr und Thomas Peter<br>SwissCompact</p></div>`,
-  });
-  if (mail.error) throw new Error(`Einladungs-E-Mail konnte nicht gesendet werden: ${mail.error.message}`);
-  return true;
+  const operations = dashboardSupabase();
+  try {
+    const mail = await new Resend(resendKey).emails.send({
+      from: "SwissCompact Portal <kontakt@swisscompact.com>",
+      to: email,
+      replyTo: "kontakt@swisscompact.com",
+      subject: `Ihr SwissCompact Portal für ${companyName}`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#18181b"><p style="color:#c8102e;font-weight:800;letter-spacing:.12em">SWISSCOMPACT</p><h1 style="font-size:30px">Ihr Kundenportal ist bereit.</h1><p>Guten Tag ${escapeHtml(displayName)},</p><p>SwissCompact hat den geschützten Portal-Arbeitsbereich für <strong>${escapeHtml(companyName)}</strong> vorbereitet.</p><p style="margin:30px 0"><a href="${escapeHtml(invitationUrl)}" style="display:inline-block;padding:15px 22px;background:#d70b31;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Zugang bestätigen und Passwort festlegen</a></p><p style="font-size:13px;color:#666">Dieser Link ist persönlich. Leiten Sie ihn bitte nicht weiter.</p><p>Freundliche Grüsse<br>Marcel Spahr und Thomas Peter<br>SwissCompact</p></div>`,
+    });
+    if (mail.error) throw new Error(mail.error.message);
+    if (operations) await recordOperationalDelivery(operations, { channel: "email", eventType: "portal_invitation", recipient: email, providerReference: mail.data?.id || null, status: "delivered" });
+    return true;
+  } catch (reason) {
+    const message = reason instanceof Error ? reason.message : "Einladungs-E-Mail fehlgeschlagen";
+    if (operations) await Promise.all([
+      recordOperationalDelivery(operations, { channel: "email", eventType: "portal_invitation", recipient: email, status: "failed", error: message }),
+      reportOperationalIncident(operations, { key: `email:portal_invitation:${email.toLowerCase()}`, source: "email", kind: "delivery_failed", severity: "warning", title: "Portal-Einladung konnte nicht zugestellt werden", message }),
+    ]);
+    throw new Error(`Einladungs-E-Mail konnte nicht gesendet werden: ${message}`);
+  }
 }
 
 async function sendCustomerStatusNotification(
@@ -157,7 +169,7 @@ async function sendCustomerStatusNotification(
   message: string,
 ): Promise<boolean> {
   if (!clientId || !process.env.RESEND_API_KEY) return false;
-  const customer = await client.from("clients").select("company_name,contact_name,email").eq("id", clientId).maybeSingle();
+  const customer = await client.from("clients").select("company_name,contact_name,email,tenant:tenants(id)").eq("id", clientId).maybeSingle();
   if (!customer.data?.email || !validEmail(customer.data.email)) return false;
   let portalUrl = "https://www.swisscompact.com/portal";
   if (process.env.SITE_URL) {
@@ -172,9 +184,19 @@ async function sendCustomerStatusNotification(
       html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#18181b"><p style="color:#c8102e;font-weight:800;letter-spacing:.12em">SWISSCOMPACT</p><h1 style="font-size:28px">${escapeHtml(heading)}</h1><p>Guten Tag ${escapeHtml(customer.data.contact_name || customer.data.company_name || "")},</p><p style="font-size:16px;line-height:1.65">${escapeHtml(message)}</p><p style="margin:30px 0"><a href="${escapeHtml(portalUrl)}" style="display:inline-block;padding:15px 22px;background:#d70b31;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Meine Vorgänge öffnen</a></p><p style="font-size:13px;color:#666">Im geschützten Kundenportal sehen Sie jederzeit den aktuellen Stand und die zugehörigen Dokumente.</p><p>Freundliche Grüsse<br>Marcel Spahr und Thomas Peter<br>SwissCompact</p></div>`,
     });
     if (mail.error) throw new Error(mail.error.message);
+    const operations = dashboardSupabase();
+    const tenant = relatedRecord(customer.data.tenant);
+    if (operations) await recordOperationalDelivery(operations, { tenantId: tenant?.id || null, channel: "email", eventType: "customer_status", entityType: "client", entityId: clientId, recipient: customer.data.email, providerReference: mail.data?.id || null, status: "delivered", metadata: { subject } });
     return true;
   } catch (reason) {
     console.error("Customer status notification failed", reason);
+    const operations = dashboardSupabase();
+    const tenant = relatedRecord(customer.data.tenant);
+    const messageText = reason instanceof Error ? reason.message : "Status-E-Mail fehlgeschlagen";
+    if (operations) await Promise.all([
+      recordOperationalDelivery(operations, { tenantId: tenant?.id || null, channel: "email", eventType: "customer_status", entityType: "client", entityId: clientId, recipient: customer.data.email, status: "failed", error: messageText, metadata: { subject } }),
+      reportOperationalIncident(operations, { key: `email:customer_status:${clientId}`, tenantId: tenant?.id || null, source: "email", kind: "delivery_failed", severity: "warning", title: "Kundeninformation konnte nicht zugestellt werden", message: messageText }),
+    ]);
     return false;
   }
 }
@@ -622,10 +644,16 @@ async function handlePortalRecords(request: Request): Promise<Response> {
       const signed = await admin.storage.from(PORTAL_EXPORT_BUCKET).createSignedUrl(exportPath, 15 * 60, { download: fileName });
       if (signed.error || !signed.data?.signedUrl) throw new Error("Der Download-Link konnte nicht erstellt werden");
       await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "data_export_completed", entity_type: "data_rights_request", entity_id: requestId, metadata: { requestType, exportExpiresAt } });
+      await recordOperationalDelivery(admin, { tenantId: profile.tenantId, channel: "export", eventType: "data_export_created", entityType: "data_rights_request", entityId: requestId, status: "delivered", metadata: { requestType } });
       return json({ ok: true, requestId, exportExpiresAt, download: triggerJsonDownload(signed.data.signedUrl, fileName) });
     } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Datenexport konnte nicht erstellt werden";
       await admin.from("tenant_data_rights_requests").update({ status: "rejected", review_note: "Der automatische Export konnte technisch nicht erstellt werden. Bitte erneut anfordern." }).eq("id", requestId).eq("tenant_id", profile.tenantId);
-      return json({ error: reason instanceof Error ? reason.message : "Datenexport konnte nicht erstellt werden" }, { status: 503 });
+      await Promise.all([
+        recordOperationalDelivery(admin, { tenantId: profile.tenantId, channel: "export", eventType: "data_export_created", entityType: "data_rights_request", entityId: requestId, status: "failed", error: message, metadata: { requestType } }),
+        reportOperationalIncident(admin, { key: `export:${requestId}`, tenantId: profile.tenantId, source: "storage", kind: "export_failed", severity: "warning", title: "Datenexport konnte nicht erstellt werden", message, metadata: { requestType } }),
+      ]);
+      return json({ error: message }, { status: 503 });
     }
   }
 
@@ -640,6 +668,7 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const signed = await admin.storage.from(PORTAL_EXPORT_BUCKET).createSignedUrl(record.data.export_path, 15 * 60, { download: fileName });
     if (signed.error || !signed.data?.signedUrl) return json({ error: "Download-Link konnte nicht erstellt werden" }, { status: 503 });
     await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "data_export_opened", entity_type: "data_rights_request", entity_id: requestId, metadata: { requestType: record.data.request_type } });
+    await recordOperationalDelivery(admin, { tenantId: profile.tenantId, channel: "export", eventType: "data_export_download", entityType: "data_rights_request", entityId: requestId, status: "delivered", metadata: { requestType: record.data.request_type } });
     return json({ ok: true, download: triggerJsonDownload(signed.data.signedUrl, fileName) });
   }
 
@@ -1822,7 +1851,7 @@ export async function POST(request: Request): Promise<Response> {
     limit: 80,
     windowMs: 10 * 60_000,
     contentTypes: ["application/json"],
-    maxBytes: 32_000,
+    maxBytes: 256_000,
   });
   if (guard) return guard;
   if (new URL(request.url).searchParams.get("audience") === "portal") return handlePortalRecords(request);
@@ -1831,6 +1860,98 @@ export async function POST(request: Request): Promise<Response> {
   const { client, profile } = authorized;
   const body = await request.json() as Payload;
   const action = cleanText(body.action, 80);
+
+  if (["create_legal_document", "update_legal_document", "publish_legal_document"].includes(action)) {
+    if (!profile.securityAdmin) return json({ error: "Nur der Hauptadmin darf verbindliche Rechtsdokumente verwalten" }, { status: 403 });
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Rechtsdokument-Verwaltung ist nicht konfiguriert" }, { status: 503 });
+    const id = cleanText(body.id, 80);
+    if (action === "publish_legal_document") {
+      if (!id || body.confirmation !== "VERÖFFENTLICHEN" || body.legalReviewed !== true) return json({ error: "Die geprüfte Fassung muss ausdrücklich bestätigt werden" }, { status: 400 });
+      const published = await admin.rpc("publish_legal_document", { target_document: id });
+      if (published.error) return json({ error: published.error.message }, { status: 400 });
+      await writeAudit(client, profile, "legal_document_published", "legal_document", id);
+      return json({ ok: true, id: published.data });
+    }
+
+    const documentType = cleanText(body.documentType, 40);
+    const acceptanceScope = cleanText(body.acceptanceScope, 20);
+    const version = cleanText(body.version, 40);
+    const title = cleanText(body.title, 180);
+    const summary = cleanText(body.summary, 1000);
+    const contentMarkdown = typeof body.contentMarkdown === "string" ? body.contentMarkdown.trim().slice(0, 200_000) : "";
+    const requiresAcceptance = body.requiresAcceptance !== false;
+    const effectiveAtDate = typeof body.effectiveAt === "string" && body.effectiveAt ? new Date(body.effectiveAt) : null;
+    if (effectiveAtDate && Number.isNaN(effectiveAtDate.getTime())) return json({ error: "Ungültiges Datum für die Wirksamkeit" }, { status: 400 });
+    const effectiveAt = effectiveAtDate?.toISOString() ?? null;
+    if (!["terms", "privacy", "data_processing"].includes(documentType) || !["user", "tenant"].includes(acceptanceScope)) return json({ error: "Ungültiger Dokumenttyp oder Geltungsbereich" }, { status: 400 });
+    if (!version || !title || !contentMarkdown) return json({ error: "Version, Titel und vollständiger Rechtstext sind erforderlich" }, { status: 400 });
+    if (/ENTWURF/i.test(contentMarkdown) && body.readyForReview === true) return json({ error: "Ein als Entwurf markierter Text kann nicht als geprüft gespeichert werden" }, { status: 400 });
+    const values = { document_type: documentType, acceptance_scope: acceptanceScope, version, title, summary, content_markdown: contentMarkdown, requires_acceptance: requiresAcceptance, effective_at: effectiveAt, created_by: profile.userId };
+    if (action === "create_legal_document") {
+      const created = await admin.from("legal_documents").insert(values).select("id").single();
+      if (created.error) return json({ error: created.error.message }, { status: 400 });
+      await writeAudit(client, profile, "legal_document_created", "legal_document", created.data.id);
+      return json({ ok: true, id: created.data.id });
+    }
+    if (!id) return json({ error: "Rechtsdokument fehlt" }, { status: 400 });
+    const existing = await admin.from("legal_documents").select("id,status").eq("id", id).maybeSingle();
+    if (!existing.data || existing.data.status !== "draft") return json({ error: "Nur Entwürfe dürfen bearbeitet werden" }, { status: 409 });
+    const updated = await admin.from("legal_documents").update(values).eq("id", id).eq("status", "draft").select("id").maybeSingle();
+    if (updated.error || !updated.data) return json({ error: updated.error?.message || "Entwurf wurde zwischenzeitlich verändert" }, { status: 409 });
+    await writeAudit(client, profile, "legal_document_updated", "legal_document", id);
+    return json({ ok: true, id });
+  }
+
+  if (action === "update_operational_incident") {
+    if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Betriebsmeldungen bearbeiten" }, { status: 403 });
+    const id = cleanText(body.id, 80);
+    const status = cleanText(body.status, 30);
+    if (!id || !["acknowledged", "resolved"].includes(status)) return json({ error: "Ungültige Betriebsmeldung" }, { status: 400 });
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Betriebsmonitoring ist nicht konfiguriert" }, { status: 503 });
+    const now = new Date().toISOString();
+    const update = status === "resolved"
+      ? { status, resolved_by: profile.userId, resolved_at: now, updated_at: now }
+      : { status, acknowledged_by: profile.userId, acknowledged_at: now, updated_at: now };
+    const result = await admin.from("operational_incidents").update(update).eq("id", id).select("id,status").maybeSingle();
+    if (result.error || !result.data) return json({ error: "Betriebsmeldung nicht gefunden" }, { status: 404 });
+    await writeAudit(client, profile, `operational_incident_${status}`, "operational_incident", id);
+    return json({ ok: true, record: result.data });
+  }
+
+  if (["create_recovery_drill", "update_recovery_drill"].includes(action)) {
+    if (!profile.securityAdmin) return json({ error: "Nur der Hauptadmin darf Wiederherstellungstests dokumentieren" }, { status: 403 });
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Wiederherstellungsverwaltung ist nicht konfiguriert" }, { status: 503 });
+    const id = cleanText(body.id, 80);
+    const drillType = cleanText(body.drillType, 40);
+    const environment = cleanText(body.environment, 40) || "staging";
+    const title = cleanText(body.title, 240);
+    const backupReference = cleanText(body.backupReference, 500) || null;
+    const notes = cleanText(body.notes, 8000) || null;
+    const evidenceUrl = cleanText(body.evidenceUrl, 1000) || null;
+    const status = cleanText(body.status, 30) || "scheduled";
+    const checks = Array.isArray(body.verifiedChecks) ? body.verifiedChecks.filter((entry): entry is string => typeof entry === "string").slice(0, 30) : [];
+    if (!["database_restore", "storage_restore", "full_recovery"].includes(drillType) || !["local", "staging", "isolated_project"].includes(environment) || !["scheduled", "running", "passed", "failed", "cancelled"].includes(status) || !title) return json({ error: "Ungültige Angaben zum Wiederherstellungstest" }, { status: 400 });
+    if (["passed", "failed"].includes(status) && (!notes || checks.length < 3)) return json({ error: "Für den Abschluss sind Notizen und mindestens drei geprüfte Kontrollen erforderlich" }, { status: 400 });
+    const now = new Date().toISOString();
+    const values: Record<string, unknown> = { drill_type: drillType, environment, title, backup_reference: backupReference, notes, evidence_url: evidenceUrl, status, verified_checks: checks, updated_at: now };
+    if (status === "running") values.started_at = now;
+    if (["passed", "failed"].includes(status)) { values.completed_at = now; values.completed_by = profile.userId; values.recovery_time_minutes = Math.max(0, Math.min(100000, Math.round(Number(body.recoveryTimeMinutes) || 0))); }
+    if (action === "create_recovery_drill") {
+      values.created_by = profile.userId;
+      const created = await admin.from("operational_recovery_drills").insert(values).select("id").single();
+      if (created.error) return json({ error: created.error.message }, { status: 400 });
+      await writeAudit(client, profile, "recovery_drill_created", "recovery_drill", created.data.id);
+      return json({ ok: true, id: created.data.id });
+    }
+    if (!id) return json({ error: "Wiederherstellungstest fehlt" }, { status: 400 });
+    const updated = await admin.from("operational_recovery_drills").update(values).eq("id", id).select("id,status").maybeSingle();
+    if (updated.error || !updated.data) return json({ error: "Wiederherstellungstest nicht gefunden" }, { status: 404 });
+    await writeAudit(client, profile, "recovery_drill_updated", "recovery_drill", id);
+    return json({ ok: true, record: updated.data });
+  }
 
   if (action === "update_data_rights_request") {
     if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Datenschutzanfragen bearbeiten" }, { status: 403 });

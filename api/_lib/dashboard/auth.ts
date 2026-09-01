@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 import { json } from "../assistant/security.js";
 
 const ACCESS_COOKIE = "sc_dashboard_access";
@@ -31,6 +32,8 @@ export interface PortalProfile {
   role: "owner" | "admin" | "editor" | "viewer";
   branding: Record<string, unknown>;
   enabledModules: string[];
+  aal: "aal1" | "aal2" | null;
+  passkeyVerified: boolean;
 }
 
 function config() {
@@ -57,6 +60,88 @@ function parseCookies(request: Request): Record<string, string> {
       .filter(([key, value]) => Boolean(key && value))
       .map(([key, ...value]) => [decodeURIComponent(key), decodeURIComponent(value.join("="))]),
   );
+}
+
+function sessionHash(accessToken: string, refreshToken: string): string {
+  let stableId = "";
+  try {
+    const payload = JSON.parse(Buffer.from(accessToken.split(".")[1] || "", "base64url").toString("utf8")) as Record<string, unknown>;
+    stableId = typeof payload.session_id === "string" ? payload.session_id : "";
+  } catch { /* fall back to the refresh token */ }
+  return createHash("sha256").update(stableId || refreshToken).digest("hex");
+}
+
+function deviceDetails(userAgent: string): { browser: string; operatingSystem: string; label: string } {
+  const browser = /Edg\//.test(userAgent) ? "Microsoft Edge"
+    : /CriOS\//.test(userAgent) ? "Chrome iOS"
+      : /Chrome\//.test(userAgent) ? "Google Chrome"
+        : /Firefox\//.test(userAgent) ? "Firefox"
+          : /Safari\//.test(userAgent) ? "Safari"
+            : "Unbekannter Browser";
+  const operatingSystem = /iPhone|iPad/.test(userAgent) ? "iOS / iPadOS"
+    : /Android/.test(userAgent) ? "Android"
+      : /Mac OS X/.test(userAgent) ? "macOS"
+        : /Windows/.test(userAgent) ? "Windows"
+          : /Linux/.test(userAgent) ? "Linux"
+            : "Unbekanntes System";
+  const form = /iPad|Tablet/.test(userAgent) ? "Tablet" : /Mobile|iPhone|Android/.test(userAgent) ? "Mobilgerät" : "Computer";
+  return { browser, operatingSystem, label: `${form} · ${browser}` };
+}
+
+function requestIpHash(request: Request): string | null {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip")?.trim() || "";
+  if (!ip) return null;
+  const salt = process.env.SECURITY_IP_HASH_SALT || process.env.SUPABASE_SERVICE_ROLE_KEY || "swisscompact";
+  return createHash("sha256").update(`${salt}:${ip}`).digest("hex");
+}
+
+export async function recordSecuritySession(
+  request: Request,
+  userId: string,
+  audience: "dashboard" | "portal",
+  accessToken: string,
+  refreshToken: string,
+  tenantId: string | null = null,
+): Promise<void> {
+  const admin = dashboardSupabase();
+  if (!admin) return;
+  const userAgent = (request.headers.get("user-agent") || "").slice(0, 1000);
+  const device = deviceDetails(userAgent);
+  const { error } = await admin.from("user_security_sessions").upsert({
+    user_id: userId,
+    tenant_id: audience === "portal" ? tenantId : null,
+    session_hash: sessionHash(accessToken, refreshToken),
+    audience,
+    device_label: device.label,
+    browser_name: device.browser,
+    operating_system: device.operatingSystem,
+    user_agent: userAgent,
+    ip_hash: requestIpHash(request),
+    last_seen_at: new Date().toISOString(),
+    revoked_at: null,
+  }, { onConflict: "session_hash" });
+  if (error && !/user_security_sessions/i.test(error.message)) console.error("security session:", error.message);
+}
+
+export function currentSecuritySessionHash(request: Request): string | null {
+  const cookies = parseCookies(request);
+  const accessToken = cookies[ACCESS_COOKIE];
+  const refreshToken = cookies[REFRESH_COOKIE];
+  return accessToken && refreshToken ? sessionHash(accessToken, refreshToken) : null;
+}
+
+async function touchSecuritySession(request: Request, userId: string, audience: "dashboard" | "portal", tenantId: string | null): Promise<void> {
+  const cookies = parseCookies(request);
+  const accessToken = cookies[ACCESS_COOKIE];
+  const refreshToken = cookies[REFRESH_COOKIE];
+  if (!accessToken || !refreshToken) return;
+  const admin = dashboardSupabase();
+  if (!admin) return;
+  const hash = sessionHash(accessToken, refreshToken);
+  const cutoff = new Date(Date.now() - 5 * 60_000).toISOString();
+  const touched = await admin.from("user_security_sessions").update({ last_seen_at: new Date().toISOString() }).eq("session_hash", hash).eq("user_id", userId).lt("last_seen_at", cutoff);
+  if (!touched.error) return;
+  await recordSecuritySession(request, userId, audience, accessToken, refreshToken, tenantId);
 }
 
 function cookie(name: string, value: string, maxAge: number): string {
@@ -195,6 +280,7 @@ export async function ensurePortalProfile(
   if (!tenant.data) return null;
   const verifiedCustomer = await client.rpc("is_verified_portal_customer", { target_tenant: tenant.data.id });
   if (verifiedCustomer.error || verifiedCustomer.data !== true || !tenant.data.client_id) return null;
+  const { data: aal } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
   return {
     userId: user.id,
     email,
@@ -207,6 +293,8 @@ export async function ensurePortalProfile(
     role: membership.role,
     branding: tenant.data.branding || {},
     enabledModules: Array.isArray(tenant.data.enabled_modules) ? tenant.data.enabled_modules : [],
+    aal: aal?.currentLevel ?? null,
+    passkeyVerified: usedPasskeyAuthentication(aal?.currentAuthenticationMethods),
   } as PortalProfile;
 }
 
@@ -252,10 +340,11 @@ export async function authorizeDashboard(request: Request, requireMfa = true): P
       { status: 403 },
     );
   }
+  await touchSecuritySession(request, profile.userId, "dashboard", null);
   return { client: session.client, user: session.user, profile };
 }
 
-export async function authorizePortal(request: Request): Promise<{
+export async function authorizePortal(request: Request, requireMfa = true): Promise<{
   client: SupabaseClient<any, any, any>;
   user: User;
   profile: PortalProfile;
@@ -264,6 +353,11 @@ export async function authorizePortal(request: Request): Promise<{
   if (!session) return json({ error: "Nicht angemeldet" }, { status: 401 });
   const profile = await ensurePortalProfile(session.client, session.user, request);
   if (!profile) return json({ error: "Kein Portal-Zugriff" }, { status: 403 });
+  const verifiedFactors = session.user.factors?.filter((factor) => factor.status === "verified") ?? [];
+  if (requireMfa && verifiedFactors.length > 0 && profile.aal !== "aal2" && !profile.passkeyVerified) {
+    return json({ error: "Zwei-Faktor-Authentifizierung erforderlich", code: "mfa_required" }, { status: 403 });
+  }
+  await touchSecuritySession(request, profile.userId, "portal", profile.tenantId);
   return { client: session.client, user: session.user, profile };
 }
 

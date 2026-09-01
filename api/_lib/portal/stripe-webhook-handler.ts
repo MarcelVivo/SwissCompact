@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { dashboardSupabase } from "../dashboard/auth.js";
 import { json } from "../assistant/security.js";
+import { recordOperationalDelivery, reportOperationalIncident } from "../dashboard/operations.js";
 
 export async function handleStripeWebhookPost(request: Request): Promise<Response> {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -39,10 +40,15 @@ export async function handleStripeWebhookPost(request: Request): Promise<Respons
       if (session.metadata?.purchaseId) await client.from("tenant_ai_credit_purchases").update({ status: "expired" }).eq("id", session.metadata.purchaseId).eq("status", "pending");
     }
     await client.from("stripe_webhook_events").update({ processed_at: new Date().toISOString(), error_message: null }).eq("event_id", event.id);
+    await recordOperationalDelivery(client, { channel: "webhook", eventType: "stripe_webhook", entityType: "stripe_event", entityId: event.id, providerReference: event.id, status: "delivered", metadata: { eventType: event.type } });
     return json({ received: true });
   } catch (reason) {
     const message = reason instanceof Error ? reason.message : "Webhook-Verarbeitung fehlgeschlagen";
     await client.from("stripe_webhook_events").update({ error_message: message.slice(0, 500) }).eq("event_id", event.id);
+    await Promise.all([
+      recordOperationalDelivery(client, { channel: "webhook", eventType: "stripe_webhook", entityType: "stripe_event", entityId: event.id, providerReference: event.id, status: "failed", error: message, metadata: { eventType: event.type } }),
+      reportOperationalIncident(client, { key: `stripe:${event.id}`, source: "stripe", kind: "webhook_failed", severity: "critical", title: "Stripe-Ereignis konnte nicht verarbeitet werden", message, metadata: { eventType: event.type } }),
+    ]);
     console.error(`stripe webhook ${event.id}:`, reason);
     return json({ error: "Webhook konnte nicht verarbeitet werden" }, { status: 500 });
   }

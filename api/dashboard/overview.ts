@@ -281,6 +281,18 @@ export async function GET(request: Request): Promise<Response> {
   const authAdmin = dashboardSupabase();
   const authUsers = authAdmin ? await authAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 }) : null;
   const usersById = new Map((authUsers?.data?.users ?? []).map((user) => [user.id, user]));
+  const operationalAdminData = authAdmin ? await Promise.all([
+    authAdmin.from("legal_documents").select("id,document_type,acceptance_scope,version,title,summary,content_markdown,content_hash,requires_acceptance,status,effective_at,published_at,created_at").order("created_at", { ascending: false }),
+    authAdmin.from("operational_incidents").select("*").order("last_seen_at", { ascending: false }).limit(250),
+    authAdmin.from("operational_delivery_attempts").select("*").order("attempted_at", { ascending: false }).limit(250),
+    authAdmin.from("operational_recovery_drills").select("*").order("created_at", { ascending: false }).limit(100),
+    authAdmin.from("tenant_display_alerts").select("id,tenant_id,display_id,kind,severity,status,message,last_seen_at,display:tenant_displays(name),tenant:tenants(name)").neq("status", "resolved").order("last_seen_at", { ascending: false }).limit(250),
+    authAdmin.from("tenant_content").select("id,tenant_id,title,payload,updated_at,tenant:tenants(name)").eq("payload->>processingState", "error").order("updated_at", { ascending: false }).limit(250),
+    authAdmin.from("stripe_webhook_events").select("event_id,event_type,error_message,created_at,processed_at").not("error_message", "is", null).order("created_at", { ascending: false }).limit(100),
+  ]) : null;
+  const [legalDocumentsAdmin, operationalIncidents, operationalDeliveries, recoveryDrills, fleetAlerts, mediaFailures, stripeFailures] = operationalAdminData ?? [];
+  const legalManagementAvailable = Boolean(legalDocumentsAdmin && !legalDocumentsAdmin.error);
+  const operationsAvailable = Boolean(operationalIncidents && operationalDeliveries && recoveryDrills && !operationalIncidents.error && !operationalDeliveries.error && !recoveryDrills.error);
   const enrichedPortalMemberships = (portalMemberships.data ?? []).map((membership) => {
     const portalUser = usersById.get(membership.user_id);
     return { ...membership, email: portalUser?.email ?? null, email_confirmed_at: portalUser?.email_confirmed_at ?? null, last_sign_in_at: portalUser?.last_sign_in_at ?? null };
@@ -322,6 +334,20 @@ export async function GET(request: Request): Promise<Response> {
         ...entry,
         requester_email: entry.requested_by ? usersById.get(entry.requested_by)?.email ?? null : null,
       })) : [],
+    },
+    legalManagement: {
+      available: legalManagementAvailable,
+      documents: legalManagementAvailable ? legalDocumentsAdmin?.data ?? [] : [],
+    },
+    operations: {
+      available: operationsAvailable,
+      incidents: operationsAvailable ? operationalIncidents?.data ?? [] : [],
+      deliveries: operationsAvailable ? operationalDeliveries?.data ?? [] : [],
+      recoveryDrills: operationsAvailable ? recoveryDrills?.data ?? [] : [],
+      displayAlerts: fleetAlerts && !fleetAlerts.error ? fleetAlerts.data ?? [] : [],
+      mediaFailures: mediaFailures && !mediaFailures.error ? mediaFailures.data ?? [] : [],
+      stripeFailures: stripeFailures && !stripeFailures.error ? stripeFailures.data ?? [] : [],
+      aiFailures: (aiJobs.data ?? []).filter((job) => job.status === "failed"),
     },
     projectCollaboration: {
       available: collaborationAvailable,

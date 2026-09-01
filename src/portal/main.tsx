@@ -30,6 +30,7 @@ import "./portal-semantics.css";
 import "./portal-visual-polish.css";
 import "./portal-legal.css";
 import "./portal-data-rights.css";
+import "./portal-security.css";
 import { PartnerNetworkView, type PartnerNetworkData } from "./PartnerNetworkView";
 import { CampaignQuickStartDialog, SaveCampaignTemplateDialog, type CampaignTemplateChoice, type CampaignTemplatesData } from "./CampaignTemplates";
 import { DisplayManagementView, type DisplayGroupsData } from "./DisplayManagementView";
@@ -38,8 +39,10 @@ import { CampaignVersionHistoryDialog, type CampaignVersionsData } from "./Campa
 import { OperationalStatusView, operationalCriticalIssueCount, operationalOpenIssueCount, type OperationalStatusData } from "./OperationalStatusView";
 import { LegalConsentDialog, LegalSettingsCard, type LegalComplianceData } from "./LegalCompliance";
 import { DataRightsSettingsCard, type DataRightsActionResult, type DataRightsData, type DataRightsRequestType } from "./DataRightsSettings";
+import { PortalMfaChallenge, PortalSecurityCard, signInPortalWithPasskey } from "./PortalSecurity";
+import { passkeyPlatformAvailable } from "../dashboard/passkeyClient";
 
-type PortalProfile = { userId: string; displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
+type PortalProfile = { userId: string; displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; aal?: "aal1" | "aal2" | null; passkeyVerified?: boolean; branding?: { accent?: string } };
 type Site = { id: string; name: string; active: boolean; address?: Record<string, string> };
 type Area = { id: string; site_id: string; parent_id?: string | null; name: string; kind: "building" | "floor" | "area" | "zone"; active: boolean };
 type Display = { id: string; site_id?: string; area_id?: string | null; name: string; kind: string; status: string; orientation?: string; resolution?: { width?: number; height?: number }; screen_size_inches?: number | null; panel_technology?: string; use_category?: string | null; last_seen_at?: string; configuration_version?: number; last_acknowledged_version?: number | null; last_delivery_at?: string | null; delivery_status?: string; last_delivery_error?: string | null; fallback_content_id?: string | null; created_at?: string; creator_name?: string; site?: { name?: string }; area?: { id?: string; name?: string; kind?: string; parent_id?: string | null } };
@@ -317,17 +320,27 @@ function Icon({ name }: { name: View | "logout" | "plus" | "install" | "more" | 
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
 
-function Login({ onDone }: { onDone: () => void }) {
+type PortalLoginResult = { mfaRequired?: boolean; factorId?: string; totpFactorId?: string };
+
+function Login({ onDone }: { onDone: (result: PortalLoginResult) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+  useEffect(() => { void passkeyPlatformAvailable().then(setPasskeyAvailable); }, []);
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      await api("/api/dashboard/login", { method: "POST", body: JSON.stringify({ email, password, audience: "portal" }) });
-      onDone();
+      const result = await api<PortalLoginResult>("/api/dashboard/login", { method: "POST", body: JSON.stringify({ email, password, audience: "portal" }) });
+      onDone(result);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Anmeldung fehlgeschlagen"); }
+    finally { setBusy(false); }
+  }
+  async function passkeyLogin() {
+    setBusy(true); setError("");
+    try { await signInPortalWithPasskey(); onDone({}); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Passkey-Anmeldung fehlgeschlagen"); }
     finally { setBusy(false); }
   }
   return <main className="login-shell">
@@ -338,7 +351,7 @@ function Login({ onDone }: { onDone: () => void }) {
         <label>Passwort<input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
         {error && <div className="form-error" role="alert">{error}</div>}
         <button className="primary" disabled={busy}>{busy ? "Anmeldung läuft …" : "Anmelden"}</button>
-      </form><small>Benötigen Sie Unterstützung? kontakt@swisscompact.com</small>
+      </form>{passkeyAvailable && <><div className="login-divider"><span>oder</span></div><button type="button" className="secondary passkey-login" disabled={busy} onClick={() => void passkeyLogin()}>Mit Passkey anmelden</button></>}<small>Benötigen Sie Unterstützung? kontakt@swisscompact.com</small>
     </section>
   </main>;
 }
@@ -598,7 +611,8 @@ function PortalOnboarding({ currentStep, complete, campaignName, canEdit, onCont
 
 function Portal() {
   const [data, setData] = useState<PortalData | null>(null);
-  const [session, setSession] = useState<"loading" | "guest" | "ready">("loading");
+  const [session, setSession] = useState<"loading" | "guest" | "mfa" | "ready">("loading");
+  const [authChallenge, setAuthChallenge] = useState<PortalLoginResult | null>(null);
   const [view, setView] = useState<View>("overview");
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"content" | null>(null);
@@ -671,7 +685,12 @@ function Portal() {
       return overview;
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "Portal nicht erreichbar";
-      if (message === "Nicht angemeldet") setSession("guest"); else { setSession("guest"); setError(message); }
+      if (message === "Zwei-Faktor-Authentifizierung erforderlich") {
+        try {
+          const challenge = await api<PortalLoginResult>("/api/dashboard/session?audience=portal");
+          setAuthChallenge(challenge); setSession("mfa");
+        } catch { setSession("guest"); setError("Die Sicherheitsprüfung konnte nicht geladen werden."); }
+      } else if (message === "Nicht angemeldet") setSession("guest"); else { setSession("guest"); setError(message); }
       return null;
     }
   }, []);
@@ -721,7 +740,8 @@ function Portal() {
   }, [load]);
   const online = useMemo(() => data?.displays?.filter((display) => display.status === "online").length || 0, [data]);
   if (session === "loading") return <div className="boot"><div className="boot-mark">SC</div><span>Portal wird geladen</span></div>;
-  if (session === "guest" || !data) return <><Login onDone={() => void load()} />{error && <div className="global-message">{error}</div>}</>;
+  if (session === "mfa" && authChallenge?.factorId) return <PortalMfaChallenge factorId={authChallenge.factorId} onVerified={() => { setAuthChallenge(null); void load(); }} onLogout={() => void logout()}/>;
+  if (session === "guest" || !data) return <><Login onDone={(result) => { if (result.mfaRequired && result.factorId) { setAuthChallenge(result); setSession("mfa"); } else void load(); }} />{error && <div className="global-message">{error}</div>}</>;
   const canEdit = data.profile.role !== "viewer";
   const canManageDevices = data.profile.role === "owner" || data.profile.role === "admin";
   const operationalData: OperationalStatusData = { displays: data.displays, content: data.content, campaigns: data.campaigns, alerts: data.displaySafety.alerts, generatedAt: data.generatedAt };
@@ -771,7 +791,7 @@ function Portal() {
     setCampaignQuickStart(false);
     setCreatingCampaign(true);
   }
-  async function logout() { await api("/api/dashboard/logout", { method: "POST", body: "{}" }).catch(() => undefined); setData(null); setSession("guest"); }
+  async function logout() { await api("/api/dashboard/logout", { method: "POST", body: "{}" }).catch(() => undefined); setData(null); setAuthChallenge(null); setSession("guest"); }
   async function acceptLegalDocuments(documentIds: string[]) {
     setLegalBusy(true); setLegalError("");
     try {
@@ -921,7 +941,7 @@ function Portal() {
         onChanged={async () => { await load(false); }}
         onUseContent={(contentId) => { setCampaignPreset({ contentId }); setCampaignInitialStep(1); setCreatingCampaign(true); }}
       />}
-      {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang, das aktive SwissCompact-Paket, Datenschutz und verbindliche Dokumente.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><DataRightsSettingsCard data={data.dataRights} role={data.profile.role} userId={data.profile.userId} onCreate={createDataRightsRequest} onDownload={openDataExport} onCancel={cancelDataRightsRequest}/><LegalSettingsCard data={data.legalCompliance}/><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
+      {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang, Sicherheit, das aktive SwissCompact-Paket, Datenschutz und verbindliche Dokumente.</p></div></div><div className="settings-grid"><PortalSecurityCard/><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><DataRightsSettingsCard data={data.dataRights} role={data.profile.role} userId={data.profile.userId} onCreate={createDataRightsRequest} onDownload={openDataExport} onCancel={cancelDataRightsRequest}/><LegalSettingsCard data={data.legalCompliance}/><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
       {view === "records" && <CustomerRecordsView data={data} onRefresh={async () => { await load(false); }}/>}
     </main>
     {dialog && <CreateDialog type={dialog} initialContentType={dialog === "content" ? "image" : "composition"} waitUntilReady={waitForContentReady} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
