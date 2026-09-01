@@ -289,10 +289,11 @@ async function api<T>(url: string, options?: RequestInit): Promise<T> {
   return data as T;
 }
 
-function Icon({ name }: { name: View | "logout" | "plus" | "install" | "more" }) {
+function Icon({ name }: { name: View | "logout" | "plus" | "install" | "more" | "ios-share" }) {
   const paths: Record<string, React.ReactNode> = {
     install: <><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></>,
     more: <><circle cx="5" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.8" fill="currentColor" stroke="none"/></>,
+    "ios-share": <><path d="M12 15V3m0 0L8 7m4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></>,
     overview: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></>,
     records: <><path d="M7 3h10v4H7z"/><path d="M5 5H4a2 2 0 0 0-2 2v13h20V7a2 2 0 0 0-2-2h-1M7 12h10M7 16h7"/></>,
     content: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 15 3-3 3 3 2-2 3 3M8 9h.01"/></>,
@@ -602,7 +603,8 @@ function Portal() {
     window.addEventListener("swisscompact-display-safety", openSafety);
     return () => window.removeEventListener("swisscompact-display-safety", openSafety);
   }, []);
-  useEffect(() => { mountInstallPrompt("[data-pwa-install]"); }, []);
+  const [iosInstallHint, setIosInstallHint] = useState(false);
+  useEffect(() => { mountInstallPrompt("[data-pwa-install]", () => setIosInstallHint(true)); }, [session]);
   const [pairing, setPairing] = useState<PairingInfo | null>(null);
   const [deferredPairings, setDeferredPairings] = useState<PairingInfo[]>([]);
   const [pairingBusyId, setPairingBusyId] = useState("");
@@ -810,8 +812,9 @@ function Portal() {
       <nav>{nav.map(([id,label]) => <button key={id} className={`${view === id ? "active" : ""} ${primaryMobileViews.includes(id) ? "" : "nav-secondary"}`.trim()} onClick={() => setView(id)}><Icon name={id}/>{label}</button>)}<button type="button" className={`nav-more ${secondaryNav.some(([id]) => id === view) ? "active" : ""}`.trim()} onClick={() => setMobileMore(true)}><Icon name="more"/>Mehr</button></nav>
       <button className="logout" onClick={() => void logout()}><Icon name="logout"/>Abmelden</button>
       {mobileMore && <div className="dialog-backdrop mobile-more-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMobileMore(false)}><section className="dialog mobile-more-sheet" role="dialog" aria-modal="true"><button className="dialog-close" onClick={() => setMobileMore(false)} aria-label="Schließen">×</button><div className="eyebrow">Mehr</div><div className="mobile-more-nav">{secondaryNav.map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => { setView(id); setMobileMore(false); }}><Icon name={id}/>{label}</button>)}</div><button type="button" className="logout mobile-more-logout" onClick={() => { setMobileMore(false); void logout(); }}><Icon name="logout"/>Abmelden</button></section></div>}
+      {iosInstallHint && <div className="dialog-backdrop mobile-more-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setIosInstallHint(false)}><section className="dialog ios-install-dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={() => setIosInstallHint(false)} aria-label="Schließen">×</button><div className="eyebrow">App installieren</div><h2>Zum Home-Bildschirm hinzufügen</h2><ol><li><Icon name="ios-share"/>Tippen Sie unten in Safari auf <b>Teilen</b>.</li><li><Icon name="plus"/>Wählen Sie <b>„Zum Home-Bildschirm“</b>.</li></ol></section></div>}
     </aside>
-    <main className="workspace"><header><div><div className="eyebrow">{data.profile.tenantName}</div><h1>{nav.find(([id]) => id === view)?.[1]}</h1></div><div className="profile"><button type="button" className="pwa-install-button" data-pwa-install hidden aria-label="App installieren"><Icon name="install"/><span>App installieren</span></button><span>{data.profile.displayName.slice(0,1).toUpperCase()}</span><div><strong>{data.profile.displayName}</strong><small>{labels[data.profile.role]}</small></div></div></header>
+    <main className="workspace"><header><div><div className="eyebrow">{data.profile.tenantName}</div><h1>{nav.find(([id]) => id === view)?.[1]}</h1></div><div className="profile"><button type="button" className="pwa-install-button" data-pwa-install aria-label="App installieren"><Icon name="install"/><span>App installieren</span></button><span>{data.profile.displayName.slice(0,1).toUpperCase()}</span><div><strong>{data.profile.displayName}</strong><small>{labels[data.profile.role]}</small></div></div></header>
       {view === "overview" && <section className="view"><div className="welcome"><div><div className="eyebrow">Guten Tag, {data.profile.displayName.split(" ")[0]}</div><h2>Alles im Blick.</h2><p>Wählen Sie einen Bildschirm, fügen Sie Bild oder Video hinzu und bestimmen Sie den Zeitpunkt. Den Rest erledigt SwissCompact.</p>{canEdit && <button className="primary welcome-action" onClick={onboardingComplete ? startNewCampaign : openOnboardingStep}><Icon name="plus"/>{onboardingCampaign && !onboardingComplete ? "Einrichtung fortsetzen" : "Auf Bildschirm anzeigen"}</button>}</div><div className="pulse"><i></i>{online} von {data.displays.length} Bildschirmen online</div></div>
         <button className="customer-record-overview" onClick={() => setView("records")}><div><span>Ihre Zusammenarbeit mit SwissCompact</span><strong>Offerten, Aufträge und Rechnungen</strong><small>Alle Vorgänge und geschützten Dokumente an einem Ort.</small></div><div className="customer-record-overview-counts"><span><b>{data.customerRecords.quotes.filter((quote) => ["sent", "viewed"].includes(quote.status)).length}</b> offene Offerten</span><span><b>{data.customerRecords.projects.filter((project) => !["completed", "cancelled"].includes(project.status)).length}</b> laufende Aufträge</span><i>Öffnen →</i></div></button>
         <PortalOnboarding currentStep={onboardingStep} complete={onboardingComplete} campaignName={onboardingCampaign?.name} canEdit={canEdit} onContinue={openOnboardingStep} onStartNew={startNewCampaign}/>
