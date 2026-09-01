@@ -110,7 +110,7 @@
   color: var(--state-current);
 }
 
-.portal nav button.active::before {
+.portal>aside>nav button.active::before {
   background: var(--state-confirmed);
 }
 
