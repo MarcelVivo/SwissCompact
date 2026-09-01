@@ -1,5 +1,7 @@
 # Support- und SLA-Prozess
 
+Der optionale KI-Erstsupport und seine Eskalationsregeln sind in [support-ai.md](support-ai.md) beschrieben.
+
 SwissCompact führt Supportfälle direkt im Kundenportal. Jeder Fall erhält beim Eingang ein Paket, eine Priorität und ein unveränderliches Erstreaktionsziel. Das Ziel beschreibt die Zeit bis zur ersten persönlichen Reaktion durch SwissCompact; es ist keine garantierte Lösungszeit.
 
 ## Erstreaktionsziele je Abonnement

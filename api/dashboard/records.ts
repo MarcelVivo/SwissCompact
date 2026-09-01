@@ -12,6 +12,7 @@ import { createMuxDirectUpload, deleteMuxAsset, deleteMuxDirectUpload, getMuxDir
 import { handleMuxWebhookPost } from "../_lib/portal/mux-webhook-handler.js";
 import { handlePartnerNetworkAction } from "../_lib/portal/partner-network.js";
 import { recordOperationalDelivery, reportOperationalIncident } from "../_lib/dashboard/operations.js";
+import { processSupportWithAi } from "../_lib/support/ai.js";
 
 export const config = { runtime: "nodejs", maxDuration: 180 };
 
@@ -711,7 +712,10 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     const ticketId = String(created.data);
     const ticket = await client.from("support_tickets").select("id,ticket_number,first_response_due_at,support_label_snapshot").eq("id", ticketId).eq("tenant_id", profile.tenantId).single();
     const admin = dashboardSupabase();
-    if (admin && process.env.RESEND_API_KEY) {
+    const aiResult = admin
+      ? await processSupportWithAi(admin, ticketId)
+      : { notifyAdmin: true };
+    if (admin && aiResult.notifyAdmin && process.env.RESEND_API_KEY) {
       try {
         const mail = await new Resend(process.env.RESEND_API_KEY).emails.send({
           from: "SwissCompact Portal <kontakt@swisscompact.com>",
@@ -735,7 +739,10 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     if (added.error || !added.data) return json({ error: added.error?.message || "Nachricht konnte nicht gesendet werden" }, { status: 400 });
     const ticket = await client.from("support_tickets").select("ticket_number,title").eq("id", ticketId).eq("tenant_id", profile.tenantId).maybeSingle();
     const admin = dashboardSupabase();
-    if (admin && process.env.RESEND_API_KEY && ticket.data) {
+    const aiResult = admin
+      ? await processSupportWithAi(admin, ticketId, String(added.data))
+      : { notifyAdmin: true };
+    if (admin && aiResult.notifyAdmin && process.env.RESEND_API_KEY && ticket.data) {
       try {
         const mail = await new Resend(process.env.RESEND_API_KEY).emails.send({
           from: "SwissCompact Portal <kontakt@swisscompact.com>",
@@ -2126,6 +2133,8 @@ export async function POST(request: Request): Promise<Response> {
     const update: Record<string, unknown> = {
       status, priority, assigned_to: assignedTo, response_target_minutes: targetMinutes,
       first_response_due_at: dueAt, updated_at: now,
+      ai_handling_status: "disabled", ai_disabled_at: now, ai_disabled_by: profile.userId,
+      ai_escalation_reason: null, ai_escalated_at: null,
     };
     if (publicResponse && !existing.data.first_responded_at) update.first_responded_at = now;
     if (status === "resolved") update.resolved_at = existing.data.resolved_at || now;
@@ -2146,6 +2155,48 @@ export async function POST(request: Request): Promise<Response> {
       await sendCustomerStatusNotification(client, tenant.client_id, `Support ${existing.data.ticket_number}: ${existing.data.title}`, "Neue Antwort von SwissCompact", publicResponse);
     }
     return json({ ok: true, record: changed.data });
+  }
+
+  if (action === "set_support_ai_mode") {
+    if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen den KI-Erstsupport steuern" }, { status: 403 });
+    const id = cleanText(body.id, 80);
+    const mode = cleanText(body.mode, 20);
+    if (!id || !["resume", "takeover"].includes(mode)) return json({ error: "Ungültige KI-Supportaktion" }, { status: 400 });
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Supportverwaltung ist nicht konfiguriert" }, { status: 503 });
+    const existing = await admin.from("support_tickets").select("*").eq("id", id).maybeSingle();
+    if (!existing.data) return json({ error: "Supportanfrage nicht gefunden" }, { status: 404 });
+    if (["closed", "cancelled", "resolved"].includes(existing.data.status)) return json({ error: "Für abgeschlossene Supportfälle kann der KI-Erstsupport nicht geändert werden" }, { status: 409 });
+    const now = new Date().toISOString();
+    if (mode === "takeover") {
+      const changed = await admin.from("support_tickets").update({
+        ai_handling_status: "disabled",
+        ai_disabled_at: now,
+        ai_disabled_by: profile.userId,
+        ai_escalation_reason: null,
+        ai_escalated_at: null,
+        assigned_to: existing.data.assigned_to || profile.userId,
+        status: existing.data.status === "new" ? "in_progress" : existing.data.status,
+        updated_at: now,
+      }).eq("id", id).select("*").single();
+      if (changed.error) return json({ error: changed.error.message }, { status: 409 });
+      await writeAudit(client, profile, "support_ai_taken_over", "support_ticket", id, { aiHandlingStatus: existing.data.ai_handling_status }, { aiHandlingStatus: "disabled" });
+      return json({ ok: true, record: changed.data });
+    }
+    const prepared = await admin.from("support_tickets").update({
+      ai_handling_status: "eligible",
+      ai_attempt_count: 0,
+      ai_confidence: null,
+      ai_escalation_reason: null,
+      ai_escalated_at: null,
+      ai_disabled_at: null,
+      ai_disabled_by: null,
+      updated_at: now,
+    }).eq("id", id);
+    if (prepared.error) return json({ error: prepared.error.message }, { status: 409 });
+    await writeAudit(client, profile, "support_ai_resumed", "support_ticket", id, { aiHandlingStatus: existing.data.ai_handling_status }, { aiHandlingStatus: "eligible" });
+    const result = await processSupportWithAi(admin, id, null, `admin:${id}:${Date.now()}`);
+    return json({ ok: true, ai: result });
   }
 
   if (action === "update_data_rights_request") {

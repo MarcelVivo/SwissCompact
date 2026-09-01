@@ -42,8 +42,8 @@ export async function GET(request: Request): Promise<Response> {
       client.from("legal_acceptances").select("id,document_id,user_id,acceptance_scope_snapshot,accepted_at,membership:tenant_memberships(display_name)").eq("tenant_id", tenantId).order("accepted_at", { ascending: false }).limit(500),
       client.from("tenant_data_rights_requests").select("id,request_type,status,reason,export_expires_at,review_note,reviewed_at,completed_at,cancelled_at,created_at,updated_at,requested_by").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(100),
       client.from("support_sla_policies").select("package_code,support_label,coverage_description,critical_coverage,business_timezone,business_start,business_end,critical_response_minutes,high_response_minutes,normal_response_minutes,low_response_minutes,response_target_note").eq("active", true),
-      client.from("support_tickets").select("id,ticket_number,requested_by,affected_display_id,category,priority,status,title,description,package_code_snapshot,support_label_snapshot,coverage_snapshot,response_target_minutes,first_response_due_at,first_responded_at,resolved_at,closed_at,created_at,updated_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(200),
-      client.from("support_ticket_messages").select("id,ticket_id,author_type,author_name,body,created_at").eq("tenant_id", tenantId).eq("visible_to_customer", true).order("created_at").limit(2000),
+      client.from("support_tickets").select("id,ticket_number,requested_by,affected_display_id,category,priority,status,title,description,package_code_snapshot,support_label_snapshot,coverage_snapshot,response_target_minutes,first_response_due_at,first_responded_at,resolved_at,closed_at,created_at,updated_at,ai_handling_status,ai_attempt_count,ai_confidence,ai_escalation_reason,ai_last_responded_at,ai_escalated_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(200),
+      client.from("support_ticket_messages").select("id,ticket_id,author_type,author_name,body,created_at,generated_by_ai").eq("tenant_id", tenantId).eq("visible_to_customer", true).order("created_at").limit(2000),
     ]);
     const [customerQuotes, customerProjects, customerInvoices, responsibleProfiles] = await Promise.all([
       customerAdmin.from("quotes").select("id,quote_number,opportunity_id,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at,opportunity:opportunities(title)").eq("client_id", profile.clientId).in("status", ["sent", "viewed", "accepted", "declined", "expired"]).order("updated_at", { ascending: false }).limit(100),
@@ -335,6 +335,7 @@ export async function GET(request: Request): Promise<Response> {
   const legalManagementAvailable = Boolean(legalDocumentsAdmin && !legalDocumentsAdmin.error);
   const operationsAvailable = Boolean(operationalIncidents && operationalDeliveries && recoveryDrills && !operationalIncidents.error && !operationalDeliveries.error && !recoveryDrills.error);
   const supportAvailable = Boolean(supportPoliciesAdmin && supportTicketsAdmin && supportMessagesAdmin && !supportPoliciesAdmin.error && !supportTicketsAdmin.error && !supportMessagesAdmin.error);
+  const supportAiAvailable = (supportTicketsAdmin?.data ?? []).some((ticket: any) => Object.prototype.hasOwnProperty.call(ticket, "ai_handling_status"));
   const enrichedPortalMemberships = (portalMemberships.data ?? []).map((membership) => {
     const portalUser = usersById.get(membership.user_id);
     return { ...membership, email: portalUser?.email ?? null, email_confirmed_at: portalUser?.email_confirmed_at ?? null, last_sign_in_at: portalUser?.last_sign_in_at ?? null };
@@ -388,7 +389,9 @@ export async function GET(request: Request): Promise<Response> {
         pipeline: (opportunities.data ?? []).filter((entry: any) => entry.stage === "request" && unreadAfter("pipeline", entry.created_at)).length,
         projects: (projectMessages.data ?? []).filter((entry: any) => entry.author_type === "customer" && unreadAfter("projects", entry.created_at)).length,
         production: (contentRequests.data ?? []).filter((entry: any) => unreadAfter("production", entry.created_at)).length,
-        support: (supportMessagesAdmin?.data ?? []).filter((entry: any) => entry.author_type === "customer" && unreadAfter("support", entry.created_at)).length,
+        support: supportAiAvailable
+          ? (supportTicketsAdmin?.data ?? []).filter((entry: any) => entry.ai_handling_status === "escalated" && unreadAfter("support", entry.ai_escalated_at)).length
+          : (supportMessagesAdmin?.data ?? []).filter((entry: any) => entry.author_type === "customer" && unreadAfter("support", entry.created_at)).length,
         systems: [
           ...(operationalIncidents?.data ?? []).filter((entry: any) => entry.status !== "resolved" && unreadAfter("systems", entry.last_seen_at)),
           ...(fleetAlerts?.data ?? []).filter((entry: any) => unreadAfter("systems", entry.last_seen_at)),

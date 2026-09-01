@@ -4,6 +4,7 @@ type SupportData = { available: boolean; policies: any[]; tickets: any[]; messag
 const priorityLabels: Record<string, string> = { low: "Tief", normal: "Normal", high: "Hoch", critical: "Kritisch" };
 const statusLabels: Record<string, string> = { new: "Neu", in_progress: "In Bearbeitung", waiting_customer: "Wartet auf Kunde", resolved: "Gelöst", closed: "Geschlossen", cancelled: "Abgebrochen" };
 const categoryLabels: Record<string, string> = { incident: "Störung", question: "Bedienungsfrage", billing: "Abo & Rechnung", training: "Schulung", feature: "Funktionswunsch", content: "Inhalte" };
+const aiLabels: Record<string, string> = { eligible: "KI bereit", processing: "KI prüft", waiting_customer: "KI wartet auf Kunde", escalated: "Admin erforderlich", resolved: "KI gelöst", disabled: "Persönlich übernommen" };
 const dateTime = (value?: string | null) => value ? new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "–";
 const relationName = (value: any) => Array.isArray(value) ? value[0]?.name : value?.name;
 const targetHours = (minutes: number) => minutes % 540 === 0 ? `${minutes / 540} AT` : `${minutes / 60} h`;
@@ -99,6 +100,20 @@ export function SupportOperations({ data, profiles, securityAdmin, mutate }: { d
     }
   }
 
+  async function changeAiMode(mode: "resume" | "takeover") {
+    if (!active) return;
+    setBusy(true);
+    setError("");
+    try {
+      await mutate({ action: "set_support_ai_mode", id: active.id, mode });
+      closeTicketDialog();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "KI-Erstsupport konnte nicht aktualisiert werden");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function updatePolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!policy) return;
@@ -127,6 +142,7 @@ export function SupportOperations({ data, profiles, securityAdmin, mutate }: { d
       <article className={breached.length ? "danger" : ""}><span>SLA überfällig</span><strong>{breached.length}</strong><small>ohne erste Reaktion</small></article>
       <article><span>Kritisch</span><strong>{openTickets.filter((ticket) => ticket.priority === "critical").length}</strong><small>sofort prüfen</small></article>
       <article><span>Wartet auf Kunde</span><strong>{openTickets.filter((ticket) => ticket.status === "waiting_customer").length}</strong><small>Antwort ausstehend</small></article>
+      <article className={openTickets.some((ticket) => ticket.ai_handling_status === "escalated") ? "danger" : ""}><span>KI eskaliert</span><strong>{openTickets.filter((ticket) => ticket.ai_handling_status === "escalated").length}</strong><small>persönliche Bearbeitung nötig</small></article>
     </section>
 
     <section className="panel support-policy-panel">
@@ -136,16 +152,17 @@ export function SupportOperations({ data, profiles, securityAdmin, mutate }: { d
 
     <section className="panel support-queue">
       <div className="panel-head"><div><h3>Support-Warteschlange</h3><p>Fällige und kritische Fälle zuerst.</p></div><label>Status<select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="open">Offene Fälle</option><option value="all">Alle</option>{Object.entries(statusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
-      <div className="support-queue-list">{visible.map((ticket) => { const sla = ticketSla(ticket); return <button type="button" className={`${ticket.priority} ${sla.breached && !ticket.first_responded_at ? "breached" : ""}`} key={ticket.id} onClick={() => openTicket(ticket)}><span className={`support-queue-priority ${ticket.priority}`}>{priorityLabels[ticket.priority]}</span><div><small>{ticket.ticket_number} · {relationName(ticket.tenant) || "Kundenportal"} · {categoryLabels[ticket.category]}</small><strong>{ticket.title}</strong><em className={sla.breached ? "breached" : ""}>{sla.label}</em></div><span className={`tag ${ticket.status === "resolved" ? "success" : ticket.status === "waiting_customer" ? "warning" : ""}`}>{statusLabels[ticket.status]}</span></button>; })}{!visible.length && <p className="support-queue-empty">Keine Supportfälle in dieser Ansicht.</p>}</div>
+      <div className="support-queue-list">{visible.map((ticket) => { const sla = ticketSla(ticket); return <button type="button" className={`${ticket.priority} ${sla.breached && !ticket.first_responded_at ? "breached" : ""}`} key={ticket.id} onClick={() => openTicket(ticket)}><span className={`support-queue-priority ${ticket.priority}`}>{priorityLabels[ticket.priority]}</span><div><small>{ticket.ticket_number} · {relationName(ticket.tenant) || "Kundenportal"} · {categoryLabels[ticket.category]}</small><strong>{ticket.title}</strong><em className={sla.breached ? "breached" : ""}>{sla.label}</em>{ticket.ai_handling_status && <em className={`support-ai-admin-label ${ticket.ai_handling_status}`}>{aiLabels[ticket.ai_handling_status]}</em>}</div><span className={`tag ${ticket.status === "resolved" ? "success" : ticket.status === "waiting_customer" ? "warning" : ""}`}>{statusLabels[ticket.status]}</span></button>; })}{!visible.length && <p className="support-queue-empty">Keine Supportfälle in dieser Ansicht.</p>}</div>
     </section>
 
     {active && <div className="dashboard-dialog-backdrop"><section className="dashboard-dialog support-operations-dialog" role="dialog" aria-modal="true" aria-labelledby="support-ticket-title">
       <header><div><p className="eyebrow">{active.ticket_number} · {relationName(active.tenant)}</p><h2 id="support-ticket-title">{active.title}</h2></div><button className="icon-button" onClick={closeTicketDialog} aria-label="Supportfall schließen">×</button></header>
       <div className="support-ops-description"><b>Kundenbeschreibung</b><p>{active.description}</p><small>{categoryLabels[active.category]} · Paket {active.package_code_snapshot} · eingegangen {dateTime(active.created_at)}</small></div>
+      {active.ai_handling_status && <div className={`support-ai-admin-state ${active.ai_handling_status}`}><b>{aiLabels[active.ai_handling_status]}</b>{active.ai_escalation_reason && <span>{active.ai_escalation_reason}</span>}<small>{active.ai_attempt_count || 0} KI-Versuche{active.ai_confidence != null ? ` · Sicherheit ${Math.round(Number(active.ai_confidence) * 100)} %` : ""}</small></div>}
       {active.status === "resolved" && <div className="support-lifecycle-note resolved"><b>✓ Lösung an den Kunden gesendet</b><span>Eine Kundenantwort öffnet den Fall automatisch wieder. Ohne Rückfrage kann er endgültig geschlossen werden.</span></div>}
       {active.status === "closed" && <div className="support-lifecycle-note closed"><b>Fall endgültig geschlossen</b><span>Der Kunde kann in diesem Ticket keine weiteren Nachrichten senden.</span></div>}
       {active.status === "cancelled" && <div className="support-lifecycle-note cancelled"><b>Fall abgebrochen</b><span>Dieser Fall kann nicht weiterbearbeitet werden.</span></div>}
-      <div className="support-ops-conversation">{data.messages.filter((message) => message.ticket_id === active.id).map((message) => <article className={message.visible_to_customer ? message.author_type : "internal"} key={message.id}><header><b>{message.author_name}{!message.visible_to_customer ? " · interne Notiz" : ""}</b><time>{dateTime(message.created_at)}</time></header><p>{message.body}</p></article>)}</div>
+      <div className="support-ops-conversation">{data.messages.filter((message) => message.ticket_id === active.id).map((message) => <article className={`${message.visible_to_customer ? message.author_type : "internal"}${message.generated_by_ai ? " ai" : ""}`} key={message.id}><header><b>{message.author_name}{message.generated_by_ai ? " · KI-Assistent" : !message.visible_to_customer ? " · interne Notiz" : ""}</b><time>{dateTime(message.created_at)}</time></header><p>{message.body}</p></article>)}</div>
       <form onSubmit={updateTicket}>
         {activeLifecycle && <input type="hidden" name="status" value={active.status}/>}<div className="form-row"><label>Status<select name={activeLifecycle ? undefined : "status"} defaultValue={active.status} disabled={activeLifecycle}>{lifecycleOptions.map((value) => <option value={value} key={value}>{statusLabels[value]}</option>)}</select></label><label>Priorität<select name="priority" defaultValue={active.priority}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
         <label>Zuständig<select name="assignedTo" defaultValue={active.assigned_to || ""}><option value="">Noch nicht zugewiesen</option>{profiles.map((entry) => <option value={entry.user_id} key={entry.user_id}>{entry.display_name}</option>)}</select></label>
@@ -154,6 +171,8 @@ export function SupportOperations({ data, profiles, securityAdmin, mutate }: { d
         {error && <p className="form-error">{error}</p>}
         <footer className="support-ticket-actions">
           <button type="button" className="secondary" onClick={closeTicketDialog}>Zurück</button>
+          {!activeLifecycle && active.ai_handling_status !== "disabled" && <button type="button" className="secondary" disabled={busy} onClick={() => void changeAiMode("takeover")}>Persönlich übernehmen</button>}
+          {!activeLifecycle && ["escalated", "disabled"].includes(active.ai_handling_status) && <button type="button" className="secondary" disabled={busy} onClick={() => void changeAiMode("resume")}>KI erneut versuchen</button>}
           {active.status !== "cancelled" && <button className="secondary" disabled={busy}>{busy ? "Wird gespeichert …" : "Änderungen speichern"}</button>}
           {!activeLifecycle && <button className="primary support-resolve" name="intent" value="resolve" disabled={busy}>Als gelöst markieren</button>}
           {active.status === "resolved" && <button type="button" className="secondary support-reopen" disabled={busy} onClick={() => void changeLifecycleStatus("in_progress")}>Erneut öffnen</button>}

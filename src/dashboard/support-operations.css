@@ -55,6 +55,16 @@
 .support-ops-conversation time { font-size:11px; color:#777; }
 .support-ops-conversation article.support time { color:#aaaab0; }
 .support-ops-conversation p { white-space:pre-wrap; margin-bottom:0; }
+.support-ai-admin-label { width:max-content; font-size:11px; font-weight:800; color:#356595; }
+.support-ai-admin-label.escalated { color:#b10b29; }
+.support-ai-admin-label.resolved { color:#08734b; }
+.support-ai-admin-label.disabled { color:#666; }
+.support-ai-admin-state { display:grid; gap:4px; margin:12px 0; padding:13px 15px; border-radius:12px; background:#e8f2ff; color:#234d7c; }
+.support-ai-admin-state.escalated { background:#ffe2e7; color:#8c1027; }
+.support-ai-admin-state.resolved { background:#def5e9; color:#08734b; }
+.support-ai-admin-state.disabled { background:#eceae6; color:#555; }
+.support-ai-admin-state small { opacity:.78; }
+.support-ops-conversation article.ai { border-color:#7ba7d7; box-shadow:inset 3px 0 #4c83bd; }
 .dashboard-dialog label { color:#45423e; }
 .dashboard-dialog :is(input,select,textarea) { background:#fff; color:#171719; border-color:#cbc7c1; }
 .dashboard-dialog .secondary { background:#ece9e4; color:#282624; border-color:#d0ccc6; }
