@@ -1008,6 +1008,68 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true });
   }
 
+  if (action === "save_campaign_template") {
+    const campaignId = cleanText(body.campaignId, 80);
+    const templateName = cleanText(body.name, 180);
+    const description = cleanText(body.description, 500) || null;
+    if (!campaignId || !templateName) return json({ error: "Kampagne und Vorlagenname sind erforderlich" }, { status: 400 });
+    const campaign = await client.from("tenant_campaigns")
+      .select("id,name,theme,priority,scope_site_id,scope_area_id,starts_at,ends_at")
+      .eq("id", campaignId).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (!campaign.data) return json({ error: "Kampagne nicht gefunden" }, { status: 404 });
+    const [displayLinks, targetLinks] = await Promise.all([
+      client.from("tenant_campaign_displays").select("display_id").eq("campaign_id", campaignId),
+      client.from("tenant_campaign_display_content").select("display_id,content_id,position,duration_seconds").eq("campaign_id", campaignId).eq("tenant_id", profile.tenantId).order("position"),
+    ]);
+    if (displayLinks.error || targetLinks.error) return json({ error: "Die Kampagnenkonfiguration konnte nicht gelesen werden" }, { status: 503 });
+    const displayIds = (displayLinks.data ?? []).map((entry) => entry.display_id);
+    const targetAssignments = displayIds.map((displayId) => ({
+      displayId,
+      contentItems: (targetLinks.data ?? [])
+        .filter((entry) => entry.display_id === displayId)
+        .sort((left, right) => left.position - right.position)
+        .map((entry) => ({ contentId: entry.content_id, durationSeconds: Math.min(3600, Math.max(5, Number(entry.duration_seconds) || 10)) })),
+    }));
+    if (!displayIds.length || targetAssignments.some((assignment) => !assignment.contentItems.length)) {
+      return json({ error: "Nur vollständig eingerichtete Kampagnen können als Vorlage gespeichert werden" }, { status: 409 });
+    }
+    const configuration = {
+      theme: campaign.data.theme || null,
+      priority: Number(campaign.data.priority || 50),
+      scopeSiteId: campaign.data.scope_site_id || null,
+      scopeAreaId: campaign.data.scope_area_id || null,
+      defaultDurationDays: campaign.data.ends_at
+        ? Math.max(1, Math.ceil((new Date(campaign.data.ends_at).getTime() - new Date(campaign.data.starts_at || now).getTime()) / 86_400_000))
+        : null,
+      displayIds,
+      targetAssignments,
+    };
+    const created = await client.from("tenant_campaign_templates").insert({
+      tenant_id: profile.tenantId,
+      name: templateName,
+      description,
+      template_kind: "custom",
+      configuration,
+      source_campaign_id: campaignId,
+      created_by: profile.userId,
+      updated_at: now,
+    }).select("id,name,description,template_kind,configuration,source_campaign_id,created_at,updated_at").single();
+    if (created.error) return json({ error: created.error.code === "23505" ? "Eine Vorlage mit diesem Namen besteht bereits" : "Die Vorlage konnte noch nicht gespeichert werden. Führen Sie zuerst die Vorlagen-Migration aus." }, { status: ["42P01", "PGRST205"].includes(created.error.code) ? 503 : 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "campaign_template_created", entity_type: "campaign_template", entity_id: created.data.id, metadata: { sourceCampaignId: campaignId, displayCount: displayIds.length, contentCount: new Set((targetLinks.data ?? []).map((entry) => entry.content_id)).size } });
+    return json({ ok: true, record: created.data });
+  }
+
+  if (action === "delete_campaign_template") {
+    const id = cleanText(body.id, 80);
+    if (!id) return json({ error: "Vorlage fehlt" }, { status: 400 });
+    const existing = await client.from("tenant_campaign_templates").select("id,name").eq("id", id).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (!existing.data) return json({ error: "Vorlage nicht gefunden" }, { status: 404 });
+    const removed = await client.from("tenant_campaign_templates").delete().eq("id", id).eq("tenant_id", profile.tenantId);
+    if (removed.error) return json({ error: "Vorlage konnte nicht gelöscht werden" }, { status: 400 });
+    await client.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "campaign_template_deleted", entity_type: "campaign_template", entity_id: id, metadata: { name: existing.data.name } });
+    return json({ ok: true });
+  }
+
   if (action === "create_campaign") {
     const name = cleanText(body.name, 180);
     const theme = cleanText(body.theme, 180) || null;

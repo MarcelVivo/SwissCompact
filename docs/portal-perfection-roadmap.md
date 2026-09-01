@@ -67,7 +67,7 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 - [x] Unvollständige oder nicht lesbare Medien von Kampagnen und Player-Auslieferung ausschliessen
 - [x] Videos serverseitig über Mux in adaptive, displaytaugliche Auslieferungsformate normalisieren
 - [x] Optionales Partnernetzwerk mit fairen Werbepunkten, Tausch/CHF/Mischform und beidseitiger Erfüllungsbestätigung
-- [ ] Kampagnenvorlagen und wiederverwendbare Abläufe
+- [x] Kampagnenvorlagen und wiederverwendbare Abläufe
 - [ ] Bildschirmgruppen, Suche, Filter und Massenaktionen
 - [ ] Prioritäten und Playlists je Standort, Gebäude, Stockwerk und Bereich
 - [ ] Versionsverlauf und Wiederherstellung
