@@ -1,0 +1,236 @@
+.data-rights-card {
+  grid-column: 1 / -1;
+}
+
+.data-rights-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.data-rights-heading span {
+  color: #77736e;
+  font-size: .66rem;
+  font-weight: 850;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.data-rights-heading h3 {
+  margin: 4px 0;
+  font-size: 1.18rem;
+}
+
+.data-rights-heading > b {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: var(--state-confirmed-bg);
+  color: var(--state-confirmed-dark);
+  font-size: .7rem;
+}
+
+.data-rights-intro {
+  max-width: 850px;
+  color: #66625e;
+  line-height: 1.55;
+}
+
+.data-rights-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.data-rights-actions > section {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid #dedad4;
+  border-radius: 15px;
+  background: #fff;
+}
+
+.data-rights-actions p {
+  margin: 5px 0 0;
+  color: #716d68;
+  font-size: .79rem;
+  line-height: 1.45;
+}
+
+.data-rights-actions button {
+  flex: 0 0 auto;
+}
+
+.data-rights-deletion button,
+.data-deletion-dialog .danger {
+  border: 1px solid #e3aab4;
+  border-radius: 999px;
+  padding: 12px 16px;
+  background: #fff7f8;
+  color: #b20d2c;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.data-retention-note {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 1px solid #dedad4;
+  border-radius: 14px;
+  background: #f7f5f1;
+}
+
+.data-retention-note p {
+  margin: 5px 0 0;
+  color: #68645f;
+  font-size: .8rem;
+  line-height: 1.5;
+}
+
+.data-rights-notice {
+  margin-top: 12px;
+  padding: 13px 15px;
+  border: 1px solid var(--state-confirmed-border);
+  border-radius: 12px;
+  background: var(--state-confirmed-bg);
+  color: var(--state-confirmed-dark);
+  font-weight: 750;
+}
+
+.data-rights-history {
+  display: grid;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.data-rights-history h4 {
+  margin: 0 0 3px;
+}
+
+.data-rights-history > article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 15px;
+  border: 1px solid #e3dfd9;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.data-rights-history small {
+  display: block;
+  margin-top: 3px;
+  color: #77736f;
+}
+
+.data-rights-history p {
+  margin: 6px 0 0;
+  color: #6f5c23;
+  font-size: .76rem;
+}
+
+.data-rights-history > article > span {
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: .67rem;
+  font-weight: 850;
+}
+
+.data-rights-history span.complete { background: var(--state-confirmed-bg); color: var(--state-confirmed-dark); }
+.data-rights-history span.pending { background: #fff0d5; color: #805706; }
+.data-rights-history span.attention { background: #fff0e6; color: #9a3f0b; }
+.data-rights-history span.neutral { background: #eeece8; color: #625e59; }
+
+.data-rights-request-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.data-rights-request-actions .secondary,
+.data-rights-request-actions .text-button {
+  padding: 8px 11px;
+  font-size: .72rem;
+}
+
+.data-deletion-backdrop {
+  z-index: 270;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.data-deletion-dialog {
+  width: min(680px, 100%);
+  display: grid;
+  gap: 17px;
+}
+
+.data-deletion-dialog h2,
+.data-deletion-dialog p {
+  margin: 0;
+}
+
+.data-deletion-dialog > p {
+  color: #66625e;
+  line-height: 1.55;
+}
+
+.data-deletion-dialog textarea {
+  resize: vertical;
+}
+
+.data-deletion-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.data-deletion-dialog button:disabled,
+.data-rights-actions button:disabled,
+.data-rights-request-actions button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+@media (max-width: 900px) {
+  .data-rights-actions { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .data-rights-heading,
+  .data-rights-actions > section,
+  .data-rights-history > article {
+    align-items: flex-start;
+    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column;
+  }
+
+  .data-rights-actions button,
+  .data-rights-request-actions,
+  .data-rights-request-actions button {
+    width: 100%;
+  }
+
+  .data-rights-request-actions { flex-direction: column; }
+
+  .data-deletion-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .data-deletion-dialog {
+    width: 100%;
+    padding: 24px 18px calc(20px + env(safe-area-inset-bottom));
+    border-radius: 22px 22px 0 0;
+  }
+
+  .data-deletion-dialog footer {
+    display: grid;
+  }
+}

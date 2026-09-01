@@ -17,7 +17,7 @@ export async function GET(request: Request): Promise<Response> {
     const partnerNetworkPromise = loadPartnerNetwork(customerAdmin, tenantId);
     const displayHealthRefresh = await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
     if (displayHealthRefresh.error) console.warn("portal display health refresh:", displayHealthRefresh.error.message);
-    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers, campaignVersions, legalDocuments, legalAcceptances] = await Promise.all([
+    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers, campaignVersions, legalDocuments, legalAcceptances, dataRightsRequests] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,last_seen_at,configuration_version,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
@@ -39,6 +39,7 @@ export async function GET(request: Request): Promise<Response> {
       client.from("tenant_campaign_versions").select("id,campaign_id,version,source,configuration,restored_from_version_id,created_by,created_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(500),
       client.from("legal_documents").select("id,document_type,acceptance_scope,version,title,summary,content_markdown,content_hash,requires_acceptance,status,effective_at,published_at").in("status", ["published", "superseded"]).lte("effective_at", new Date().toISOString()).order("published_at", { ascending: false }),
       client.from("legal_acceptances").select("id,document_id,user_id,acceptance_scope_snapshot,accepted_at,membership:tenant_memberships(display_name)").eq("tenant_id", tenantId).order("accepted_at", { ascending: false }).limit(500),
+      client.from("tenant_data_rights_requests").select("id,request_type,status,reason,export_expires_at,review_note,reviewed_at,completed_at,cancelled_at,created_at,updated_at,requested_by").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(100),
     ]);
     const [customerQuotes, customerProjects, customerInvoices, responsibleProfiles] = await Promise.all([
       customerAdmin.from("quotes").select("id,quote_number,opportunity_id,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at,opportunity:opportunities(title)").eq("client_id", profile.clientId).in("status", ["sent", "viewed", "accepted", "declined", "expired"]).order("updated_at", { ascending: false }).limit(100),
@@ -80,6 +81,8 @@ export async function GET(request: Request): Promise<Response> {
     if (!campaignVersionsAvailable) console.warn("portal campaign versions are not migrated yet", campaignVersions.error?.message);
     const legalComplianceAvailable = !legalDocuments.error && !legalAcceptances.error;
     if (!legalComplianceAvailable) console.warn("portal legal compliance is not migrated yet", legalDocuments.error?.message || legalAcceptances.error?.message);
+    const dataRightsAvailable = !dataRightsRequests.error;
+    if (!dataRightsAvailable) console.warn("portal data rights are not migrated yet", dataRightsRequests.error?.message);
     const customerRecordsError = [customerQuotes, customerProjects, customerInvoices, responsibleProfiles].find((result) => result.error)?.error;
     if (customerRecordsError) {
       console.error("portal customer records:", customerRecordsError.message);
@@ -222,6 +225,24 @@ export async function GET(request: Request): Promise<Response> {
         documents: currentLegalDocuments,
         pendingDocumentIds: currentLegalDocuments.filter((document: any) => document.status === "published" && document.requiresAcceptance && !document.acceptedAt).map((document: any) => document.id),
       },
+      dataRights: {
+        available: dataRightsAvailable,
+        requests: dataRightsAvailable ? (dataRightsRequests.data ?? []).map((entry: any) => ({
+          id: entry.id,
+          requestType: entry.request_type,
+          status: entry.status,
+          reason: entry.reason,
+          exportExpiresAt: entry.export_expires_at,
+          reviewNote: entry.review_note,
+          reviewedAt: entry.reviewed_at,
+          completedAt: entry.completed_at,
+          cancelledAt: entry.cancelled_at,
+          createdAt: entry.created_at,
+          updatedAt: entry.updated_at,
+          requestedBy: entry.requested_by,
+          canDownload: entry.status === "completed" && Boolean(entry.export_expires_at) && new Date(entry.export_expires_at).getTime() > Date.now(),
+        })) : [],
+      },
       subscription: subscription.data ?? null,
       members: (members.data ?? []).filter((member) => member.active && member.access_status === "active" && member.verified_at),
       aiCredits: {
@@ -276,6 +297,9 @@ export async function GET(request: Request): Promise<Response> {
   const collaborationResults = [projectBriefings, projectMessages, projectDeliverables, projectVersions, projectReviews, projectRevisions, projectCampaigns];
   const collaborationAvailable = collaborationResults.every((result) => !result.error);
   if (!collaborationAvailable) console.warn("dashboard project collaboration is not migrated yet");
+  const dataRightsRequests = await client.from("tenant_data_rights_requests").select("id,tenant_id,membership_id,requested_by,request_type,status,reason,retention_resolution,review_note,reviewed_by,reviewed_at,completed_at,cancelled_at,created_at,updated_at,tenant:tenants(name,client_id),membership:tenant_memberships(display_name)").order("created_at", { ascending: false }).limit(250);
+  const dataRightsAvailable = !dataRightsRequests.error;
+  if (!dataRightsAvailable) console.warn("dashboard data rights are not migrated yet", dataRightsRequests.error?.message);
   return json({
     profile,
     clients: clients.data ?? [],
@@ -292,6 +316,13 @@ export async function GET(request: Request): Promise<Response> {
     profiles: profiles.data ?? [],
     contentRequests: contentRequests.data ?? [],
     portalMemberships: enrichedPortalMemberships,
+    dataRights: {
+      available: dataRightsAvailable,
+      requests: dataRightsAvailable ? (dataRightsRequests.data ?? []).map((entry: any) => ({
+        ...entry,
+        requester_email: entry.requested_by ? usersById.get(entry.requested_by)?.email ?? null : null,
+      })) : [],
+    },
     projectCollaboration: {
       available: collaborationAvailable,
       briefings: collaborationAvailable ? projectBriefings.data ?? [] : [],

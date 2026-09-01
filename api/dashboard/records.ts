@@ -1,4 +1,4 @@
-import { authorizeDashboard, authorizePortal, dashboardSupabase, isResponse, writeAudit } from "../_lib/dashboard/auth.js";
+import { authorizeDashboard, authorizePortal, dashboardSupabase, isResponse, writeAudit, type PortalProfile } from "../_lib/dashboard/auth.js";
 import { cleanText, json, rateLimit, validEmail, validatePublicPost } from "../_lib/assistant/security.js";
 import { escapeHtml } from "../_lib/assistant/spamGuard.js";
 import { createQuotePdf } from "../_lib/dashboard/documents.js";
@@ -17,6 +17,7 @@ export const config = { runtime: "nodejs", maxDuration: 180 };
 type Payload = Record<string, unknown>;
 
 const PORTAL_MEDIA_BUCKET = "swisscompact-media";
+const PORTAL_EXPORT_BUCKET = "swisscompact-exports";
 const MUX_VIDEO_MAX_BYTES = 5 * 1024 * 1024 * 1024;
 const PORTAL_MEDIA_TYPES: Record<string, { type: "image" | "video"; extension: string; maxBytes: number }> = {
   "image/jpeg": { type: "image", extension: "jpg", maxBytes: 20 * 1024 * 1024 },
@@ -510,6 +511,62 @@ async function handlePortalPlayerPreview(request: Request, displayId: string): P
   return buildDisplayConfig(authorized.client, display.data, false, campaignId);
 }
 
+type DataRightsRequestType = "personal_export" | "tenant_export" | "membership_deletion" | "tenant_deletion";
+
+async function requiredExportRows(query: PromiseLike<any>, label: string): Promise<unknown> {
+  const result = await query;
+  if (result.error) throw new Error(`${label} konnten nicht exportiert werden`);
+  return result.data ?? [];
+}
+
+async function buildPortalDataExport(admin: any, profile: PortalProfile, requestType: "personal_export" | "tenant_export"): Promise<Record<string, unknown>> {
+  const generatedAt = new Date().toISOString();
+  const common = {
+    exportFormat: "swisscompact-data-export-v1",
+    requestType,
+    generatedAt,
+    portal: { id: profile.tenantId, name: profile.tenantName, slug: profile.tenantSlug },
+    requester: { userId: profile.userId, membershipId: profile.membershipId, name: profile.displayName, email: profile.email, role: profile.role },
+  };
+  if (requestType === "personal_export") {
+    const [membership, auditEvents, legalAcceptances, dataRightsRequests] = await Promise.all([
+      requiredExportRows(admin.from("tenant_memberships").select("id,tenant_id,user_id,role,display_name,active,access_status,invited_at,accepted_at,verified_at,revoked_at,created_at,updated_at").eq("id", profile.membershipId).eq("tenant_id", profile.tenantId), "Portalzugang"),
+      requiredExportRows(admin.from("tenant_audit_log").select("id,action,entity_type,entity_id,metadata,created_at").eq("tenant_id", profile.tenantId).eq("actor_user_id", profile.userId).order("created_at", { ascending: false }).limit(10_000), "Aktivitätsprotokoll"),
+      requiredExportRows(admin.from("legal_acceptances").select("id,document_id,document_type_snapshot,acceptance_scope_snapshot,version_snapshot,title_snapshot,content_hash_snapshot,accepted_at,request_metadata").eq("tenant_id", profile.tenantId).eq("user_id", profile.userId).order("accepted_at", { ascending: false }), "Zustimmungsnachweise"),
+      requiredExportRows(admin.from("tenant_data_rights_requests").select("id,request_type,status,reason,retention_resolution,review_note,reviewed_at,completed_at,cancelled_at,created_at,updated_at").eq("tenant_id", profile.tenantId).eq("requested_by", profile.userId).order("created_at", { ascending: false }), "Datenschutzanfragen"),
+    ]);
+    return { ...common, data: { membership, auditEvents, legalAcceptances, dataRightsRequests } };
+  }
+
+  const campaignReferences = await requiredExportRows(admin.from("tenant_campaigns").select("id").eq("tenant_id", profile.tenantId), "Kampagnenbezüge") as Array<{ id: string }>;
+  const campaignIds = campaignReferences.map((item) => item.id);
+  const emptyResult = Promise.resolve({ data: [], error: null });
+  const [tenant, sites, areas, displays, content, campaigns, campaignContent, campaignDisplays, targetContent, memberships, subscription, auditEvents, legalAcceptances, dataRightsRequests, quotes, projects, invoices] = await Promise.all([
+    requiredExportRows(admin.from("tenants").select("id,client_id,name,slug,status,branding,enabled_modules,created_at,updated_at").eq("id", profile.tenantId), "Kundenportal"),
+    requiredExportRows(admin.from("tenant_sites").select("*").eq("tenant_id", profile.tenantId).order("created_at"), "Standorte"),
+    requiredExportRows(admin.from("tenant_areas").select("*").eq("tenant_id", profile.tenantId).order("created_at"), "Bereiche"),
+    requiredExportRows(admin.from("tenant_displays").select("id,tenant_id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,configuration_version,last_seen_at,created_at,updated_at").eq("tenant_id", profile.tenantId).order("created_at"), "Bildschirme"),
+    requiredExportRows(admin.from("tenant_content").select("id,tenant_id,title,content_type,status,payload,asset_path,created_by,created_at,updated_at").eq("tenant_id", profile.tenantId).order("created_at"), "Inhalte"),
+    requiredExportRows(admin.from("tenant_campaigns").select("*").eq("tenant_id", profile.tenantId).order("created_at"), "Kampagnen"),
+    requiredExportRows(campaignIds.length ? admin.from("tenant_campaign_content").select("campaign_id,content_id,position,duration_seconds").in("campaign_id", campaignIds) : emptyResult, "Kampagneninhalte"),
+    requiredExportRows(campaignIds.length ? admin.from("tenant_campaign_displays").select("campaign_id,display_id").in("campaign_id", campaignIds) : emptyResult, "Kampagnenbildschirme"),
+    requiredExportRows(admin.from("tenant_campaign_display_content").select("campaign_id,display_id,content_id,position,duration_seconds").eq("tenant_id", profile.tenantId), "Ziel-Playlists"),
+    requiredExportRows(admin.from("tenant_memberships").select("id,user_id,role,display_name,active,access_status,invited_at,accepted_at,verified_at,revoked_at,created_at,updated_at").eq("tenant_id", profile.tenantId).order("created_at"), "Portalzugänge"),
+    requiredExportRows(admin.from("tenant_subscriptions").select("package_code,status,starts_on,minimum_ends_on,monthly_amount_chf,included_ai_credits,created_at,updated_at").eq("tenant_id", profile.tenantId), "Abonnement"),
+    requiredExportRows(admin.from("tenant_audit_log").select("id,actor_user_id,action,entity_type,entity_id,metadata,created_at").eq("tenant_id", profile.tenantId).order("created_at", { ascending: false }).limit(10_000), "Aktivitätsprotokoll"),
+    requiredExportRows(admin.from("legal_acceptances").select("id,document_id,membership_id,user_id,document_type_snapshot,acceptance_scope_snapshot,version_snapshot,title_snapshot,content_hash_snapshot,accepted_at,request_metadata").eq("tenant_id", profile.tenantId).order("accepted_at", { ascending: false }), "Zustimmungsnachweise"),
+    requiredExportRows(admin.from("tenant_data_rights_requests").select("id,membership_id,requested_by,request_type,status,reason,retention_resolution,review_note,reviewed_at,completed_at,cancelled_at,created_at,updated_at").eq("tenant_id", profile.tenantId).order("created_at", { ascending: false }), "Datenschutzanfragen"),
+    requiredExportRows(admin.from("quotes").select("id,quote_number,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at").eq("client_id", profile.clientId).order("created_at"), "Offerten"),
+    requiredExportRows(admin.from("projects").select("id,quote_id,opportunity_id,order_number,title,status,starts_on,target_completion,deposit_received,installation_payment_received,final_payment_received,created_at,updated_at").eq("client_id", profile.clientId).order("created_at"), "Aufträge"),
+    requiredExportRows(admin.from("invoices").select("id,quote_id,project_id,invoice_number,installment,status,amount,currency,issued_on,due_on,paid_at,document_hash,created_at,updated_at").eq("client_id", profile.clientId).order("created_at"), "Rechnungen"),
+  ]);
+  return { ...common, data: { tenant, sites, areas, displays, content, campaigns, campaignContent, campaignDisplays, targetContent, memberships, subscription, auditEvents, legalAcceptances, dataRightsRequests, quotes, projects, invoices } };
+}
+
+function triggerJsonDownload(url: string, fileName: string): Record<string, unknown> {
+  return { url, fileName, expiresIn: 15 * 60 };
+}
+
 async function handlePortalRecords(request: Request): Promise<Response> {
   const authorized = await authorizePortal(request);
   if (isResponse(authorized)) return authorized;
@@ -532,6 +589,67 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     });
     if (accepted.error) return json({ error: accepted.error.message || "Zustimmung konnte nicht protokolliert werden" }, { status: 409 });
     return json({ ok: true, accepted: Number(accepted.data || 0) });
+  }
+
+  if (action === "create_data_rights_request") {
+    const requestType = cleanText(body.requestType, 40) as DataRightsRequestType;
+    if (!["personal_export", "tenant_export", "membership_deletion", "tenant_deletion"].includes(requestType)) return json({ error: "Ungültige Datenschutzanfrage" }, { status: 400 });
+    const created = await client.rpc("create_data_rights_request", {
+      target_tenant: profile.tenantId,
+      target_request_type: requestType,
+      request_reason: cleanText(body.reason, 2000) || null,
+    });
+    if (created.error || !created.data) return json({ error: created.error?.message || "Datenschutzanfrage konnte nicht erstellt werden" }, { status: 409 });
+    const requestId = String(created.data);
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Datenschutzservice ist noch nicht konfiguriert" }, { status: 503 });
+    await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "data_rights_request_created", entity_type: "data_rights_request", entity_id: requestId, metadata: { requestType } });
+    if (!["personal_export", "tenant_export"].includes(requestType)) return json({ ok: true, requestId });
+
+    const processing = await admin.from("tenant_data_rights_requests").update({ status: "processing" }).eq("id", requestId).eq("tenant_id", profile.tenantId).in("status", ["submitted", "approved"]).select("id").maybeSingle();
+    if (processing.error || !processing.data) return json({ error: "Der Datenexport wird bereits bearbeitet" }, { status: 409 });
+    try {
+      const exportData = await buildPortalDataExport(admin, profile, requestType as "personal_export" | "tenant_export");
+      const serialized = JSON.stringify(exportData, null, 2);
+      if (Buffer.byteLength(serialized, "utf8") > 10 * 1024 * 1024) throw new Error("Der Export überschreitet die sichere Dateigrösse");
+      const exportPath = `${profile.tenantId}/${requestId}.json`;
+      const upload = await admin.storage.from(PORTAL_EXPORT_BUCKET).upload(exportPath, serialized, { contentType: "application/json", upsert: true });
+      if (upload.error) throw new Error("Die Exportdatei konnte nicht sicher gespeichert werden");
+      const exportExpiresAt = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+      const completed = await admin.from("tenant_data_rights_requests").update({ status: "completed", export_path: exportPath, export_expires_at: exportExpiresAt, completed_at: new Date().toISOString() }).eq("id", requestId).eq("tenant_id", profile.tenantId);
+      if (completed.error) throw new Error("Der Export konnte nicht abgeschlossen werden");
+      const fileName = `${profile.tenantSlug}-${requestType === "personal_export" ? "meine-daten" : "portal-daten"}.json`;
+      const signed = await admin.storage.from(PORTAL_EXPORT_BUCKET).createSignedUrl(exportPath, 15 * 60, { download: fileName });
+      if (signed.error || !signed.data?.signedUrl) throw new Error("Der Download-Link konnte nicht erstellt werden");
+      await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "data_export_completed", entity_type: "data_rights_request", entity_id: requestId, metadata: { requestType, exportExpiresAt } });
+      return json({ ok: true, requestId, exportExpiresAt, download: triggerJsonDownload(signed.data.signedUrl, fileName) });
+    } catch (reason) {
+      await admin.from("tenant_data_rights_requests").update({ status: "rejected", review_note: "Der automatische Export konnte technisch nicht erstellt werden. Bitte erneut anfordern." }).eq("id", requestId).eq("tenant_id", profile.tenantId);
+      return json({ error: reason instanceof Error ? reason.message : "Datenexport konnte nicht erstellt werden" }, { status: 503 });
+    }
+  }
+
+  if (action === "open_data_export") {
+    const requestId = cleanText(body.requestId, 80);
+    const record = await client.from("tenant_data_rights_requests").select("id,request_type,status,export_path,export_expires_at,requested_by").eq("id", requestId).eq("tenant_id", profile.tenantId).eq("status", "completed").maybeSingle();
+    if (!record.data?.export_path || !record.data.export_expires_at || new Date(record.data.export_expires_at).getTime() <= Date.now()) return json({ error: "Dieser Export ist nicht mehr verfügbar. Erstellen Sie bitte einen neuen." }, { status: 410 });
+    if (record.data.request_type === "personal_export" && record.data.requested_by !== profile.userId) return json({ error: "Kein Zugriff auf diesen persönlichen Export" }, { status: 403 });
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Datenschutzservice ist noch nicht konfiguriert" }, { status: 503 });
+    const fileName = `${profile.tenantSlug}-${record.data.request_type === "personal_export" ? "meine-daten" : "portal-daten"}.json`;
+    const signed = await admin.storage.from(PORTAL_EXPORT_BUCKET).createSignedUrl(record.data.export_path, 15 * 60, { download: fileName });
+    if (signed.error || !signed.data?.signedUrl) return json({ error: "Download-Link konnte nicht erstellt werden" }, { status: 503 });
+    await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "data_export_opened", entity_type: "data_rights_request", entity_id: requestId, metadata: { requestType: record.data.request_type } });
+    return json({ ok: true, download: triggerJsonDownload(signed.data.signedUrl, fileName) });
+  }
+
+  if (action === "cancel_data_rights_request") {
+    const requestId = cleanText(body.requestId, 80);
+    const cancelled = await client.rpc("cancel_data_rights_request", { target_request: requestId });
+    if (cancelled.error) return json({ error: cancelled.error.message || "Anfrage konnte nicht zurückgezogen werden" }, { status: 409 });
+    const admin = dashboardSupabase();
+    await admin?.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "data_rights_request_cancelled", entity_type: "data_rights_request", entity_id: requestId });
+    return json({ ok: true });
   }
 
   if (profile.role === "viewer") return json({ error: "Nur Lesezugriff" }, { status: 403 });
@@ -1713,6 +1831,48 @@ export async function POST(request: Request): Promise<Response> {
   const { client, profile } = authorized;
   const body = await request.json() as Payload;
   const action = cleanText(body.action, 80);
+
+  if (action === "update_data_rights_request") {
+    if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Datenschutzanfragen bearbeiten" }, { status: 403 });
+    const id = cleanText(body.id, 80);
+    const nextStatus = cleanText(body.status, 30);
+    const reviewNote = cleanText(body.reviewNote, 4000);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return json({ error: "Datenschutzanfrage fehlt" }, { status: 400 });
+    if (!["reviewing", "approved", "processing", "completed", "rejected"].includes(nextStatus)) return json({ error: "Ungültiger Bearbeitungsstatus" }, { status: 400 });
+    if (["completed", "rejected"].includes(nextStatus) && !reviewNote) return json({ error: "Für den Abschluss ist eine dokumentierte Rückmeldung erforderlich" }, { status: 400 });
+    const existing = await client.from("tenant_data_rights_requests").select("id,tenant_id,request_type,status,review_note,retention_resolution").eq("id", id).maybeSingle();
+    if (!existing.data) return json({ error: "Datenschutzanfrage nicht gefunden" }, { status: 404 });
+    const transitions: Record<string, string[]> = {
+      submitted: ["reviewing", "rejected"],
+      reviewing: ["approved", "rejected"],
+      approved: ["processing", "completed", "rejected"],
+      processing: ["completed", "rejected"],
+    };
+    if (!transitions[existing.data.status]?.includes(nextStatus)) return json({ error: "Dieser Statuswechsel ist nicht zulässig" }, { status: 409 });
+    const now = new Date().toISOString();
+    const update: Record<string, unknown> = {
+      status: nextStatus,
+      review_note: reviewNote || existing.data.review_note,
+      reviewed_by: profile.userId,
+      reviewed_at: now,
+    };
+    if (nextStatus === "completed") {
+      update.completed_at = now;
+      update.retention_resolution = {
+        decision: "completed_after_manual_review",
+        note: reviewNote,
+        recordedAt: now,
+        recordedBy: profile.userId,
+      };
+    }
+    const result = await client.from("tenant_data_rights_requests").update(update).eq("id", id).eq("status", existing.data.status).select("id,tenant_id,request_type,status,review_note,retention_resolution,reviewed_at,completed_at,updated_at").maybeSingle();
+    if (result.error || !result.data) return json({ error: "Datenschutzanfrage wurde zwischenzeitlich verändert" }, { status: 409 });
+    await Promise.all([
+      writeAudit(client, profile, "data_rights_status_change", "data_rights_request", id, existing.data, result.data),
+      client.from("tenant_audit_log").insert({ tenant_id: existing.data.tenant_id, actor_user_id: profile.userId, action: "data_rights_status_changed", entity_type: "data_rights_request", entity_id: id, metadata: { requestType: existing.data.request_type, previousStatus: existing.data.status, status: nextStatus } }),
+    ]);
+    return json({ ok: true, record: result.data });
+  }
 
   if (action === "update_service_request_status") {
     const id = cleanText(body.id, 80);

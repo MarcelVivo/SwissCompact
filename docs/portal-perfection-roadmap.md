@@ -76,7 +76,7 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 
 - [x] Verständliches Systemstatus- und Warnungscenter für Displays, Auslieferung, Medien und Kampagnen
 - [x] AGB-, Datenschutz- und Auftragsverarbeitungs-Versionen technisch protokollieren; Veröffentlichung geprüfter Texte ausstehend
-- [ ] Datenexport, Aufbewahrung und Löschanfragen
+- [x] Datenexport, Aufbewahrung und kontrollierte Löschanfragen mit internem Prüfprozess
 - [ ] Sitzungs- und Geräteverwaltung, Passkeys und optionale MFA
 - [ ] Backup-Wiederherstellung regelmässig testen
 - [ ] Fehlerwarteschlangen, Zustellversuche und Betriebsalarme überwachen

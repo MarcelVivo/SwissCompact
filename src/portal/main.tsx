@@ -29,6 +29,7 @@ import "./portal-mobile-navigation.css";
 import "./portal-semantics.css";
 import "./portal-visual-polish.css";
 import "./portal-legal.css";
+import "./portal-data-rights.css";
 import { PartnerNetworkView, type PartnerNetworkData } from "./PartnerNetworkView";
 import { CampaignQuickStartDialog, SaveCampaignTemplateDialog, type CampaignTemplateChoice, type CampaignTemplatesData } from "./CampaignTemplates";
 import { DisplayManagementView, type DisplayGroupsData } from "./DisplayManagementView";
@@ -36,8 +37,9 @@ import { areaLineage, buildHierarchyTargets, HierarchyPlaylistTabs, HierarchySel
 import { CampaignVersionHistoryDialog, type CampaignVersionsData } from "./CampaignVersionHistory";
 import { OperationalStatusView, operationalCriticalIssueCount, operationalOpenIssueCount, type OperationalStatusData } from "./OperationalStatusView";
 import { LegalConsentDialog, LegalSettingsCard, type LegalComplianceData } from "./LegalCompliance";
+import { DataRightsSettingsCard, type DataRightsActionResult, type DataRightsData, type DataRightsRequestType } from "./DataRightsSettings";
 
-type PortalProfile = { displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
+type PortalProfile = { userId: string; displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; branding?: { accent?: string } };
 type Site = { id: string; name: string; active: boolean; address?: Record<string, string> };
 type Area = { id: string; site_id: string; parent_id?: string | null; name: string; kind: "building" | "floor" | "area" | "zone"; active: boolean };
 type Display = { id: string; site_id?: string; area_id?: string | null; name: string; kind: string; status: string; orientation?: string; resolution?: { width?: number; height?: number }; screen_size_inches?: number | null; panel_technology?: string; use_category?: string | null; last_seen_at?: string; configuration_version?: number; last_acknowledged_version?: number | null; last_delivery_at?: string | null; delivery_status?: string; last_delivery_error?: string | null; fallback_content_id?: string | null; created_at?: string; creator_name?: string; site?: { name?: string }; area?: { id?: string; name?: string; kind?: string; parent_id?: string | null } };
@@ -79,7 +81,7 @@ type CustomerInvoice = { id: string; quote_id?: string | null; project_id?: stri
 type CustomerRecords = { quotes: CustomerQuote[]; projects: CustomerProject[]; invoices: CustomerInvoice[] };
 type ProjectCollaboration = { available: boolean; briefings: Record<string, any>[]; messages: Record<string, any>[]; deliverables: Record<string, any>[]; versions: Record<string, any>[]; reviews: Record<string, any>[]; revisions: Record<string, any>[] };
 type DisplaySafety = { versions: Array<{ id: string; display_id: string; version: number; source: string; campaign_id?: string | null; state: string; previous_version?: number | null; created_at: string }>; tests: Array<{ id: string; display_id: string; campaign_id: string; configuration_version: number; previous_version?: number | null; status: string; expires_at: string; created_at: string }>; alerts: Array<{ id: string; display_id: string; kind: string; severity: string; status: string; message: string; last_seen_at: string }> };
-type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; archivedContent: Content[]; serviceRequests: Content[]; customerRecords: CustomerRecords; projectCollaboration: ProjectCollaboration; partnerNetwork: PartnerNetworkData; campaignTemplates: CampaignTemplatesData; campaignVersions: CampaignVersionsData; displayGroups: DisplayGroupsData; displaySafety: DisplaySafety; legalCompliance: LegalComplianceData; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits; mediaPipeline?: { muxVideoEnabled: boolean; maxVideoBytes: number }; generatedAt?: string };
+type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; archivedContent: Content[]; serviceRequests: Content[]; customerRecords: CustomerRecords; projectCollaboration: ProjectCollaboration; partnerNetwork: PartnerNetworkData; campaignTemplates: CampaignTemplatesData; campaignVersions: CampaignVersionsData; displayGroups: DisplayGroupsData; displaySafety: DisplaySafety; legalCompliance: LegalComplianceData; dataRights: DataRightsData; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits; mediaPipeline?: { muxVideoEnabled: boolean; maxVideoBytes: number }; generatedAt?: string };
 type View = "overview" | "status" | "records" | "content" | "archive" | "campaigns" | "displays" | "partners" | "settings";
 type DeleteTarget = { kind: "archived_content" | "campaign" | "display"; id: string; name: string };
 type CampaignPreset = { contentId?: string; displayId?: string; name?: string; theme?: string | null; priority?: number; scopeSiteId?: string | null; scopeAreaId?: string | null; displayIds?: string[]; targetAssignments?: Array<{ displayId: string; contentItems: Array<{ contentId: string; durationSeconds: number }> }>; playlistStrategy?: CampaignContentMode; hierarchyPlaylists?: Record<string, PlaylistEntry[]>; templateName?: string; defaultDurationDays?: number | null; startStep?: 1 | 2 | 3 | 4; fromTemplate?: boolean };
@@ -663,6 +665,8 @@ function Portal() {
         documents: Array.isArray(legalCompliance.documents) ? legalCompliance.documents : [],
         pendingDocumentIds: Array.isArray(legalCompliance.pendingDocumentIds) ? legalCompliance.pendingDocumentIds : [],
       };
+      const dataRights = overview.dataRights || {} as DataRightsData;
+      overview.dataRights = { available: dataRights.available === true, requests: Array.isArray(dataRights.requests) ? dataRights.requests : [] };
       setData(overview); setSession("ready");
       return overview;
     } catch (reason) {
@@ -778,6 +782,18 @@ function Portal() {
     } finally {
       setLegalBusy(false);
     }
+  }
+  async function createDataRightsRequest(requestType: DataRightsRequestType, reason?: string): Promise<DataRightsActionResult> {
+    const result = await api<{ requestId?: string; download?: { url: string; fileName: string } }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "create_data_rights_request", requestType, reason }) });
+    await load(false);
+    return result;
+  }
+  async function openDataExport(requestId: string): Promise<DataRightsActionResult> {
+    return api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "open_data_export", requestId }) });
+  }
+  async function cancelDataRightsRequest(requestId: string): Promise<void> {
+    await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "cancel_data_rights_request", requestId }) });
+    await load(false);
   }
   async function setContentStatus(id: string, status: "approved" | "draft") {
     try {
@@ -905,7 +921,7 @@ function Portal() {
         onChanged={async () => { await load(false); }}
         onUseContent={(contentId) => { setCampaignPreset({ contentId }); setCampaignInitialStep(1); setCreatingCampaign(true); }}
       />}
-      {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang, das aktive SwissCompact-Paket und verbindliche Dokumente.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><LegalSettingsCard data={data.legalCompliance}/><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
+      {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang, das aktive SwissCompact-Paket, Datenschutz und verbindliche Dokumente.</p></div></div><div className="settings-grid"><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><DataRightsSettingsCard data={data.dataRights} role={data.profile.role} userId={data.profile.userId} onCreate={createDataRightsRequest} onDownload={openDataExport} onCancel={cancelDataRightsRequest}/><LegalSettingsCard data={data.legalCompliance}/><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
       {view === "records" && <CustomerRecordsView data={data} onRefresh={async () => { await load(false); }}/>}
     </main>
     {dialog && <CreateDialog type={dialog} initialContentType={dialog === "content" ? "image" : "composition"} waitUntilReady={waitForContentReady} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
