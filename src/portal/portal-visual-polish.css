@@ -1,0 +1,309 @@
+/* Shared finishing layer: keeps every portal view calm and readable at all widths. */
+.workspace {
+  overflow-x: clip;
+}
+
+.workspace > .view {
+  width: 100%;
+  max-width: 1560px;
+  margin-inline: auto;
+}
+
+.portal :is(.card, .table-card, .content-card, .display-card, .customer-record-card, .partner-section, .operational-issues, .operational-checks) {
+  min-width: 0;
+}
+
+.section-title {
+  gap: 22px;
+}
+
+.section-title p,
+.customer-record-main p {
+  line-height: 1.55;
+}
+
+.portal :is(button, a, input, select, textarea) {
+  min-width: 0;
+}
+
+.portal button > svg,
+.portal a > svg {
+  flex: 0 0 auto;
+}
+
+.content-preview {
+  position: relative;
+  overflow: hidden;
+}
+
+.content-preview > :is(img, video) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.content-preview > span {
+  position: relative;
+  z-index: 1;
+}
+
+.dialog-close {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  line-height: 1;
+}
+
+.dialog-close:hover,
+.dialog-close:focus-visible {
+  background: #ebe8e3;
+  color: #19191b;
+}
+
+.customer-record-sections > section {
+  box-shadow: 0 14px 40px rgb(25 20 17 / 4%);
+}
+
+.customer-record-card {
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.customer-record-card:hover {
+  border-color: #cbc6bf;
+  box-shadow: 0 10px 28px rgb(25 20 17 / 5%);
+}
+
+.project-record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding: 22px;
+}
+
+.project-record-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: start;
+}
+
+.project-record .customer-record-side {
+  align-self: start;
+}
+
+.project-responsibles {
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.project-responsibles > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: #f5f3f0;
+}
+
+.project-payment {
+  display: grid;
+  gap: 12px;
+  padding-top: 17px;
+  border-top: 1px solid #e8e4df;
+}
+
+.project-payment-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.project-payment-heading > span {
+  color: #76726d;
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.project-payment-heading > small {
+  color: #85817c;
+  font-size: .72rem;
+}
+
+.project-payment-progress {
+  width: 100%;
+  max-width: none;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(28px, 70px) minmax(120px, 1fr) minmax(28px, 70px) minmax(120px, 1fr);
+  align-items: center;
+  margin: 0;
+}
+
+.project-payment-progress > span {
+  width: auto;
+  height: auto;
+  min-height: 78px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  place-items: initial;
+  align-content: center;
+  padding: 13px 15px;
+  border: 1px solid #dedbd5;
+  border-radius: 14px;
+  background: #faf9f7;
+  font-size: inherit;
+}
+
+.project-payment-progress > span > b {
+  grid-row: 1 / 3;
+  align-self: center;
+  font-size: 1.15rem;
+  letter-spacing: -.04em;
+}
+
+.project-payment-progress > span > span {
+  overflow: hidden;
+  font-size: .78rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-payment-progress > span > small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #77736f;
+  font-size: .68rem;
+  font-weight: 700;
+}
+
+.project-payment-progress > span > small > i {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--state-confirmed);
+  color: #fff;
+  font-size: .55rem;
+  font-style: normal;
+}
+
+.project-payment-progress > span.done {
+  border-color: var(--state-confirmed-border);
+  background: var(--state-confirmed-bg);
+  color: var(--state-confirmed-dark);
+}
+
+.project-payment-progress > i {
+  height: 2px;
+  background: #dedbd5;
+}
+
+.project-payment-progress > i.done {
+  background: var(--state-confirmed);
+}
+
+@media (max-width: 1100px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .content-grid,
+  .display-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace > .view {
+    max-width: none;
+  }
+
+  .project-record-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-record .customer-record-side {
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    justify-items: start;
+  }
+
+  .project-record .customer-record-side > small {
+    justify-self: end;
+    text-align: right;
+  }
+
+  .project-payment-progress {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .project-payment-progress > i {
+    width: 2px;
+    height: 12px;
+    margin-left: 27px;
+  }
+
+  .project-payment-progress > span {
+    min-height: 66px;
+  }
+}
+
+@media (max-width: 520px) {
+  .metrics,
+  .content-grid,
+  .display-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customer-record-sections > section > header > div > span {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+  }
+
+  .customer-record-sections h3 {
+    font-size: 1.25rem;
+  }
+
+  .customer-record-sections > section > header > b {
+    min-width: 30px;
+    padding: 6px 9px;
+  }
+
+  .project-record {
+    padding: 16px;
+  }
+
+  .project-responsibles > span {
+    width: 100%;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .project-payment-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .project-record .customer-record-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-record .customer-record-side > small {
+    justify-self: start;
+    text-align: left;
+  }
+}
