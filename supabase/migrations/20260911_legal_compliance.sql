@@ -18,13 +18,7 @@ create table if not exists swisscompact.legal_documents (
   published_at timestamptz,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
-  content_hash text generated always as (
-    encode(digest(convert_to(
-      document_type || E'\n' || acceptance_scope || E'\n' || version || E'\n' ||
-      title || E'\n' || summary || E'\n' || content_markdown,
-      'UTF8'
-    ), 'sha256'), 'hex')
-  ) stored,
+  content_hash text not null check (content_hash ~ '^[a-f0-9]{64}$'),
   unique (document_type, version),
   check (status = 'draft' or (published_at is not null and effective_at is not null))
 );
@@ -35,6 +29,31 @@ create unique index if not exists legal_documents_one_current_type_idx
 create index if not exists legal_documents_history_idx
   on swisscompact.legal_documents(document_type, published_at desc)
   where status in ('published','superseded');
+
+-- PostgreSQL akzeptiert convert_to(...) nicht in einer GENERATED-Spalte, da
+-- die Funktion nicht als immutable markiert ist. Der Trigger berechnet
+-- denselben SHA-256-Wert vor jeder relevanten Änderung zuverlässig neu.
+create or replace function swisscompact.set_legal_document_hash()
+returns trigger
+language plpgsql
+security definer
+set search_path = swisscompact, public
+as $$
+begin
+  new.content_hash := encode(digest(convert_to(
+    new.document_type || E'\n' || new.acceptance_scope || E'\n' || new.version || E'\n' ||
+    new.title || E'\n' || new.summary || E'\n' || new.content_markdown,
+    'UTF8'
+  ), 'sha256'), 'hex');
+  return new;
+end;
+$$;
+
+drop trigger if exists legal_documents_set_hash on swisscompact.legal_documents;
+create trigger legal_documents_set_hash
+before insert or update of document_type, acceptance_scope, version, title, summary, content_markdown
+on swisscompact.legal_documents
+for each row execute function swisscompact.set_legal_document_hash();
 
 create table if not exists swisscompact.legal_acceptances (
   id uuid primary key default gen_random_uuid(),
@@ -258,7 +277,8 @@ using (
   )
 );
 
-revoke all on function swisscompact.protect_legal_records(),
+revoke all on function swisscompact.set_legal_document_hash(),
+  swisscompact.protect_legal_records(),
   swisscompact.publish_legal_document(uuid),
   swisscompact.accept_legal_documents(uuid,uuid[],jsonb) from public, anon;
 grant execute on function swisscompact.publish_legal_document(uuid) to authenticated, service_role;
