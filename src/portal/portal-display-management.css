@@ -374,7 +374,7 @@
   .display-management-toolbar,
   .display-bulk-actions,
   .display-group-member-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .display-selection-summary {
@@ -397,7 +397,7 @@
   }
 
   .display-bulk-actions label {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .display-bulk-actions label > span {
@@ -405,7 +405,7 @@
   }
 
   .display-group-dialog footer {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .display-group-dialog footer > span {

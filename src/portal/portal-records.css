@@ -434,23 +434,33 @@
 
 @media (max-width: 680px) {
   .portal-workflow {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 7px;
   }
 
   .campaign-table {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .campaign-table > .creator-meta {
     grid-column: 1;
-    grid-row: 3;
+    grid-row: auto;
   }
 
   .campaign-row-actions {
-    grid-column: 2;
-    grid-row: 1 / 4;
-    align-self: center;
+    display: flex;
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .campaign-row-actions .row-action,
+  .campaign-row-actions .assign-record-action,
+  .campaign-row-actions .delete-record-action {
+    flex: 1 1 auto;
+    text-align: center;
   }
 
   .campaign-table .row-action {

@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { DetailedError, Upload } from "tus-js-client";
 import * as UpChunk from "@mux/upchunk";
 import QRCode from "qrcode";
+import { registerServiceWorker } from "../pwa/registerServiceWorker";
+import { mountInstallPrompt } from "../pwa/installPrompt";
 import "./portal.css";
 import "./portal-media.css";
 import "./portal-ai.css";
@@ -285,8 +287,10 @@ async function api<T>(url: string, options?: RequestInit): Promise<T> {
   return data as T;
 }
 
-function Icon({ name }: { name: View | "logout" | "plus" }) {
+function Icon({ name }: { name: View | "logout" | "plus" | "install" | "more" }) {
   const paths: Record<string, React.ReactNode> = {
+    install: <><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></>,
+    more: <><circle cx="5" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.8" fill="currentColor" stroke="none"/></>,
     overview: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></>,
     records: <><path d="M7 3h10v4H7z"/><path d="M5 5H4a2 2 0 0 0-2 2v13h20V7a2 2 0 0 0-2-2h-1M7 12h10M7 16h7"/></>,
     content: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 15 3-3 3 3 2-2 3 3M8 9h.01"/></>,
@@ -595,6 +599,7 @@ function Portal() {
     window.addEventListener("swisscompact-display-safety", openSafety);
     return () => window.removeEventListener("swisscompact-display-safety", openSafety);
   }, []);
+  useEffect(() => { mountInstallPrompt("[data-pwa-install]"); }, []);
   const [pairing, setPairing] = useState<PairingInfo | null>(null);
   const [deferredPairings, setDeferredPairings] = useState<PairingInfo[]>([]);
   const [pairingBusyId, setPairingBusyId] = useState("");
@@ -602,6 +607,7 @@ function Portal() {
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [mobileMore, setMobileMore] = useState(false);
   const load = useCallback(async (showBoot = true): Promise<PortalData | null> => {
     if (showBoot) setSession("loading");
     setError("");
@@ -684,6 +690,8 @@ function Portal() {
   const canEdit = data.profile.role !== "viewer";
   const canManageDevices = data.profile.role === "owner" || data.profile.role === "admin";
   const nav: Array<[View,string]> = [["overview","Übersicht"],["records","Meine Vorgänge"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"],["partners","Partnernetzwerk"],["archive","Archiv"],["settings","Einstellungen"]];
+  const primaryMobileViews: View[] = ["overview","campaigns","displays","content"];
+  const secondaryNav = nav.filter(([id]) => !primaryMobileViews.includes(id));
   const onboardingComplete = data.campaigns.some((campaign) => ["active", "scheduled"].includes(campaign.status));
   const onboardingCampaign = [...data.campaigns]
     .filter((campaign) => ["draft", "paused"].includes(campaign.status))
@@ -794,10 +802,11 @@ function Portal() {
   }
   return <div className="portal" style={{ "--accent": data.profile.branding?.accent || "#d90d32" } as React.CSSProperties}>
     <aside><a className="wordmark" href="/">Swiss<span>Compact</span></a><div className="tenant"><span>Arbeitsbereich</span><strong>{data.profile.tenantName}</strong></div>
-      <nav>{nav.map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}><Icon name={id}/>{label}</button>)}</nav>
+      <nav>{nav.map(([id,label]) => <button key={id} className={`${view === id ? "active" : ""} ${primaryMobileViews.includes(id) ? "" : "nav-secondary"}`.trim()} onClick={() => setView(id)}><Icon name={id}/>{label}</button>)}<button type="button" className={`nav-more ${secondaryNav.some(([id]) => id === view) ? "active" : ""}`.trim()} onClick={() => setMobileMore(true)}><Icon name="more"/>Mehr</button></nav>
       <button className="logout" onClick={() => void logout()}><Icon name="logout"/>Abmelden</button>
+      {mobileMore && <div className="dialog-backdrop mobile-more-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMobileMore(false)}><section className="dialog mobile-more-sheet" role="dialog" aria-modal="true"><button className="dialog-close" onClick={() => setMobileMore(false)} aria-label="Schließen">×</button><div className="eyebrow">Mehr</div><div className="mobile-more-nav">{secondaryNav.map(([id,label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => { setView(id); setMobileMore(false); }}><Icon name={id}/>{label}</button>)}</div><button type="button" className="logout mobile-more-logout" onClick={() => { setMobileMore(false); void logout(); }}><Icon name="logout"/>Abmelden</button></section></div>}
     </aside>
-    <main className="workspace"><header><div><div className="eyebrow">{data.profile.tenantName}</div><h1>{nav.find(([id]) => id === view)?.[1]}</h1></div><div className="profile"><span>{data.profile.displayName.slice(0,1).toUpperCase()}</span><div><strong>{data.profile.displayName}</strong><small>{labels[data.profile.role]}</small></div></div></header>
+    <main className="workspace"><header><div><div className="eyebrow">{data.profile.tenantName}</div><h1>{nav.find(([id]) => id === view)?.[1]}</h1></div><div className="profile"><button type="button" className="pwa-install-button" data-pwa-install hidden aria-label="App installieren"><Icon name="install"/><span>App installieren</span></button><span>{data.profile.displayName.slice(0,1).toUpperCase()}</span><div><strong>{data.profile.displayName}</strong><small>{labels[data.profile.role]}</small></div></div></header>
       {view === "overview" && <section className="view"><div className="welcome"><div><div className="eyebrow">Guten Tag, {data.profile.displayName.split(" ")[0]}</div><h2>Alles im Blick.</h2><p>Wählen Sie einen Bildschirm, fügen Sie Bild oder Video hinzu und bestimmen Sie den Zeitpunkt. Den Rest erledigt SwissCompact.</p>{canEdit && <button className="primary welcome-action" onClick={onboardingComplete ? startNewCampaign : openOnboardingStep}><Icon name="plus"/>{onboardingCampaign && !onboardingComplete ? "Einrichtung fortsetzen" : "Auf Bildschirm anzeigen"}</button>}</div><div className="pulse"><i></i>{online} von {data.displays.length} Bildschirmen online</div></div>
         <button className="customer-record-overview" onClick={() => setView("records")}><div><span>Ihre Zusammenarbeit mit SwissCompact</span><strong>Offerten, Aufträge und Rechnungen</strong><small>Alle Vorgänge und geschützten Dokumente an einem Ort.</small></div><div className="customer-record-overview-counts"><span><b>{data.customerRecords.quotes.filter((quote) => ["sent", "viewed"].includes(quote.status)).length}</b> offene Offerten</span><span><b>{data.customerRecords.projects.filter((project) => !["completed", "cancelled"].includes(project.status)).length}</b> laufende Aufträge</span><i>Öffnen →</i></div></button>
         <PortalOnboarding currentStep={onboardingStep} complete={onboardingComplete} campaignName={onboardingCampaign?.name} canEdit={canEdit} onContinue={openOnboardingStep} onStartNew={startNewCampaign}/>
@@ -1466,6 +1475,8 @@ function CreateDialog({ type, initialContentType = "image", nested = false, wait
   const progressDetail = isProcessing ? "Upload abgeschlossen · Qualität und Wiedergabe werden geprüft" : uploadStage === "ready" ? "Verarbeitung abgeschlossen" : uploadProgress >= 100 ? "Die Videoaufbereitung startet jetzt" : "Bitte lassen Sie dieses Fenster geöffnet";
   return <div className={`dialog-backdrop ${nested ? "campaign-child-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}><section className="dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Schließen">×</button><div className="eyebrow">{type === "content" ? "Medien & Vorlagen" : "Anzeigen"}</div><h2>{type === "content" ? "Bild oder Video hochladen" : "Neue Anzeige erstellen"}</h2><form onSubmit={submit}><label>{type === "content" ? "Titel" : "Name der Anzeige"}<input name="title" required autoFocus disabled={Boolean(createdMediaId)} /></label>{type === "content" ? <><label>Was möchten Sie hinzufügen?<select name="contentType" value={contentType} disabled={Boolean(createdMediaId)} onChange={(event) => { setContentType(event.target.value); setInspection(null); setError(""); }}><option value="image">Bild hochladen</option><option value="video">Video hochladen</option><option value="text">Textanzeige</option><option value="web">Web-Inhalt</option><option value="composition">Leerer Entwurf (erweitert)</option></select></label>{isMedia ? <><label className="file-field"><span>{contentType === "image" ? "Bilddatei" : "Videodatei"}</span><input name="file" type="file" required disabled={Boolean(createdMediaId)} accept={contentType === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm,video/quicktime,video/x-matroska,.mp4,.webm,.mov,.mkv"} onChange={(event) => void inspectSelection(event.target.files?.[0])}/><small>{contentType === "image" ? "JPG, PNG oder WebP · maximal 20 MB" : "MP4, WebM oder MOV · wird geprüft und automatisch displayfertig aufbereitet"}</small></label>{inspectionBusy && <div className="media-file-check checking" role="status"><i/><span><strong>Datei wird technisch geprüft …</strong><small>Auflösung, Laufzeit und Abspielbarkeit</small></span></div>}{inspection && <div className="media-file-check ready" role="status"><b>✓</b><span><strong>Technisch lesbar</strong><small>{mediaMetadataLabel(inspection.metadata)}{inspection.poster ? " · Vorschau erstellt" : ""}</small></span></div>}</> : <label>Text oder Beschreibung<textarea name="text" rows={5}/></label>}</> : <div className="date-pair"><label>Start<input name="startsAt" type="datetime-local" /></label><label>Ende<input name="endsAt" type="datetime-local" /></label></div>}{busy && isMedia && <div className={`upload-progress stage-${uploadStage}`} role="status"><span style={isProcessing ? undefined : { width: `${uploadStage === "ready" ? 100 : uploadProgress}%` }}/><small><strong>{progressTitle}</strong><em>{progressDetail}</em></small></div>}{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy || inspectionBusy || (isMedia && !inspection)}>{busy ? (isProcessing ? "Video wird aufbereitet …" : uploadStage === "ready" ? "Video ist displaybereit" : isMedia ? (uploadProgress >= 100 ? "Upload abgeschlossen · Verarbeitung startet" : `Datei wird übertragen${uploadProgress ? ` · ${uploadProgress} %` : " …"}`) : "Wird gespeichert …") : createdMediaId ? "Verfügbarkeit erneut prüfen" : inspectionBusy ? "Datei wird geprüft …" : isMedia ? (nested ? "Hochladen und auswählen" : "Datei hochladen") : "Inhalt speichern"}</button></form></section></div>;
 }
+
+registerServiceWorker({ scope: "/portal" });
 
 function PortalEntry() {
   const params = new URLSearchParams(location.search);

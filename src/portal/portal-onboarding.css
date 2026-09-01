@@ -162,7 +162,7 @@
   .portal-onboarding > header,
   .portal-onboarding > footer { align-items: stretch; flex-direction: column; gap: 14px; }
   .portal-onboarding > header > b { align-self: start; }
-  .portal-onboarding-steps { grid-template-columns: 1fr; }
+  .portal-onboarding-steps { grid-template-columns: minmax(0, 1fr); }
   .portal-onboarding-steps article { min-height: 0; }
   .portal-onboarding > footer > button { width: 100%; }
 }

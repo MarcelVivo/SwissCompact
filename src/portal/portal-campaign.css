@@ -806,12 +806,12 @@
   .content-mode,
   .wizard-date-pair,
   .wizard-review {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .target-area .display-selection,
   .target-review-list > div {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .wizard-preview {

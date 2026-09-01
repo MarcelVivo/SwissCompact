@@ -35,9 +35,9 @@
 .customer-project-workspace.unavailable { position: relative; padding: 1.5rem; background: #fff8e4; }
 .customer-project-workspace.unavailable .workspace-close { position: absolute; top: 1rem; right: 1rem; background: #111113; }
 @media (max-width: 760px) {
-  .project-workspace-launch { grid-template-columns: 1fr; }
+  .project-workspace-launch { grid-template-columns: minmax(0, 1fr); }
   .customer-project-workspace > nav { grid-template-columns: 1fr 1fr; }
-  .customer-briefing { grid-template-columns: 1fr; }
+  .customer-briefing { grid-template-columns: minmax(0, 1fr); }
   .customer-message-thread header,.customer-deliverables > article > header,.customer-revision-list > article > header { align-items: flex-start; flex-direction: column; }
   .review-decision > div,.revision-actions { flex-direction: column; }
 }
