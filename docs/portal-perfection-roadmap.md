@@ -80,7 +80,7 @@ Stand: 31. August 2026. Dieses Dokument ist die dauerhafte Arbeitsliste für ein
 - [x] Sitzungs- und Geräteverwaltung, Passkeys und optionale MFA technisch bereitstellen; produktive Passkey-Konfiguration und Gerätetest ausstehend
 - [x] Kontrollierten Backup-Wiederherstellungsablauf mit Testnachweisen bereitstellen; erster isolierter Praxistest ausstehend
 - [x] Fehlerquellen, Zustellversuche und Betriebsalarme zentral überwachen; externe Alarmweiterleitung optional ergänzen
-- [ ] Support- und SLA-Prozess je Abonnement definieren
+- [x] Support- und SLA-Prozess je Abonnement mit Paketregeln, Kunden-Supportcenter, interner Warteschlange und Erstreaktionsnachweis bereitstellen; produktiver End-to-End-Test nach Migration ausstehend
 
 ## Verbindliche Datenquellen
 

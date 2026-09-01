@@ -11,8 +11,10 @@ const overview = read("api/dashboard/overview.ts");
 const portalCustomerMigration = read("supabase/migrations/20260903_verified_portal_customers.sql");
 const authSecurityMigration = read("supabase/migrations/20260913_auth_security.sql");
 const operationalReadinessMigration = read("supabase/migrations/20260914_operational_readiness.sql");
+const supportSlaMigration = read("supabase/migrations/20260915_support_sla.sql");
 const legalAdministration = read("src/dashboard/LegalAdministration.tsx");
 const operationalReadiness = read("src/dashboard/OperationalReadiness.tsx");
+const supportOperations = read("src/dashboard/SupportOperations.tsx");
 const publicQuote = read("api/_lib/dashboard/quote-public.ts");
 const lead = read("api/assistant/lead.ts");
 const vercel = JSON.parse(read("vercel.json"));
@@ -39,8 +41,17 @@ assert.match(legalAdministration, /Geprüfte Fassung veröffentlichen/);
 assert.match(legalAdministration, /VERÖFFENTLICHEN/);
 assert.match(operationalReadiness, /Backup- und Wiederherstellungstests/);
 assert.match(operationalReadiness, /Niemals direkt in die Produktionsdatenbank zurückspielen/);
+assert.match(supportSlaMigration, /create table if not exists swisscompact\.support_sla_policies/);
+assert.match(supportSlaMigration, /create table if not exists swisscompact\.support_tickets/);
+assert.match(supportSlaMigration, /create or replace function swisscompact\.calculate_support_due_at/);
+assert.match(supportOperations, /Support-Warteschlange/);
+assert.match(supportOperations, /Erstreaktionsziele je aktivem Abonnement/);
+assert.match(records, /action === "update_support_ticket"/);
+assert.match(records, /action === "update_sla_policy"/);
+assert.match(overview, /supportTicketsAdmin/);
 assert.match(ui, /LegalAdministration/);
 assert.match(ui, /OperationalReadiness/);
+assert.match(ui, /SupportOperations/);
 
 for (const table of ["dashboard_profiles", "audit_log", "clients", "opportunities", "projects", "approvals", "quotes", "invoices", "journal_entries", "journal_lines", "founder_transactions", "owner_settlements", "subscription_packages", "ai_jobs", "marketing_campaigns"]) {
   assert.match(migration, new RegExp(`create table if not exists swisscompact\\.${table}`), `${table} fehlt`);

@@ -681,6 +681,65 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true });
   }
 
+  if (action === "create_support_ticket") {
+    const category = cleanText(body.category, 40);
+    const priority = cleanText(body.priority, 20);
+    const title = cleanText(body.title, 180);
+    const description = cleanText(body.description, 8000);
+    const displayId = cleanText(body.displayId, 80) || null;
+    const created = await client.rpc("create_support_ticket", {
+      target_tenant: profile.tenantId,
+      target_category: category,
+      target_priority: priority,
+      target_title: title,
+      target_description: description,
+      target_display: displayId,
+    });
+    if (created.error || !created.data) return json({ error: created.error?.message || "Supportanfrage konnte nicht erstellt werden" }, { status: 400 });
+    const ticketId = String(created.data);
+    const ticket = await client.from("support_tickets").select("id,ticket_number,first_response_due_at,support_label_snapshot").eq("id", ticketId).eq("tenant_id", profile.tenantId).single();
+    const admin = dashboardSupabase();
+    if (admin && process.env.RESEND_API_KEY) {
+      try {
+        const mail = await new Resend(process.env.RESEND_API_KEY).emails.send({
+          from: "SwissCompact Portal <kontakt@swisscompact.com>",
+          to: "kontakt@swisscompact.com",
+          replyTo: profile.email,
+          subject: `${priority === "critical" ? "KRITISCH · " : ""}Support ${ticket.data?.ticket_number || ""}: ${title}`,
+          html: `<h2>Neue Supportanfrage</h2><p><strong>Kundenportal:</strong> ${escapeHtml(profile.tenantName)}<br><strong>Kontakt:</strong> ${escapeHtml(profile.displayName)} (${escapeHtml(profile.email)})<br><strong>Priorität:</strong> ${escapeHtml(priority)}<br><strong>Kategorie:</strong> ${escapeHtml(category)}</p><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description).replace(/\n/g, "<br>")}</p>`,
+        });
+        await recordOperationalDelivery(admin, { tenantId: profile.tenantId, channel: "email", eventType: "support_ticket_created", entityType: "support_ticket", entityId: ticketId, recipient: "kontakt@swisscompact.com", providerReference: mail.data?.id || null, status: mail.error ? "failed" : "delivered", error: mail.error?.message || null });
+      } catch (reason) {
+        await recordOperationalDelivery(admin, { tenantId: profile.tenantId, channel: "email", eventType: "support_ticket_created", entityType: "support_ticket", entityId: ticketId, recipient: "kontakt@swisscompact.com", status: "failed", error: reason instanceof Error ? reason.message : "Supportbenachrichtigung fehlgeschlagen" });
+      }
+    }
+    return json({ ok: true, ticket: ticket.data ?? { id: ticketId } });
+  }
+
+  if (action === "add_support_message") {
+    const ticketId = cleanText(body.ticketId, 80);
+    const message = cleanText(body.message, 8000);
+    const added = await client.rpc("add_customer_support_message", { target_ticket: ticketId, message_body: message });
+    if (added.error || !added.data) return json({ error: added.error?.message || "Nachricht konnte nicht gesendet werden" }, { status: 400 });
+    const ticket = await client.from("support_tickets").select("ticket_number,title").eq("id", ticketId).eq("tenant_id", profile.tenantId).maybeSingle();
+    const admin = dashboardSupabase();
+    if (admin && process.env.RESEND_API_KEY && ticket.data) {
+      try {
+        const mail = await new Resend(process.env.RESEND_API_KEY).emails.send({
+          from: "SwissCompact Portal <kontakt@swisscompact.com>",
+          to: "kontakt@swisscompact.com",
+          replyTo: profile.email,
+          subject: `Kundenantwort · Support ${ticket.data.ticket_number}: ${ticket.data.title}`,
+          html: `<h2>Neue Kundenantwort</h2><p><strong>Kundenportal:</strong> ${escapeHtml(profile.tenantName)}<br><strong>Kontakt:</strong> ${escapeHtml(profile.displayName)} (${escapeHtml(profile.email)})</p><h3>${escapeHtml(ticket.data.ticket_number)} · ${escapeHtml(ticket.data.title)}</h3><p>${escapeHtml(message).replace(/\n/g, "<br>")}</p>`,
+        });
+        await recordOperationalDelivery(admin, { tenantId: profile.tenantId, channel: "email", eventType: "support_customer_reply", entityType: "support_ticket", entityId: ticketId, recipient: "kontakt@swisscompact.com", providerReference: mail.data?.id || null, status: mail.error ? "failed" : "delivered", error: mail.error?.message || null });
+      } catch (reason) {
+        await recordOperationalDelivery(admin, { tenantId: profile.tenantId, channel: "email", eventType: "support_customer_reply", entityType: "support_ticket", entityId: ticketId, recipient: "kontakt@swisscompact.com", status: "failed", error: reason instanceof Error ? reason.message : "Supportantwort-Benachrichtigung fehlgeschlagen" });
+      }
+    }
+    return json({ ok: true, messageId: added.data });
+  }
+
   if (profile.role === "viewer") return json({ error: "Nur Lesezugriff" }, { status: 403 });
 
   if (action.includes("partner")) {
@@ -1951,6 +2010,118 @@ export async function POST(request: Request): Promise<Response> {
     if (updated.error || !updated.data) return json({ error: "Wiederherstellungstest nicht gefunden" }, { status: 404 });
     await writeAudit(client, profile, "recovery_drill_updated", "recovery_drill", id);
     return json({ ok: true, record: updated.data });
+  }
+
+  if (action === "update_sla_policy") {
+    if (!profile.securityAdmin) return json({ error: "Nur der Hauptadmin darf SLA-Regeln verändern" }, { status: 403 });
+    const packageCode = cleanText(body.packageCode, 40);
+    const supportLabel = cleanText(body.supportLabel, 120);
+    const coverageDescription = cleanText(body.coverageDescription, 500);
+    const criticalCoverage = cleanText(body.criticalCoverage, 30);
+    const integerValue = (value: unknown, minimum: number, maximum: number) => {
+      const parsed = Math.round(Number(value));
+      return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
+    };
+    const targets = {
+      critical_response_minutes: integerValue(body.criticalResponseMinutes, 15, 10080),
+      high_response_minutes: integerValue(body.highResponseMinutes, 15, 10080),
+      normal_response_minutes: integerValue(body.normalResponseMinutes, 15, 20160),
+      low_response_minutes: integerValue(body.lowResponseMinutes, 15, 40320),
+    };
+    const orderedTargets = targets.critical_response_minutes !== null
+      && targets.high_response_minutes !== null
+      && targets.normal_response_minutes !== null
+      && targets.low_response_minutes !== null
+      && targets.critical_response_minutes <= targets.high_response_minutes
+      && targets.high_response_minutes <= targets.normal_response_minutes
+      && targets.normal_response_minutes <= targets.low_response_minutes;
+    if (!packageCode || !supportLabel || !coverageDescription || !["business_hours", "24x7"].includes(criticalCoverage) || !orderedTargets) {
+      return json({ error: "SLA-Regeln sind unvollständig oder ungültig" }, { status: 400 });
+    }
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "SLA-Verwaltung ist nicht konfiguriert" }, { status: 503 });
+    const previous = await admin.from("support_sla_policies").select("*").eq("package_code", packageCode).maybeSingle();
+    if (!previous.data) return json({ error: "Supportpaket nicht gefunden" }, { status: 404 });
+    const result = await admin.from("support_sla_policies").update({
+      support_label: supportLabel,
+      coverage_description: coverageDescription,
+      critical_coverage: criticalCoverage,
+      ...targets,
+      updated_at: new Date().toISOString(),
+    }).eq("package_code", packageCode).select("*").single();
+    if (result.error) return json({ error: result.error.message }, { status: 400 });
+    await writeAudit(client, profile, "support_sla_policy_updated", "support_sla_policy", packageCode, previous.data, result.data);
+    return json({ ok: true, record: result.data });
+  }
+
+  if (action === "update_support_ticket") {
+    if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Supportfälle bearbeiten" }, { status: 403 });
+    const id = cleanText(body.id, 80);
+    const status = cleanText(body.status, 30);
+    const priority = cleanText(body.priority, 20);
+    const publicResponse = cleanText(body.publicResponse, 8000);
+    const internalNote = cleanText(body.internalNote, 8000);
+    const assignedTo = cleanText(body.assignedTo, 80) || null;
+    if (!id || !["new", "in_progress", "waiting_customer", "resolved", "closed", "cancelled"].includes(status) || !["low", "normal", "high", "critical"].includes(priority)) {
+      return json({ error: "Ungültiger Supportstatus oder Priorität" }, { status: 400 });
+    }
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Supportverwaltung ist nicht konfiguriert" }, { status: 503 });
+    const existing = await admin.from("support_tickets").select("*,tenant:tenants(client_id,name)").eq("id", id).maybeSingle();
+    if (!existing.data) return json({ error: "Supportanfrage nicht gefunden" }, { status: 404 });
+    const transitions: Record<string, string[]> = {
+      new: ["new", "in_progress", "waiting_customer", "resolved", "cancelled"],
+      in_progress: ["in_progress", "waiting_customer", "resolved", "cancelled"],
+      waiting_customer: ["waiting_customer", "in_progress", "resolved", "cancelled"],
+      resolved: ["resolved", "in_progress", "closed"],
+      closed: ["closed"], cancelled: ["cancelled"],
+    };
+    if (!transitions[existing.data.status]?.includes(status)) return json({ error: "Dieser Supportstatus kann nicht so geändert werden" }, { status: 409 });
+    if (["waiting_customer", "resolved"].includes(status) && !publicResponse && existing.data.status !== status) return json({ error: "Für diesen Status ist eine sichtbare Kundenantwort erforderlich" }, { status: 400 });
+    let targetMinutes = existing.data.response_target_minutes;
+    let dueAt = existing.data.first_response_due_at;
+    // Bestehende Fälle behalten ihren SLA-Snapshot. Nur eine bewusste
+    // Neueinstufung erhält das heute gültige Ziel für die neue Priorität.
+    if (priority !== existing.data.priority) {
+      const policy = await admin.from("support_sla_policies").select("*").eq("package_code", existing.data.package_code_snapshot).maybeSingle();
+      if (!policy.data) return json({ error: "Die zugehörige SLA-Regel fehlt" }, { status: 409 });
+      targetMinutes = priority === "critical" ? policy.data.critical_response_minutes : priority === "high" ? policy.data.high_response_minutes : priority === "normal" ? policy.data.normal_response_minutes : policy.data.low_response_minutes;
+      const coverageMode = priority === "critical" ? policy.data.critical_coverage : "business_hours";
+      const due = await admin.rpc("calculate_support_due_at", {
+        base_time: existing.data.created_at,
+        target_minutes: targetMinutes,
+        target_timezone: policy.data.business_timezone,
+        day_start: policy.data.business_start,
+        day_end: policy.data.business_end,
+        coverage_mode: coverageMode,
+      });
+      if (due.error || !due.data) return json({ error: "SLA-Frist konnte nicht berechnet werden" }, { status: 409 });
+      dueAt = due.data;
+    }
+    const now = new Date().toISOString();
+    const update: Record<string, unknown> = {
+      status, priority, assigned_to: assignedTo, response_target_minutes: targetMinutes,
+      first_response_due_at: dueAt, updated_at: now,
+    };
+    if (publicResponse && !existing.data.first_responded_at) update.first_responded_at = now;
+    if (status === "resolved") update.resolved_at = existing.data.resolved_at || now;
+    if (status === "in_progress" && existing.data.status === "resolved") { update.resolved_at = null; update.closed_at = null; }
+    if (status === "closed") { update.resolved_at = existing.data.resolved_at || now; update.closed_at = now; }
+    const changed = await admin.from("support_tickets").update(update).eq("id", id).eq("updated_at", existing.data.updated_at).select("*").maybeSingle();
+    if (changed.error || !changed.data) return json({ error: "Supportanfrage wurde zwischenzeitlich verändert" }, { status: 409 });
+    const messages = [];
+    if (publicResponse) messages.push({ ticket_id: id, tenant_id: existing.data.tenant_id, author_user_id: profile.userId, author_type: "support", author_name: profile.displayName, body: publicResponse, visible_to_customer: true });
+    if (internalNote) messages.push({ ticket_id: id, tenant_id: existing.data.tenant_id, author_user_id: profile.userId, author_type: "support", author_name: profile.displayName, body: internalNote, visible_to_customer: false });
+    if (messages.length) {
+      const inserted = await admin.from("support_ticket_messages").insert(messages);
+      if (inserted.error) return json({ error: "Supportfall wurde aktualisiert, die Nachricht aber nicht gespeichert" }, { status: 500 });
+    }
+    await writeAudit(client, profile, "support_ticket_updated", "support_ticket", id, { status: existing.data.status, priority: existing.data.priority }, { status, priority, publicResponse: Boolean(publicResponse), internalNote: Boolean(internalNote) });
+    const tenant = Array.isArray(existing.data.tenant) ? existing.data.tenant[0] : existing.data.tenant;
+    if (publicResponse && tenant?.client_id) {
+      await sendCustomerStatusNotification(client, tenant.client_id, `Support ${existing.data.ticket_number}: ${existing.data.title}`, "Neue Antwort von SwissCompact", publicResponse);
+    }
+    return json({ ok: true, record: changed.data });
   }
 
   if (action === "update_data_rights_request") {

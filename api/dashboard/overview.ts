@@ -17,7 +17,7 @@ export async function GET(request: Request): Promise<Response> {
     const partnerNetworkPromise = loadPartnerNetwork(customerAdmin, tenantId);
     const displayHealthRefresh = await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
     if (displayHealthRefresh.error) console.warn("portal display health refresh:", displayHealthRefresh.error.message);
-    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers, campaignVersions, legalDocuments, legalAcceptances, dataRightsRequests] = await Promise.all([
+    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers, campaignVersions, legalDocuments, legalAcceptances, dataRightsRequests, supportPolicies, supportTickets, supportMessages] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,last_seen_at,configuration_version,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
@@ -40,6 +40,9 @@ export async function GET(request: Request): Promise<Response> {
       client.from("legal_documents").select("id,document_type,acceptance_scope,version,title,summary,content_markdown,content_hash,requires_acceptance,status,effective_at,published_at").in("status", ["published", "superseded"]).lte("effective_at", new Date().toISOString()).order("published_at", { ascending: false }),
       client.from("legal_acceptances").select("id,document_id,user_id,acceptance_scope_snapshot,accepted_at,membership:tenant_memberships(display_name)").eq("tenant_id", tenantId).order("accepted_at", { ascending: false }).limit(500),
       client.from("tenant_data_rights_requests").select("id,request_type,status,reason,export_expires_at,review_note,reviewed_at,completed_at,cancelled_at,created_at,updated_at,requested_by").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(100),
+      client.from("support_sla_policies").select("package_code,support_label,coverage_description,critical_coverage,business_timezone,business_start,business_end,critical_response_minutes,high_response_minutes,normal_response_minutes,low_response_minutes,response_target_note").eq("active", true),
+      client.from("support_tickets").select("id,ticket_number,requested_by,affected_display_id,category,priority,status,title,description,package_code_snapshot,support_label_snapshot,coverage_snapshot,response_target_minutes,first_response_due_at,first_responded_at,resolved_at,closed_at,created_at,updated_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(200),
+      client.from("support_ticket_messages").select("id,ticket_id,author_type,author_name,body,created_at").eq("tenant_id", tenantId).eq("visible_to_customer", true).order("created_at").limit(2000),
     ]);
     const [customerQuotes, customerProjects, customerInvoices, responsibleProfiles] = await Promise.all([
       customerAdmin.from("quotes").select("id,quote_number,opportunity_id,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at,opportunity:opportunities(title)").eq("client_id", profile.clientId).in("status", ["sent", "viewed", "accepted", "declined", "expired"]).order("updated_at", { ascending: false }).limit(100),
@@ -83,6 +86,8 @@ export async function GET(request: Request): Promise<Response> {
     if (!legalComplianceAvailable) console.warn("portal legal compliance is not migrated yet", legalDocuments.error?.message || legalAcceptances.error?.message);
     const dataRightsAvailable = !dataRightsRequests.error;
     if (!dataRightsAvailable) console.warn("portal data rights are not migrated yet", dataRightsRequests.error?.message);
+    const supportAvailable = !supportPolicies.error && !supportTickets.error && !supportMessages.error;
+    if (!supportAvailable) console.warn("portal support SLA is not migrated yet", supportPolicies.error?.message || supportTickets.error?.message || supportMessages.error?.message);
     const customerRecordsError = [customerQuotes, customerProjects, customerInvoices, responsibleProfiles].find((result) => result.error)?.error;
     if (customerRecordsError) {
       console.error("portal customer records:", customerRecordsError.message);
@@ -243,6 +248,12 @@ export async function GET(request: Request): Promise<Response> {
           canDownload: entry.status === "completed" && Boolean(entry.export_expires_at) && new Date(entry.export_expires_at).getTime() > Date.now(),
         })) : [],
       },
+      support: {
+        available: supportAvailable,
+        policy: supportAvailable ? (supportPolicies.data ?? []).find((entry: any) => entry.package_code === subscription.data?.package_code) ?? null : null,
+        tickets: supportAvailable ? supportTickets.data ?? [] : [],
+        messages: supportAvailable ? supportMessages.data ?? [] : [],
+      },
       subscription: subscription.data ?? null,
       members: (members.data ?? []).filter((member) => member.active && member.access_status === "active" && member.verified_at),
       aiCredits: {
@@ -289,10 +300,14 @@ export async function GET(request: Request): Promise<Response> {
     authAdmin.from("tenant_display_alerts").select("id,tenant_id,display_id,kind,severity,status,message,last_seen_at,display:tenant_displays(name),tenant:tenants(name)").neq("status", "resolved").order("last_seen_at", { ascending: false }).limit(250),
     authAdmin.from("tenant_content").select("id,tenant_id,title,payload,updated_at,tenant:tenants(name)").eq("payload->>processingState", "error").order("updated_at", { ascending: false }).limit(250),
     authAdmin.from("stripe_webhook_events").select("event_id,event_type,error_message,created_at,processed_at").not("error_message", "is", null).order("created_at", { ascending: false }).limit(100),
+    authAdmin.from("support_sla_policies").select("*").order("package_code"),
+    authAdmin.from("support_tickets").select("*,tenant:tenants(name,client_id),display:tenant_displays(name)").order("created_at", { ascending: false }).limit(500),
+    authAdmin.from("support_ticket_messages").select("*").order("created_at").limit(5000),
   ]) : null;
-  const [legalDocumentsAdmin, operationalIncidents, operationalDeliveries, recoveryDrills, fleetAlerts, mediaFailures, stripeFailures] = operationalAdminData ?? [];
+  const [legalDocumentsAdmin, operationalIncidents, operationalDeliveries, recoveryDrills, fleetAlerts, mediaFailures, stripeFailures, supportPoliciesAdmin, supportTicketsAdmin, supportMessagesAdmin] = operationalAdminData ?? [];
   const legalManagementAvailable = Boolean(legalDocumentsAdmin && !legalDocumentsAdmin.error);
   const operationsAvailable = Boolean(operationalIncidents && operationalDeliveries && recoveryDrills && !operationalIncidents.error && !operationalDeliveries.error && !recoveryDrills.error);
+  const supportAvailable = Boolean(supportPoliciesAdmin && supportTicketsAdmin && supportMessagesAdmin && !supportPoliciesAdmin.error && !supportTicketsAdmin.error && !supportMessagesAdmin.error);
   const enrichedPortalMemberships = (portalMemberships.data ?? []).map((membership) => {
     const portalUser = usersById.get(membership.user_id);
     return { ...membership, email: portalUser?.email ?? null, email_confirmed_at: portalUser?.email_confirmed_at ?? null, last_sign_in_at: portalUser?.last_sign_in_at ?? null };
@@ -348,6 +363,12 @@ export async function GET(request: Request): Promise<Response> {
       mediaFailures: mediaFailures && !mediaFailures.error ? mediaFailures.data ?? [] : [],
       stripeFailures: stripeFailures && !stripeFailures.error ? stripeFailures.data ?? [] : [],
       aiFailures: (aiJobs.data ?? []).filter((job) => job.status === "failed"),
+    },
+    support: {
+      available: supportAvailable,
+      policies: supportAvailable ? supportPoliciesAdmin?.data ?? [] : [],
+      tickets: supportAvailable ? supportTicketsAdmin?.data ?? [] : [],
+      messages: supportAvailable ? supportMessagesAdmin?.data ?? [] : [],
     },
     projectCollaboration: {
       available: collaborationAvailable,

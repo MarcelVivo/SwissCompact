@@ -31,6 +31,7 @@ import "./portal-visual-polish.css";
 import "./portal-legal.css";
 import "./portal-data-rights.css";
 import "./portal-security.css";
+import "./portal-support.css";
 import { PartnerNetworkView, type PartnerNetworkData } from "./PartnerNetworkView";
 import { CampaignQuickStartDialog, SaveCampaignTemplateDialog, type CampaignTemplateChoice, type CampaignTemplatesData } from "./CampaignTemplates";
 import { DisplayManagementView, type DisplayGroupsData } from "./DisplayManagementView";
@@ -40,6 +41,7 @@ import { OperationalStatusView, operationalCriticalIssueCount, operationalOpenIs
 import { LegalConsentDialog, LegalSettingsCard, type LegalComplianceData } from "./LegalCompliance";
 import { DataRightsSettingsCard, type DataRightsActionResult, type DataRightsData, type DataRightsRequestType } from "./DataRightsSettings";
 import { PortalMfaChallenge, PortalSecurityCard, signInPortalWithPasskey } from "./PortalSecurity";
+import { SupportCenter, type SupportData } from "./SupportCenter";
 import { passkeyPlatformAvailable } from "../dashboard/passkeyClient";
 
 type PortalProfile = { userId: string; displayName: string; email: string; tenantName: string; tenantSlug: string; role: "owner" | "admin" | "editor" | "viewer"; enabledModules: string[]; aal?: "aal1" | "aal2" | null; passkeyVerified?: boolean; branding?: { accent?: string } };
@@ -84,8 +86,8 @@ type CustomerInvoice = { id: string; quote_id?: string | null; project_id?: stri
 type CustomerRecords = { quotes: CustomerQuote[]; projects: CustomerProject[]; invoices: CustomerInvoice[] };
 type ProjectCollaboration = { available: boolean; briefings: Record<string, any>[]; messages: Record<string, any>[]; deliverables: Record<string, any>[]; versions: Record<string, any>[]; reviews: Record<string, any>[]; revisions: Record<string, any>[] };
 type DisplaySafety = { versions: Array<{ id: string; display_id: string; version: number; source: string; campaign_id?: string | null; state: string; previous_version?: number | null; created_at: string }>; tests: Array<{ id: string; display_id: string; campaign_id: string; configuration_version: number; previous_version?: number | null; status: string; expires_at: string; created_at: string }>; alerts: Array<{ id: string; display_id: string; kind: string; severity: string; status: string; message: string; last_seen_at: string }> };
-type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; archivedContent: Content[]; serviceRequests: Content[]; customerRecords: CustomerRecords; projectCollaboration: ProjectCollaboration; partnerNetwork: PartnerNetworkData; campaignTemplates: CampaignTemplatesData; campaignVersions: CampaignVersionsData; displayGroups: DisplayGroupsData; displaySafety: DisplaySafety; legalCompliance: LegalComplianceData; dataRights: DataRightsData; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits; mediaPipeline?: { muxVideoEnabled: boolean; maxVideoBytes: number }; generatedAt?: string };
-type View = "overview" | "status" | "records" | "content" | "archive" | "campaigns" | "displays" | "partners" | "settings";
+type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; archivedContent: Content[]; serviceRequests: Content[]; customerRecords: CustomerRecords; projectCollaboration: ProjectCollaboration; partnerNetwork: PartnerNetworkData; campaignTemplates: CampaignTemplatesData; campaignVersions: CampaignVersionsData; displayGroups: DisplayGroupsData; displaySafety: DisplaySafety; legalCompliance: LegalComplianceData; dataRights: DataRightsData; support: SupportData; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits; mediaPipeline?: { muxVideoEnabled: boolean; maxVideoBytes: number }; generatedAt?: string };
+type View = "overview" | "status" | "records" | "content" | "archive" | "campaigns" | "displays" | "partners" | "support" | "settings";
 type DeleteTarget = { kind: "archived_content" | "campaign" | "display"; id: string; name: string };
 type CampaignPreset = { contentId?: string; displayId?: string; name?: string; theme?: string | null; priority?: number; scopeSiteId?: string | null; scopeAreaId?: string | null; displayIds?: string[]; targetAssignments?: Array<{ displayId: string; contentItems: Array<{ contentId: string; durationSeconds: number }> }>; playlistStrategy?: CampaignContentMode; hierarchyPlaylists?: Record<string, PlaylistEntry[]>; templateName?: string; defaultDurationDays?: number | null; startStep?: 1 | 2 | 3 | 4; fromTemplate?: boolean };
 
@@ -313,6 +315,7 @@ function Icon({ name }: { name: View | "logout" | "plus" | "install" | "more" | 
     campaigns: <><path d="M4 13V7l14-3v12L4 13Z"/><path d="M7 13v6h4v-5"/></>,
     displays: <><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></>,
     partners: <><path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM16 11a3 3 0 1 0 0-6"/><path d="M2 21v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 14h1a5 5 0 0 1 5 5v2"/></>,
+    support: <><path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8 9h8M8 12h5"/></>,
     settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
     logout: <><path d="M10 17l5-5-5-5M15 12H3"/><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></>,
     plus: <path d="M12 5v14M5 12h14"/>,
@@ -681,6 +684,8 @@ function Portal() {
       };
       const dataRights = overview.dataRights || {} as DataRightsData;
       overview.dataRights = { available: dataRights.available === true, requests: Array.isArray(dataRights.requests) ? dataRights.requests : [] };
+      const support = overview.support || {} as SupportData;
+      overview.support = { available: support.available === true, policy: support.policy || null, tickets: Array.isArray(support.tickets) ? support.tickets : [], messages: Array.isArray(support.messages) ? support.messages : [] };
       setData(overview); setSession("ready");
       return overview;
     } catch (reason) {
@@ -747,8 +752,8 @@ function Portal() {
   const operationalData: OperationalStatusData = { displays: data.displays, content: data.content, campaigns: data.campaigns, alerts: data.displaySafety.alerts, generatedAt: data.generatedAt };
   const operationalIssues = operationalOpenIssueCount(operationalData);
   const operationalCritical = operationalCriticalIssueCount(operationalData) > 0;
-  const nav: Array<[View,string]> = [["overview","Übersicht"],["status","Systemstatus"],["records","Meine Vorgänge"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"],["partners","Partnernetzwerk"],["archive","Archiv"],["settings","Einstellungen"]];
-  const secondaryDescriptions: Partial<Record<View, string>> = { status: "Bildschirme und Warnungen prüfen", records: "Offerten, Aufträge und Rechnungen", partners: "Werbung mit Partnerbetrieben", archive: "Archivierte Medien verwalten", settings: "Konto, Paket und Support" };
+  const nav: Array<[View,string]> = [["overview","Übersicht"],["status","Systemstatus"],["records","Meine Vorgänge"],["campaigns","Kampagnen"],["displays","Bildschirme"],["content","Medien & Vorlagen"],["partners","Partnernetzwerk"],["archive","Archiv"],["support","Support"],["settings","Einstellungen"]];
+  const secondaryDescriptions: Partial<Record<View, string>> = { status: "Bildschirme und Warnungen prüfen", records: "Offerten, Aufträge und Rechnungen", partners: "Werbung mit Partnerbetrieben", archive: "Archivierte Medien verwalten", support: "Hilfe und Supportanfragen", settings: "Konto, Paket und Sicherheit" };
   const primaryMobileViews: View[] = ["overview","campaigns","displays","content"];
   const secondaryNav = nav.filter(([id]) => !primaryMobileViews.includes(id));
   const onboardingComplete = data.campaigns.some((campaign) => ["active", "scheduled"].includes(campaign.status));
@@ -813,6 +818,14 @@ function Portal() {
   }
   async function cancelDataRightsRequest(requestId: string): Promise<void> {
     await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "cancel_data_rights_request", requestId }) });
+    await load(false);
+  }
+  async function createSupportTicket(payload: Record<string, unknown>): Promise<void> {
+    await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "create_support_ticket", ...payload }) });
+    await load(false);
+  }
+  async function addSupportMessage(ticketId: string, message: string): Promise<void> {
+    await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "add_support_message", ticketId, message }) });
     await load(false);
   }
   async function setContentStatus(id: string, status: "approved" | "draft") {
@@ -941,6 +954,7 @@ function Portal() {
         onChanged={async () => { await load(false); }}
         onUseContent={(contentId) => { setCampaignPreset({ contentId }); setCampaignInitialStep(1); setCreatingCampaign(true); }}
       />}
+      {view === "support" && <SupportCenter data={data.support} displays={data.displays} onCreate={createSupportTicket} onMessage={addSupportMessage}/>}
       {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang, Sicherheit, das aktive SwissCompact-Paket, Datenschutz und verbindliche Dokumente.</p></div></div><div className="settings-grid"><PortalSecurityCard/><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><DataRightsSettingsCard data={data.dataRights} role={data.profile.role} userId={data.profile.userId} onCreate={createDataRightsRequest} onDownload={openDataExport} onCancel={cancelDataRightsRequest}/><LegalSettingsCard data={data.legalCompliance}/><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Für technische Fragen, neue Displays oder Unterstützung bei Ihren Inhalten.</p><a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a></article></div></section>}
       {view === "records" && <CustomerRecordsView data={data} onRefresh={async () => { await load(false); }}/>}
     </main>

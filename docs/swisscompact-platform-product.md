@@ -81,6 +81,7 @@ Für eine klare digitale Basis und einen überschaubaren Betrieb:
 - Kernfunktionen des Display Portals
 - einfache Benutzer- und Inhaltsverwaltung
 - Standard-Support
+- Erstreaktion bei kritischen Fällen innerhalb von 8 Supportstunden; normale Fälle innerhalb von 2 Arbeitstagen
 
 ### Business
 
@@ -91,6 +92,7 @@ Für wachsende Unternehmen und mehrere Flächen oder Prozesse:
 - Business-Dashboard-Module für CRM, Projekte und Marketing
 - Vorlagen, Freigaben, Monitoring und Automatisierungen
 - KI-Unterstützung und priorisierter Support
+- Erstreaktion bei kritischen Fällen innerhalb von 4 Supportstunden; normale Fälle innerhalb eines Arbeitstags
 
 ### Enterprise
 
@@ -101,6 +103,7 @@ Für individuelle Plattformen, Integrationen und große Netzwerke:
 - individuelle ERP-/CRM-Module und Integrationen
 - erweiterte Rollen, Freigaben und KI-Automationen
 - vereinbartes SLA und persönliche Betreuung
+- Erstreaktion bei kritischen Totalausfällen rund um die Uhr innerhalb einer Stunde; normale Fälle innerhalb von 8 Supportstunden
 
 ## Technische Zielarchitektur
 
@@ -122,5 +125,5 @@ Vor der Preisveröffentlichung werden kalkuliert:
 3. Preis je Display oder LED-Controller
 4. enthaltenes KI-Kontingent und Mehrverbrauch
 5. Speicher- und Traffic-Limiten
-6. Supportzeiten und SLA je Paket
+6. Vertragliche Einordnung und Preiswirkung der technisch definierten Support- und Erstreaktionsziele
 7. einmalige Einrichtungs-, Website- und White-Label-Gebühren

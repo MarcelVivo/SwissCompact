@@ -14,6 +14,7 @@ const legalComplianceMigration = read("supabase/migrations/20260911_legal_compli
 const dataRightsMigration = read("supabase/migrations/20260912_data_rights.sql");
 const authSecurityMigration = read("supabase/migrations/20260913_auth_security.sql");
 const operationalReadinessMigration = read("supabase/migrations/20260914_operational_readiness.sql");
+const supportSlaMigration = read("supabase/migrations/20260915_support_sla.sql");
 const partnerApi = read("api/_lib/portal/partner-network.ts");
 const partnerView = read("src/portal/PartnerNetworkView.tsx");
 const campaignTemplates = read("src/portal/CampaignTemplates.tsx");
@@ -23,6 +24,7 @@ const campaignVersionHistory = read("src/portal/CampaignVersionHistory.tsx");
 const operationalStatus = read("src/portal/OperationalStatusView.tsx");
 const legalCompliance = read("src/portal/LegalCompliance.tsx");
 const dataRights = read("src/portal/DataRightsSettings.tsx");
+const supportCenter = read("src/portal/SupportCenter.tsx");
 const portalSecurity = read("src/portal/PortalSecurity.tsx");
 const portalSecurityCss = read("src/portal/portal-security.css");
 const auth = read("api/_lib/dashboard/auth.ts");
@@ -43,6 +45,7 @@ const mobileNavigationCss = read("src/portal/portal-mobile-navigation.css");
 const visualPolishCss = read("src/portal/portal-visual-polish.css");
 const legalCss = read("src/portal/portal-legal.css");
 const dataRightsCss = read("src/portal/portal-data-rights.css");
+const supportCss = read("src/portal/portal-support.css");
 const vercel = JSON.parse(read("vercel.json"));
 const vite = read("vite.config.ts");
 
@@ -99,6 +102,7 @@ const checks = {
   dataRightsSelfService: ["tenant_data_rights_requests", "create_data_rights_request", "cancel_data_rights_request", "swisscompact-exports", "enable row level security", "tenant_deletion"].every((label) => dataRightsMigration.includes(label)) && ["create_data_rights_request", "open_data_export", "cancel_data_rights_request", "buildPortalDataExport", "data_export_completed"].every((label) => records.includes(label)) && ["dataRights", "tenant_data_rights_requests", "canDownload"].every((label) => overview.includes(label)) && ["Meine Daten & Datenschutz", "Meine Daten exportieren", "Portal-Daten exportieren", "Löschanfrage", "PORTAL LÖSCHEN"].every((label) => dataRights.includes(label)) && ["DataRightsSettingsCard", "data={data.dataRights}"].every((label) => portal.includes(label)) && ["data-rights-card", "data-rights-history", "data-deletion-dialog"].every((label) => dataRightsCss.includes(label)),
   personalSecurityCenter: ["user_security_sessions", "session_hash", "ip_hash", "enable row level security"].every((label) => authSecurityMigration.includes(label)) && ["PortalSecurityCard", "PortalMfaChallenge", "signInPortalWithPasskey", "Andere abmelden", "Authenticator aktivieren"].every((label) => portalSecurity.includes(label)) && ["recordSecuritySession", "authorizePortal", "mfa_required"].every((label) => auth.concat(read("api/dashboard/login.ts")).includes(label)) && portal.includes("PortalSecurityCard") && ["portal-security-card", "security-entry", "security-enrollment"].every((label) => portalSecurityCss.includes(label)),
   operationalReadiness: ["operational_incidents", "operational_delivery_attempts", "operational_recovery_drills", "report_operational_incident", "enable row level security"].every((label) => operationalReadinessMigration.includes(label)) && ["legalManagement", "operations", "operational_delivery_attempts", "operational_recovery_drills"].every((label) => overview.includes(label)) && ["create_legal_document", "publish_legal_document", "update_operational_incident", "create_recovery_drill", "update_recovery_drill"].every((label) => records.includes(label)),
+  supportSlaProcess: ["support_sla_policies", "support_tickets", "support_ticket_messages", "calculate_support_due_at", "create_support_ticket", "add_customer_support_message", "enable row level security"].every((label) => supportSlaMigration.includes(label)) && ["create_support_ticket", "add_support_message", "update_support_ticket", "update_sla_policy"].every((label) => records.includes(label)) && ["supportPolicies", "supportTickets", "supportMessages"].every((label) => overview.includes(label)) && ["Supportcenter", "Supportanfrage erstellen", "Reaktionsziel", "Kritisch", "Nachricht senden"].every((label) => supportCenter.includes(label)) && portal.includes("SupportCenter") && portal.includes('["support","Support"]') && ["support-policy", "support-ticket-list", "support-conversation"].every((label) => supportCss.includes(label)),
   funnelStepHeaderLayout: campaignCss.includes(".funnel-current-step > span:first-child") && !campaignCss.includes(".funnel-current-step > span {"),
   editablePortalRecords: ["update_content", "update_display"].every((action) => records.includes(action) && portal.includes(action)) && ["ContentEditDialog", "DisplayEditDialog", "Änderungen live übernehmen", "(activate || isRunning)"].every((label) => portal.includes(label)) && !records.includes("müssen zuerst pausiert werden"),
   visibleRecordLabels: ["record-kind", "record-title-line", "record-assignment", "campaign-identity"].every((label) => portal.includes(label) && campaignCss.concat(read("src/portal/portal-records.css")).includes(label)),
