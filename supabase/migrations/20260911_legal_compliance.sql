@@ -1,6 +1,9 @@
 -- Versionierte Rechtsdokumente und unveränderbare Zustimmungsnachweise.
 begin;
 
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+
 create table if not exists swisscompact.legal_documents (
   id uuid primary key default gen_random_uuid(),
   document_type text not null
@@ -40,11 +43,11 @@ security definer
 set search_path = swisscompact, public
 as $$
 begin
-  new.content_hash := encode(digest(convert_to(
+  new.content_hash := encode(extensions.digest(convert_to(
     new.document_type || E'\n' || new.acceptance_scope || E'\n' || new.version || E'\n' ||
     new.title || E'\n' || new.summary || E'\n' || new.content_markdown,
     'UTF8'
-  ), 'sha256'), 'hex');
+  ), 'sha256'::text), 'hex');
   return new;
 end;
 $$;
