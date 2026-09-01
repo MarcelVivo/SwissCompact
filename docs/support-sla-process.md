@@ -27,8 +27,9 @@ SwissCompact darf eine falsch gewählte Priorität korrigieren. Bei einer Neuein
 2. Das System speichert Paket und Reaktionsziel als Snapshot, berechnet die Frist und benachrichtigt SwissCompact per E-Mail.
 3. Die interne Warteschlange sortiert nach offenen, kritischen und überfälligen Fällen. SwissCompact weist den Fall einer Person zu.
 4. Die erste sichtbare Antwort stoppt die Messung der Erstreaktionszeit. Interne Notizen bleiben für Kunden unsichtbar.
-5. Der Status wechselt je nach Bearbeitung zwischen **In Bearbeitung**, **Wartet auf Kunde**, **Gelöst** und **Geschlossen**.
+5. Mit **Als gelöst markieren** wird eine sichtbare Lösungsantwort verlangt und der Fall zunächst auf **Gelöst** gesetzt.
 6. Kundenantworten auf einen wartenden oder bereits gelösten Fall setzen ihn automatisch wieder auf **In Bearbeitung** und benachrichtigen SwissCompact.
+7. Ein gelöster Fall kann bewusst **Erneut geöffnet** oder nach einer Sicherheitsabfrage **Endgültig geschlossen** werden. Geschlossene Fälle können nicht erneut geöffnet werden und nehmen keine weiteren Kundennachrichten an.
 
 ## Änderungen an SLA-Regeln
 
@@ -42,3 +43,5 @@ Nur der Hauptadmin kann Paketregeln ändern. Bestehende Fälle behalten Frist un
 4. Im Dashboard eine sichtbare Antwort senden und kontrollieren, dass `first_responded_at` gesetzt wird.
 5. Einen Fall auf **Wartet auf Kunde** setzen, als Kunde antworten und den automatischen Wechsel zu **In Bearbeitung** prüfen.
 6. Einen internen Hinweis anlegen und sicherstellen, dass er im Kundenportal nicht erscheint.
+7. Den Fall mit einer sichtbaren Lösungsantwort auf **Gelöst** setzen, erneut öffnen und nochmals lösen.
+8. **Endgültig schließen** wählen, die Sicherheitsabfrage bestätigen und kontrollieren, dass der Kunde nicht mehr antworten kann.

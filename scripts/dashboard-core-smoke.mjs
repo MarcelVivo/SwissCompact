@@ -48,6 +48,10 @@ assert.match(supportSlaMigration, /create table if not exists swisscompact\.supp
 assert.match(supportSlaMigration, /create or replace function swisscompact\.calculate_support_due_at/);
 assert.match(supportOperations, /Support-Warteschlange/);
 assert.match(supportOperations, /Erstreaktionsziele je aktivem Abonnement/);
+assert.match(supportOperations, /Als gelöst markieren/);
+assert.match(supportOperations, /Erneut öffnen/);
+assert.match(supportOperations, /Ticket endgültig schließen/);
+assert.match(supportOperations, /Ja, Ticket schließen/);
 assert.match(records, /action === "update_support_ticket"/);
 assert.match(records, /action === "update_sla_policy"/);
 assert.match(overview, /supportTicketsAdmin/);
