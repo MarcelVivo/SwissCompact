@@ -870,9 +870,12 @@ function Portal() {
     await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "cancel_data_rights_request", requestId }) });
     await load(false);
   }
-  async function createSupportTicket(payload: Record<string, unknown>): Promise<void> {
-    await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "create_support_ticket", ...payload }) });
+  async function createSupportTicket(payload: Record<string, unknown>): Promise<string> {
+    const result = await api<{ ticket?: { id?: string } }>("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "create_support_ticket", ...payload }) });
+    const ticketId = result.ticket?.id;
+    if (!ticketId) throw new Error("Die neue Supportanfrage konnte nicht geöffnet werden.");
     await load(false);
+    return ticketId;
   }
   async function addSupportMessage(ticketId: string, message: string): Promise<void> {
     await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "add_support_message", ticketId, message }) });

@@ -31,7 +31,7 @@ function SlaState({ ticket }: { ticket: SupportTicket }) {
 export function SupportCenter({ data, displays, onCreate, onMessage }: {
   data: SupportData;
   displays: Array<{ id: string; name: string }>;
-  onCreate: (payload: Record<string, unknown>) => Promise<void>;
+  onCreate: (payload: Record<string, unknown>) => Promise<string>;
   onMessage: (ticketId: string, message: string) => Promise<void>;
 }) {
   const [creating, setCreating] = useState(false);
@@ -44,8 +44,9 @@ export function SupportCenter({ data, displays, onCreate, onMessage }: {
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); const form = new FormData(event.currentTarget);
     try {
-      await onCreate({ category: form.get("category"), priority: form.get("priority"), title: form.get("title"), description: form.get("description"), displayId: form.get("displayId") || null });
+      const ticketId = await onCreate({ category: form.get("category"), priority: form.get("priority"), title: form.get("title"), description: form.get("description"), displayId: form.get("displayId") || null });
       setCreating(false);
+      setActiveId(ticketId);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Supportanfrage konnte nicht erstellt werden"); }
     finally { setBusy(false); }
   }
