@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type SupportData = { available: boolean; aiAvailable: boolean; controlCenterAvailable: boolean; policies: any[]; tickets: any[]; messages: any[]; knowledge: any[]; runs: any[]; feedback: any[] };
+type SupportData = { available: boolean; aiAvailable: boolean; controlCenterAvailable: boolean; attachmentsAvailable: boolean; policies: any[]; tickets: any[]; messages: any[]; knowledge: any[]; runs: any[]; feedback: any[]; attachments: any[] };
 const priorityLabels: Record<string, string> = { low: "Tief", normal: "Normal", high: "Hoch", critical: "Kritisch" };
 const statusLabels: Record<string, string> = { new: "Neu", in_progress: "In Bearbeitung", waiting_customer: "Wartet auf Kunde", resolved: "Gelöst", closed: "Geschlossen", cancelled: "Abgebrochen" };
 const categoryLabels: Record<string, string> = { incident: "Störung", question: "Bedienungsfrage", billing: "Abo & Rechnung", training: "Schulung", feature: "Funktionswunsch", content: "Inhalte" };
@@ -12,6 +12,28 @@ const targetHours = (minutes: number) => minutes % 540 === 0 ? `${minutes / 540}
 const countLabel = (value: number) => new Intl.NumberFormat("de-CH").format(value);
 const percentLabel = (value: number, total: number) => total ? `${Math.round(value / total * 100)} %` : "–";
 const usdLabel = (value: number) => new Intl.NumberFormat("de-CH", { style: "currency", currency: "USD", minimumFractionDigits: value < 0.01 ? 4 : 2, maximumFractionDigits: 4 }).format(value);
+const supportFileTypes = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const fileSize = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+async function supportRecords(payload: Record<string, unknown>): Promise<any> {
+  const response = await fetch("/api/dashboard/records", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Supportaktion fehlgeschlagen");
+  return result;
+}
+
+function selectedSupportFiles(current: File[], incoming: FileList | null): File[] {
+  const files = [...current, ...Array.from(incoming || [])];
+  if (files.length > 5) throw new Error("Wählen Sie höchstens fünf Dateien pro Antwort aus.");
+  const invalid = files.find((file) => !supportFileTypes.has(file.type) || file.size < 1 || file.size > 10 * 1024 * 1024);
+  if (invalid) throw new Error(`„${invalid.name}“ wird nicht unterstützt. Erlaubt sind JPG, PNG, WebP und PDF bis 10 MB.`);
+  return files;
+}
+
+function AdminAttachments({ attachments, onOpen }: { attachments: any[]; onOpen: (attachment: any) => void }) {
+  if (!attachments.length) return null;
+  return <div className="support-admin-attachments">{attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => onOpen(attachment)}><span>{attachment.mime_type?.startsWith("image/") ? "▧" : "PDF"}</span><span><b>{attachment.file_name}</b><small>{fileSize(Number(attachment.size_bytes || 0))} · {attachment.uploaded_by_type === "customer" ? "vom Kunden" : "von SwissCompact"}</small></span><i>Öffnen →</i></button>)}</div>;
+}
 
 const editableStatuses: Record<string, string[]> = {
   new: ["new", "in_progress", "waiting_customer", "cancelled"],
@@ -38,6 +60,8 @@ export function SupportOperations({ data, profiles, securityAdmin, canManage, fo
   const [knowledgeAction, setKnowledgeAction] = useState<{ entry: any; action: "approve" | "archive" | "delete" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [responseFiles, setResponseFiles] = useState<File[]>([]);
+  const [uploadState, setUploadState] = useState("");
   const openTickets = data.tickets.filter((ticket) => !["resolved", "closed", "cancelled"].includes(ticket.status));
   const visible = useMemo(() => data.tickets.filter((ticket) => filter === "all" || filter === "open" && !["resolved", "closed", "cancelled"].includes(ticket.status) || ticket.status === filter), [data.tickets, filter]);
   const breached = openTickets.filter((ticket) => ticketSla(ticket).breached && !ticket.first_responded_at);
@@ -62,13 +86,41 @@ export function SupportOperations({ data, profiles, securityAdmin, canManage, fo
   function openTicket(ticket: any) {
     setActive(ticket);
     setCloseConfirmation(false);
+    setResponseFiles([]);
     setError("");
   }
 
   function closeTicketDialog() {
     setActive(null);
     setCloseConfirmation(false);
+    setResponseFiles([]);
+    setUploadState("");
     setError("");
+  }
+
+  async function uploadAttachment(ticketId: string, file: File): Promise<string> {
+    const prepared = await supportRecords({ action: "prepare_support_attachment", ticketId, fileName: file.name, mimeType: file.type, sizeBytes: file.size });
+    const uploadBody = new FormData();
+    uploadBody.append("cacheControl", "3600");
+    uploadBody.append("", file, file.name);
+    const uploaded = await fetch(prepared.upload.signedUrl, { method: "PUT", body: uploadBody, headers: { "x-upsert": "false" } });
+    if (!uploaded.ok) throw new Error("Die Datei konnte nicht sicher übertragen werden.");
+    await supportRecords({ action: "finalize_support_attachment", attachmentId: prepared.attachment.id });
+    return prepared.attachment.id;
+  }
+
+  async function openAttachment(attachment: any) {
+    const target = window.open("about:blank", "_blank");
+    setError("");
+    try {
+      const result = await fetch(`/api/dashboard/records?supportAttachment=${encodeURIComponent(attachment.id)}`, { credentials: "same-origin" });
+      const body = await result.json().catch(() => ({}));
+      if (!result.ok || !body.url) throw new Error(body.error || "Anhang konnte nicht geöffnet werden");
+      if (target) target.location.href = body.url; else location.assign(body.url);
+    } catch (reason) {
+      target?.close();
+      setError(reason instanceof Error ? reason.message : "Anhang konnte nicht geöffnet werden");
+    }
   }
 
   async function updateTicket(event: FormEvent<HTMLFormElement>) {
@@ -85,6 +137,13 @@ export function SupportOperations({ data, profiles, securityAdmin, canManage, fo
     setBusy(true);
     setError("");
     try {
+      if (responseFiles.length && !publicResponse) throw new Error("Ergänzen Sie zu den Dateien eine kurze sichtbare Nachricht für den Kunden.");
+      const attachmentIds: string[] = [];
+      for (let index = 0; index < responseFiles.length; index += 1) {
+        setUploadState(`Datei ${index + 1} von ${responseFiles.length} wird sicher übertragen …`);
+        attachmentIds.push(await uploadAttachment(active.id, responseFiles[index]));
+      }
+      setUploadState(responseFiles.length ? "Dateien bereit. Antwort wird gespeichert …" : "");
       await mutate({
         action: "update_support_ticket",
         id: active.id,
@@ -93,12 +152,14 @@ export function SupportOperations({ data, profiles, securityAdmin, canManage, fo
         assignedTo: form.get("assignedTo") || null,
         publicResponse,
         internalNote: form.get("internalNote"),
+        attachmentIds,
       });
       closeTicketDialog();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Supportfall konnte nicht gespeichert werden");
     } finally {
       setBusy(false);
+      setUploadState("");
     }
   }
 
@@ -200,6 +261,8 @@ export function SupportOperations({ data, profiles, securityAdmin, canManage, fo
 
   const lifecycleOptions = active ? editableStatuses[active.status] || [active.status] : [];
   const activeLifecycle = active?.status === "resolved" || active?.status === "closed" || active?.status === "cancelled";
+  const activeAttachments = active ? data.attachments.filter((attachment) => attachment.ticket_id === active.id) : [];
+  const initialAttachments = activeAttachments.filter((attachment) => !attachment.message_id);
 
   return <>
     <header className="page-head"><div><p className="eyebrow">Kundenbetrieb</p><h1>Support & SLA</h1><p>Supportfälle nach Priorität, Reaktionsziel und Abonnement bearbeiten.</p></div></header>
@@ -252,18 +315,19 @@ export function SupportOperations({ data, profiles, securityAdmin, canManage, fo
 
     {active && <div className="dashboard-dialog-backdrop"><section className="dashboard-dialog support-operations-dialog" role="dialog" aria-modal="true" aria-labelledby="support-ticket-title">
       <header><div><p className="eyebrow">{active.ticket_number} · {relationName(active.tenant)}</p><h2 id="support-ticket-title">{active.title}</h2></div><button className="icon-button" onClick={closeTicketDialog} aria-label="Supportfall schließen">×</button></header>
-      <div className="support-ops-description"><b>Kundenbeschreibung</b><p>{active.description}</p><small>{categoryLabels[active.category]} · Paket {active.package_code_snapshot} · eingegangen {dateTime(active.created_at)}</small></div>
+      <div className="support-ops-description"><b>Kundenbeschreibung</b><p>{active.description}</p><AdminAttachments attachments={initialAttachments} onOpen={(attachment) => void openAttachment(attachment)}/><small>{categoryLabels[active.category]} · Paket {active.package_code_snapshot} · eingegangen {dateTime(active.created_at)}</small></div>
       {active.ai_handling_status && <div className={`support-ai-admin-state ${active.ai_handling_status}`}><b>{aiLabels[active.ai_handling_status]}</b>{active.ai_escalation_reason && <span>{active.ai_escalation_reason}</span>}<small>{active.ai_attempt_count || 0} KI-Versuche{active.ai_confidence != null ? ` · Sicherheit ${Math.round(Number(active.ai_confidence) * 100)} %` : ""}</small></div>}
       {active.status === "resolved" && <div className="support-lifecycle-note resolved"><b>✓ Lösung an den Kunden gesendet</b><span>Eine Kundenantwort öffnet den Fall automatisch wieder. Ohne Rückfrage kann er endgültig geschlossen werden.</span></div>}
       {active.status === "closed" && <div className="support-lifecycle-note closed"><b>Fall endgültig geschlossen</b><span>Der Kunde kann in diesem Ticket keine weiteren Nachrichten senden.</span></div>}
       {active.status === "cancelled" && <div className="support-lifecycle-note cancelled"><b>Fall abgebrochen</b><span>Dieser Fall kann nicht weiterbearbeitet werden.</span></div>}
-      <div className="support-ops-conversation">{data.messages.filter((message) => message.ticket_id === active.id).map((message) => <article className={`${message.visible_to_customer ? message.author_type : "internal"}${message.generated_by_ai ? " ai" : ""}`} key={message.id}><header><b>{message.author_name}{message.generated_by_ai ? " · KI-Assistent" : !message.visible_to_customer ? " · interne Notiz" : ""}</b><time>{dateTime(message.created_at)}</time></header><p>{message.body}</p></article>)}</div>
+      <div className="support-ops-conversation">{data.messages.filter((message) => message.ticket_id === active.id).map((message) => <article className={`${message.visible_to_customer ? message.author_type : "internal"}${message.generated_by_ai ? " ai" : ""}`} key={message.id}><header><b>{message.author_name}{message.generated_by_ai ? " · KI-Assistent" : !message.visible_to_customer ? " · interne Notiz" : ""}</b><time>{dateTime(message.created_at)}</time></header><p>{message.body}</p><AdminAttachments attachments={activeAttachments.filter((attachment) => attachment.message_id === message.id)} onOpen={(attachment) => void openAttachment(attachment)}/></article>)}</div>
       <form onSubmit={updateTicket}>
         {activeLifecycle && <input type="hidden" name="status" value={active.status}/>}<div className="form-row"><label>Status<select name={activeLifecycle ? undefined : "status"} defaultValue={active.status} disabled={activeLifecycle}>{lifecycleOptions.map((value) => <option value={value} key={value}>{statusLabels[value]}</option>)}</select></label><label>Priorität<select name="priority" defaultValue={active.priority}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
         <label>Zuständig<select name="assignedTo" defaultValue={active.assigned_to || ""}><option value="">Noch nicht zugewiesen</option>{profiles.map((entry) => <option value={entry.user_id} key={entry.user_id}>{entry.display_name}</option>)}</select></label>
         {!activeLifecycle && <label>Sichtbare Antwort an den Kunden<textarea name="publicResponse" rows={5} placeholder="Antwort, Rückfrage oder Lösung für das Kundenportal"/></label>}
+        {!activeLifecycle && data.attachmentsAvailable && <fieldset className="support-admin-file-picker"><legend>Datei für den Kunden (optional)</legend><label className="support-admin-file-button">Screenshot oder PDF auswählen<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => { try { setResponseFiles(selectedSupportFiles(responseFiles, event.target.files)); setError(""); } catch (reason) { setError((reason as Error).message); } event.target.value = ""; }}/></label><small>JPG, PNG, WebP oder PDF · höchstens 5 Dateien · je maximal 10 MB</small>{responseFiles.length > 0 && <div className="support-admin-pending-files">{responseFiles.map((file, index) => <span key={`${file.name}-${file.lastModified}-${index}`}><b>{file.name}</b><small>{fileSize(file.size)}</small><button type="button" aria-label={`${file.name} entfernen`} onClick={() => setResponseFiles((files) => files.filter((_, candidate) => candidate !== index))}>×</button></span>)}</div>}</fieldset>}
         {active.status !== "cancelled" && <label>Interne Notiz<textarea name="internalNote" rows={3} placeholder="Nur für SwissCompact sichtbar"/></label>}
-        {error && <p className="form-error">{error}</p>}
+        {uploadState && <p className="support-admin-upload-state" role="status">{uploadState}</p>}{error && <p className="form-error">{error}</p>}
         <footer className="support-ticket-actions">
           <button type="button" className="secondary" onClick={closeTicketDialog}>Zurück</button>
           {!activeLifecycle && active.ai_handling_status !== "disabled" && <button type="button" className="secondary" disabled={busy} onClick={() => void changeAiMode("takeover")}>Persönlich übernehmen</button>}

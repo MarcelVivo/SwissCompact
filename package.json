@@ -66,6 +66,7 @@
     "test:pov": "node scripts/pov-navigation-smoke.mjs",
     "test:dashboard": "node scripts/dashboard-core-smoke.mjs",
     "test:portal": "node scripts/portal-foundation-smoke.mjs",
+    "test:support-attachments": "node scripts/support-attachments-smoke.mjs",
     "test:portal-media": "node scripts/portal-media-pipeline-smoke.mjs",
     "test:project-collaboration": "node scripts/project-collaboration-smoke.mjs",
     "test:portal-ai": "node scripts/portal-ai-billing-smoke.mjs",

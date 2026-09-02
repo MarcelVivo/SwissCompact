@@ -21,6 +21,7 @@ type Payload = Record<string, unknown>;
 
 const PORTAL_MEDIA_BUCKET = "swisscompact-media";
 const PORTAL_EXPORT_BUCKET = "swisscompact-exports";
+const SUPPORT_ATTACHMENT_BUCKET = "swisscompact-support";
 const MUX_VIDEO_MAX_BYTES = 5 * 1024 * 1024 * 1024;
 const PORTAL_MEDIA_TYPES: Record<string, { type: "image" | "video"; extension: string; maxBytes: number }> = {
   "image/jpeg": { type: "image", extension: "jpg", maxBytes: 20 * 1024 * 1024 },
@@ -35,6 +36,79 @@ const PROJECT_FILE_TYPES: Record<string, { extension: string; maxBytes: number; 
   ...Object.fromEntries(Object.entries(PORTAL_MEDIA_TYPES).map(([mime, config]) => [mime, { extension: config.extension, maxBytes: Math.min(config.maxBytes, 250 * 1024 * 1024), kind: config.type }])),
   "application/pdf": { extension: "pdf", maxBytes: 20 * 1024 * 1024, kind: "document" },
 };
+const SUPPORT_ATTACHMENT_TYPES: Record<string, { extension: string; maxBytes: number; kind: "image" | "document" }> = {
+  "image/jpeg": { extension: "jpg", maxBytes: 10 * 1024 * 1024, kind: "image" },
+  "image/png": { extension: "png", maxBytes: 10 * 1024 * 1024, kind: "image" },
+  "image/webp": { extension: "webp", maxBytes: 10 * 1024 * 1024, kind: "image" },
+  "application/pdf": { extension: "pdf", maxBytes: 10 * 1024 * 1024, kind: "document" },
+};
+
+async function storedObject(client: any, bucket: string, path: string): Promise<any | null> {
+  const parts = path.split("/");
+  const filename = parts.pop() || "";
+  const directory = parts.join("/");
+  if (!filename || !directory) return null;
+  const stored = await client.storage.from(bucket).list(directory, { limit: 10, search: filename });
+  if (stored.error) return null;
+  return stored.data?.find((entry: any) => entry.name === filename) ?? null;
+}
+
+async function prepareSupportAttachment(client: any, values: {
+  tenantId: string; ticketId: string; uploadedBy: string; uploadedByType: "customer" | "support";
+  fileName: string; mimeType: string; sizeBytes: number; aiAnalysisAllowed: boolean;
+}): Promise<{ attachment: any; upload: { signedUrl: string; path: string } } | { error: string; status: number }> {
+  const fileConfig = SUPPORT_ATTACHMENT_TYPES[values.mimeType];
+  if (!values.fileName || !fileConfig || values.sizeBytes < 1 || values.sizeBytes > fileConfig.maxBytes) {
+    return { error: "Unterstützt werden JPG, PNG, WebP und PDF bis 10 MB.", status: 400 };
+  }
+  const existing = await client.from("support_ticket_attachments").select("id", { count: "exact", head: true }).eq("ticket_id", values.ticketId).neq("upload_status", "failed");
+  if (existing.error) return { error: "Support-Anhänge sind noch nicht eingerichtet.", status: 503 };
+  if (Number(existing.count || 0) >= 30) return { error: "Dieses Ticket enthält bereits 30 Anhänge. Bitte erstellen Sie bei Bedarf eine neue Supportanfrage.", status: 409 };
+  const storagePath = `${values.tenantId}/tickets/${values.ticketId}/${randomBytes(18).toString("hex")}.${fileConfig.extension}`;
+  const created = await client.from("support_ticket_attachments").insert({
+    tenant_id: values.tenantId,
+    ticket_id: values.ticketId,
+    uploaded_by: values.uploadedBy,
+    uploaded_by_type: values.uploadedByType,
+    file_name: values.fileName,
+    mime_type: values.mimeType,
+    size_bytes: values.sizeBytes,
+    storage_path: storagePath,
+    upload_status: "uploading",
+    visible_to_customer: true,
+    ai_analysis_allowed: values.uploadedByType === "customer" && fileConfig.kind === "image" && values.aiAnalysisAllowed,
+  }).select("id,ticket_id,file_name,mime_type,size_bytes,upload_status,ai_analysis_allowed,created_at").single();
+  if (created.error) return { error: "Der Dateiupload konnte nicht vorbereitet werden.", status: 409 };
+  const signed = await client.storage.from(SUPPORT_ATTACHMENT_BUCKET).createSignedUploadUrl(storagePath);
+  if (signed.error || !signed.data?.signedUrl) {
+    await client.from("support_ticket_attachments").update({ upload_status: "failed" }).eq("id", created.data.id);
+    return { error: "Der sichere Dateiupload ist momentan nicht verfügbar.", status: 503 };
+  }
+  return { attachment: created.data, upload: { signedUrl: signed.data.signedUrl, path: signed.data.path } };
+}
+
+async function finalizeSupportAttachment(client: any, attachment: any): Promise<{ attachment: any } | { error: string; status: number }> {
+  const object = await storedObject(client, SUPPORT_ATTACHMENT_BUCKET, attachment.storage_path);
+  if (!object) return { error: "Die Datei wurde noch nicht vollständig übertragen.", status: 409 };
+  const actualSize = Math.max(0, Math.floor(Number(object.metadata?.size) || Number(attachment.size_bytes) || 0));
+  const storedMime = cleanText(object.metadata?.mimetype, 100).toLowerCase();
+  if (actualSize < 1 || actualSize > 10 * 1024 * 1024 || (storedMime && !SUPPORT_ATTACHMENT_TYPES[storedMime])) {
+    await Promise.all([
+      client.storage.from(SUPPORT_ATTACHMENT_BUCKET).remove([attachment.storage_path]),
+      client.from("support_ticket_attachments").update({ upload_status: "failed" }).eq("id", attachment.id),
+    ]);
+    return { error: "Die übertragene Datei entspricht nicht dem erlaubten Format oder Grössenlimit.", status: 409 };
+  }
+  const readyAt = new Date().toISOString();
+  const finalized = await client.from("support_ticket_attachments").update({
+    upload_status: "ready",
+    size_bytes: actualSize,
+    ready_at: readyAt,
+    updated_at: readyAt,
+  }).eq("id", attachment.id).eq("upload_status", "uploading").select("id,ticket_id,message_id,file_name,mime_type,size_bytes,upload_status,ai_analysis_allowed,ready_at,created_at").maybeSingle();
+  if (finalized.error || !finalized.data) return { error: "Die Datei wurde übertragen, konnte aber nicht abgeschlossen werden.", status: 409 };
+  return { attachment: finalized.data };
+}
 
 function normalizedMediaMetadata(value: unknown, type: "image" | "video"): Record<string, unknown> | null {
   if (!value || typeof value !== "object") return null;
@@ -553,19 +627,23 @@ async function buildPortalDataExport(admin: any, profile: PortalProfile, request
     requester: { userId: profile.userId, membershipId: profile.membershipId, name: profile.displayName, email: profile.email, role: profile.role },
   };
   if (requestType === "personal_export") {
-    const [membership, auditEvents, legalAcceptances, dataRightsRequests] = await Promise.all([
+    const [membership, auditEvents, legalAcceptances, dataRightsRequests, supportTickets, supportMessages, supportAttachments, supportFeedback] = await Promise.all([
       requiredExportRows(admin.from("tenant_memberships").select("id,tenant_id,user_id,role,display_name,active,access_status,invited_at,accepted_at,verified_at,revoked_at,created_at,updated_at").eq("id", profile.membershipId).eq("tenant_id", profile.tenantId), "Portalzugang"),
       requiredExportRows(admin.from("tenant_audit_log").select("id,action,entity_type,entity_id,metadata,created_at").eq("tenant_id", profile.tenantId).eq("actor_user_id", profile.userId).order("created_at", { ascending: false }).limit(10_000), "Aktivitätsprotokoll"),
       requiredExportRows(admin.from("legal_acceptances").select("id,document_id,document_type_snapshot,acceptance_scope_snapshot,version_snapshot,title_snapshot,content_hash_snapshot,accepted_at,request_metadata").eq("tenant_id", profile.tenantId).eq("user_id", profile.userId).order("accepted_at", { ascending: false }), "Zustimmungsnachweise"),
       requiredExportRows(admin.from("tenant_data_rights_requests").select("id,request_type,status,reason,retention_resolution,review_note,reviewed_at,completed_at,cancelled_at,created_at,updated_at").eq("tenant_id", profile.tenantId).eq("requested_by", profile.userId).order("created_at", { ascending: false }), "Datenschutzanfragen"),
+      requiredExportRows(admin.from("support_tickets").select("id,ticket_number,category,priority,status,title,description,first_response_due_at,first_responded_at,resolved_at,closed_at,created_at,updated_at").eq("tenant_id", profile.tenantId).eq("requested_by", profile.userId).order("created_at"), "Eigene Supportanfragen"),
+      requiredExportRows(admin.from("support_ticket_messages").select("id,ticket_id,author_type,author_name,body,visible_to_customer,created_at").eq("tenant_id", profile.tenantId).eq("author_user_id", profile.userId).order("created_at"), "Eigene Supportnachrichten"),
+      requiredExportRows(admin.from("support_ticket_attachments").select("id,ticket_id,message_id,file_name,mime_type,size_bytes,upload_status,ai_analysis_allowed,ready_at,created_at").eq("tenant_id", profile.tenantId).eq("uploaded_by", profile.userId).order("created_at"), "Eigene Supportanhänge"),
+      requiredExportRows(admin.from("support_ai_feedback").select("id,ticket_id,message_id,rating,comment,created_at,updated_at").eq("tenant_id", profile.tenantId).eq("submitted_by", profile.userId).order("created_at"), "Eigenes Supportfeedback"),
     ]);
-    return { ...common, data: { membership, auditEvents, legalAcceptances, dataRightsRequests } };
+    return { ...common, data: { membership, auditEvents, legalAcceptances, dataRightsRequests, supportTickets, supportMessages, supportAttachments, supportFeedback } };
   }
 
   const campaignReferences = await requiredExportRows(admin.from("tenant_campaigns").select("id").eq("tenant_id", profile.tenantId), "Kampagnenbezüge") as Array<{ id: string }>;
   const campaignIds = campaignReferences.map((item) => item.id);
   const emptyResult = Promise.resolve({ data: [], error: null });
-  const [tenant, sites, areas, displays, content, campaigns, campaignContent, campaignDisplays, targetContent, memberships, subscription, auditEvents, legalAcceptances, dataRightsRequests, quotes, projects, invoices] = await Promise.all([
+  const [tenant, sites, areas, displays, content, campaigns, campaignContent, campaignDisplays, targetContent, memberships, subscription, auditEvents, legalAcceptances, dataRightsRequests, quotes, projects, invoices, supportTickets, supportMessages, supportAttachments, supportFeedback] = await Promise.all([
     requiredExportRows(admin.from("tenants").select("id,client_id,name,slug,status,branding,enabled_modules,created_at,updated_at").eq("id", profile.tenantId), "Kundenportal"),
     requiredExportRows(admin.from("tenant_sites").select("*").eq("tenant_id", profile.tenantId).order("created_at"), "Standorte"),
     requiredExportRows(admin.from("tenant_areas").select("*").eq("tenant_id", profile.tenantId).order("created_at"), "Bereiche"),
@@ -583,8 +661,12 @@ async function buildPortalDataExport(admin: any, profile: PortalProfile, request
     requiredExportRows(admin.from("quotes").select("id,quote_number,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at").eq("client_id", profile.clientId).order("created_at"), "Offerten"),
     requiredExportRows(admin.from("projects").select("id,quote_id,opportunity_id,order_number,title,status,starts_on,target_completion,deposit_received,installation_payment_received,final_payment_received,created_at,updated_at").eq("client_id", profile.clientId).order("created_at"), "Aufträge"),
     requiredExportRows(admin.from("invoices").select("id,quote_id,project_id,invoice_number,installment,status,amount,currency,issued_on,due_on,paid_at,document_hash,created_at,updated_at").eq("client_id", profile.clientId).order("created_at"), "Rechnungen"),
+    requiredExportRows(admin.from("support_tickets").select("id,ticket_number,requested_by,affected_display_id,category,priority,status,title,description,package_code_snapshot,support_label_snapshot,coverage_snapshot,response_target_minutes,first_response_due_at,first_responded_at,resolved_at,closed_at,created_at,updated_at").eq("tenant_id", profile.tenantId).order("created_at"), "Supportanfragen"),
+    requiredExportRows(admin.from("support_ticket_messages").select("id,ticket_id,author_user_id,author_type,author_name,body,visible_to_customer,created_at").eq("tenant_id", profile.tenantId).order("created_at"), "Supportnachrichten"),
+    requiredExportRows(admin.from("support_ticket_attachments").select("id,ticket_id,message_id,uploaded_by,uploaded_by_type,file_name,mime_type,size_bytes,upload_status,visible_to_customer,ai_analysis_allowed,ready_at,created_at").eq("tenant_id", profile.tenantId).order("created_at"), "Supportanhänge"),
+    requiredExportRows(admin.from("support_ai_feedback").select("id,ticket_id,message_id,submitted_by,rating,comment,created_at,updated_at").eq("tenant_id", profile.tenantId).order("created_at"), "Supportfeedback"),
   ]);
-  return { ...common, data: { tenant, sites, areas, displays, content, campaigns, campaignContent, campaignDisplays, targetContent, memberships, subscription, auditEvents, legalAcceptances, dataRightsRequests, quotes, projects, invoices } };
+  return { ...common, data: { tenant, sites, areas, displays, content, campaigns, campaignContent, campaignDisplays, targetContent, memberships, subscription, auditEvents, legalAcceptances, dataRightsRequests, quotes, projects, invoices, supportTickets, supportMessages, supportAttachments, supportFeedback } };
 }
 
 function triggerJsonDownload(url: string, fileName: string): Record<string, unknown> {
@@ -711,11 +793,12 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     });
     if (created.error || !created.data) return json({ error: created.error?.message || "Supportanfrage konnte nicht erstellt werden" }, { status: 400 });
     const ticketId = String(created.data);
-    const ticket = await client.from("support_tickets").select("id,ticket_number,first_response_due_at,support_label_snapshot").eq("id", ticketId).eq("tenant_id", profile.tenantId).single();
+    const ticket = await client.from("support_tickets").select("id,ticket_number,first_response_due_at,support_label_snapshot,ai_handling_status").eq("id", ticketId).eq("tenant_id", profile.tenantId).single();
     const admin = dashboardSupabase();
-    const aiResult = admin
+    const deferAi = body.deferAi === true && ticket.data?.ai_handling_status === "eligible";
+    const aiResult = admin && !deferAi
       ? await processSupportWithAi(admin, ticketId)
-      : { notifyAdmin: true };
+      : { notifyAdmin: !admin };
     if (admin && aiResult.notifyAdmin && process.env.RESEND_API_KEY) {
       try {
         const mail = await new Resend(process.env.RESEND_API_KEY).emails.send({
@@ -733,13 +816,77 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true, ticket: ticket.data ?? { id: ticketId } });
   }
 
+  if (action === "prepare_support_attachment") {
+    const admin = dashboardSupabase();
+    const ticketId = cleanText(body.ticketId, 80);
+    const fileName = safeFileName(body.fileName);
+    const mimeType = cleanText(body.mimeType, 100).toLowerCase();
+    const sizeBytes = Math.max(0, Math.floor(Number(body.sizeBytes) || 0));
+    if (!admin || !ticketId) return json({ error: "Supportticket oder Dateispeicher fehlt." }, { status: 400 });
+    const ticket = await admin.from("support_tickets").select("id,status").eq("id", ticketId).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (!ticket.data) return json({ error: "Supportanfrage nicht gefunden." }, { status: 404 });
+    if (["closed", "cancelled"].includes(ticket.data.status)) return json({ error: "Zu diesem abgeschlossenen Ticket können keine Dateien mehr hochgeladen werden." }, { status: 409 });
+    const prepared = await prepareSupportAttachment(admin, {
+      tenantId: profile.tenantId,
+      ticketId,
+      uploadedBy: profile.userId,
+      uploadedByType: "customer",
+      fileName,
+      mimeType,
+      sizeBytes,
+      aiAnalysisAllowed: body.aiAnalysisAllowed === true,
+    });
+    if ("error" in prepared) return json({ error: prepared.error }, { status: prepared.status });
+    return json({ ok: true, ...prepared });
+  }
+
+  if (action === "finalize_support_attachment") {
+    const admin = dashboardSupabase();
+    const attachmentId = cleanText(body.attachmentId, 80);
+    if (!admin || !attachmentId) return json({ error: "Supportanhang fehlt." }, { status: 400 });
+    const attachment = await admin.from("support_ticket_attachments").select("*").eq("id", attachmentId).eq("tenant_id", profile.tenantId).eq("uploaded_by", profile.userId).maybeSingle();
+    if (!attachment.data) return json({ error: "Supportanhang nicht gefunden." }, { status: 404 });
+    if (attachment.data.upload_status === "ready") return json({ ok: true, attachment: attachment.data });
+    const finalized = await finalizeSupportAttachment(admin, attachment.data);
+    if ("error" in finalized) return json({ error: finalized.error }, { status: finalized.status });
+    await admin.from("tenant_audit_log").insert({ tenant_id: profile.tenantId, actor_user_id: profile.userId, action: "support_attachment_uploaded", entity_type: "support_ticket", entity_id: attachment.data.ticket_id, metadata: { attachmentId, fileName: attachment.data.file_name, aiAnalysisAllowed: attachment.data.ai_analysis_allowed } });
+    return json({ ok: true, attachment: finalized.attachment });
+  }
+
+  if (action === "process_support_ticket") {
+    const admin = dashboardSupabase();
+    const ticketId = cleanText(body.ticketId, 80);
+    if (!admin || !ticketId) return json({ error: "Supportanfrage fehlt." }, { status: 400 });
+    const ticket = await admin.from("support_tickets").select("id,status,ai_handling_status").eq("id", ticketId).eq("tenant_id", profile.tenantId).maybeSingle();
+    if (!ticket.data) return json({ error: "Supportanfrage nicht gefunden." }, { status: 404 });
+    if (["closed", "cancelled"].includes(ticket.data.status)) return json({ error: "Diese Supportanfrage ist bereits abgeschlossen." }, { status: 409 });
+    const latest = await admin.from("support_ticket_attachments").select("ready_at").eq("ticket_id", ticketId).eq("upload_status", "ready").order("ready_at", { ascending: false }).limit(1).maybeSingle();
+    const trigger = `attachments:${ticketId}:${latest.data?.ready_at || ticket.data.ai_handling_status}`;
+    const result = await processSupportWithAi(admin, ticketId, null, trigger);
+    return json({ ok: true, ai: result });
+  }
+
   if (action === "add_support_message") {
     const ticketId = cleanText(body.ticketId, 80);
-    const message = cleanText(body.message, 8000);
+    const attachmentIds = Array.isArray(body.attachmentIds)
+      ? [...new Set(body.attachmentIds.map((entry) => cleanText(entry, 80)).filter(Boolean))].slice(0, 5)
+      : [];
+    let message = cleanText(body.message, 8000);
+    if (!message && attachmentIds.length) message = "Ich habe zusätzliche Dateien zur Supportanfrage hochgeladen.";
+    if (!message) return json({ error: "Schreiben Sie eine Nachricht oder wählen Sie mindestens eine Datei aus." }, { status: 400 });
+    const admin = dashboardSupabase();
+    if (attachmentIds.length) {
+      if (!admin) return json({ error: "Dateianhänge sind momentan nicht verfügbar." }, { status: 503 });
+      const attachments = await admin.from("support_ticket_attachments").select("id").in("id", attachmentIds).eq("ticket_id", ticketId).eq("tenant_id", profile.tenantId).eq("uploaded_by", profile.userId).eq("upload_status", "ready").is("message_id", null);
+      if (attachments.error || attachments.data?.length !== attachmentIds.length) return json({ error: "Mindestens ein Anhang ist noch nicht vollständig hochgeladen." }, { status: 409 });
+    }
     const added = await client.rpc("add_customer_support_message", { target_ticket: ticketId, message_body: message });
     if (added.error || !added.data) return json({ error: added.error?.message || "Nachricht konnte nicht gesendet werden" }, { status: 400 });
+    if (attachmentIds.length && admin) {
+      const linked = await admin.from("support_ticket_attachments").update({ message_id: String(added.data), updated_at: new Date().toISOString() }).in("id", attachmentIds).eq("ticket_id", ticketId).eq("tenant_id", profile.tenantId).eq("uploaded_by", profile.userId).eq("upload_status", "ready").is("message_id", null);
+      if (linked.error) return json({ error: "Die Nachricht wurde gespeichert, die Anhänge konnten aber noch nicht zugeordnet werden." }, { status: 409 });
+    }
     const ticket = await client.from("support_tickets").select("ticket_number,title").eq("id", ticketId).eq("tenant_id", profile.tenantId).maybeSingle();
-    const admin = dashboardSupabase();
     const aiResult = admin
       ? await processSupportWithAi(admin, ticketId, String(added.data))
       : { notifyAdmin: true };
@@ -1887,6 +2034,33 @@ async function handlePortalProjectFile(request: Request): Promise<Response> {
   return json({ ok: true, url: signed.data.signedUrl, expiresIn: 600 });
 }
 
+async function handleSupportAttachment(request: Request, attachmentId: string): Promise<Response> {
+  const portalAudience = new URL(request.url).searchParams.get("audience") === "portal";
+  const admin = dashboardSupabase();
+  if (!admin || !attachmentId) return json({ error: "Supportanhang ist nicht verfügbar." }, { status: 503 });
+
+  let actorUserId = "";
+  let attachment: any = null;
+  if (portalAudience) {
+    const authorized = await authorizePortal(request);
+    if (isResponse(authorized)) return authorized;
+    actorUserId = authorized.profile.userId;
+    const result = await admin.from("support_ticket_attachments").select("id,tenant_id,ticket_id,file_name,mime_type,storage_path,visible_to_customer,upload_status").eq("id", attachmentId).eq("tenant_id", authorized.profile.tenantId).eq("visible_to_customer", true).eq("upload_status", "ready").maybeSingle();
+    attachment = result.data;
+  } else {
+    const authorized = await authorizeDashboard(request);
+    if (isResponse(authorized)) return authorized;
+    actorUserId = authorized.profile.userId;
+    const result = await admin.from("support_ticket_attachments").select("id,tenant_id,ticket_id,file_name,mime_type,storage_path,visible_to_customer,upload_status").eq("id", attachmentId).eq("upload_status", "ready").maybeSingle();
+    attachment = result.data;
+  }
+  if (!attachment) return json({ error: "Supportanhang nicht gefunden." }, { status: 404 });
+  const signed = await admin.storage.from(SUPPORT_ATTACHMENT_BUCKET).createSignedUrl(attachment.storage_path, 10 * 60);
+  if (signed.error || !signed.data?.signedUrl) return json({ error: "Der Anhang konnte nicht sicher geöffnet werden." }, { status: 503 });
+  await admin.from("tenant_audit_log").insert({ tenant_id: attachment.tenant_id, actor_user_id: actorUserId, action: "support_attachment_opened", entity_type: "support_ticket", entity_id: attachment.ticket_id, metadata: { attachmentId: attachment.id, fileName: attachment.file_name } });
+  return json({ ok: true, url: signed.data.signedUrl, fileName: attachment.file_name, mimeType: attachment.mime_type, expiresIn: 600 });
+}
+
 function amount(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.round(Math.min(parsed, 1_000_000_000) * 100) / 100) : 0;
@@ -2102,6 +2276,45 @@ export async function POST(request: Request): Promise<Response> {
 
   if (isSupportKnowledgeAction(action)) return handleSupportKnowledgeAction(client, profile, body, action);
 
+  if (action === "prepare_support_attachment") {
+    if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Kundendateien senden." }, { status: 403 });
+    const admin = dashboardSupabase();
+    const ticketId = cleanText(body.ticketId, 80);
+    const fileName = safeFileName(body.fileName);
+    const mimeType = cleanText(body.mimeType, 100).toLowerCase();
+    const sizeBytes = Math.max(0, Math.floor(Number(body.sizeBytes) || 0));
+    if (!admin || !ticketId) return json({ error: "Supportticket oder Dateispeicher fehlt." }, { status: 400 });
+    const ticket = await admin.from("support_tickets").select("id,tenant_id,status").eq("id", ticketId).maybeSingle();
+    if (!ticket.data) return json({ error: "Supportanfrage nicht gefunden." }, { status: 404 });
+    if (["closed", "cancelled"].includes(ticket.data.status)) return json({ error: "Zu diesem abgeschlossenen Ticket können keine Dateien mehr hochgeladen werden." }, { status: 409 });
+    const prepared = await prepareSupportAttachment(admin, {
+      tenantId: ticket.data.tenant_id,
+      ticketId,
+      uploadedBy: profile.userId,
+      uploadedByType: "support",
+      fileName,
+      mimeType,
+      sizeBytes,
+      aiAnalysisAllowed: false,
+    });
+    if ("error" in prepared) return json({ error: prepared.error }, { status: prepared.status });
+    return json({ ok: true, ...prepared });
+  }
+
+  if (action === "finalize_support_attachment") {
+    if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Kundendateien senden." }, { status: 403 });
+    const admin = dashboardSupabase();
+    const attachmentId = cleanText(body.attachmentId, 80);
+    if (!admin || !attachmentId) return json({ error: "Supportanhang fehlt." }, { status: 400 });
+    const attachment = await admin.from("support_ticket_attachments").select("*").eq("id", attachmentId).eq("uploaded_by", profile.userId).eq("uploaded_by_type", "support").maybeSingle();
+    if (!attachment.data) return json({ error: "Supportanhang nicht gefunden." }, { status: 404 });
+    if (attachment.data.upload_status === "ready") return json({ ok: true, attachment: attachment.data });
+    const finalized = await finalizeSupportAttachment(admin, attachment.data);
+    if ("error" in finalized) return json({ error: finalized.error }, { status: finalized.status });
+    await writeAudit(client, profile, "support_attachment_uploaded", "support_ticket", attachment.data.ticket_id, null, { attachmentId, fileName: attachment.data.file_name });
+    return json({ ok: true, attachment: finalized.attachment });
+  }
+
   if (action === "update_support_ticket") {
     if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Supportfälle bearbeiten" }, { status: 403 });
     const id = cleanText(body.id, 80);
@@ -2109,6 +2322,9 @@ export async function POST(request: Request): Promise<Response> {
     const priority = cleanText(body.priority, 20);
     const publicResponse = cleanText(body.publicResponse, 8000);
     const internalNote = cleanText(body.internalNote, 8000);
+    const attachmentIds = Array.isArray(body.attachmentIds)
+      ? [...new Set(body.attachmentIds.map((entry) => cleanText(entry, 80)).filter(Boolean))].slice(0, 5)
+      : [];
     const assignedTo = cleanText(body.assignedTo, 80) || null;
     if (!id || !["new", "in_progress", "waiting_customer", "resolved", "closed", "cancelled"].includes(status) || !["low", "normal", "high", "critical"].includes(priority)) {
       return json({ error: "Ungültiger Supportstatus oder Priorität" }, { status: 400 });
@@ -2117,6 +2333,11 @@ export async function POST(request: Request): Promise<Response> {
     if (!admin) return json({ error: "Supportverwaltung ist nicht konfiguriert" }, { status: 503 });
     const existing = await admin.from("support_tickets").select("*,tenant:tenants(client_id,name)").eq("id", id).maybeSingle();
     if (!existing.data) return json({ error: "Supportanfrage nicht gefunden" }, { status: 404 });
+    if (attachmentIds.length && !publicResponse) return json({ error: "Ergänzen Sie zu den ausgewählten Dateien eine kurze sichtbare Nachricht für den Kunden." }, { status: 400 });
+    if (attachmentIds.length) {
+      const attachments = await admin.from("support_ticket_attachments").select("id").in("id", attachmentIds).eq("ticket_id", id).eq("tenant_id", existing.data.tenant_id).eq("uploaded_by", profile.userId).eq("uploaded_by_type", "support").eq("upload_status", "ready").is("message_id", null);
+      if (attachments.error || attachments.data?.length !== attachmentIds.length) return json({ error: "Mindestens ein Anhang ist noch nicht vollständig hochgeladen." }, { status: 409 });
+    }
     const transitions: Record<string, string[]> = {
       new: ["new", "in_progress", "waiting_customer", "resolved", "cancelled"],
       in_progress: ["in_progress", "waiting_customer", "resolved", "cancelled"],
@@ -2159,12 +2380,19 @@ export async function POST(request: Request): Promise<Response> {
     if (status === "closed") { update.resolved_at = existing.data.resolved_at || now; update.closed_at = now; }
     const changed = await admin.from("support_tickets").update(update).eq("id", id).eq("updated_at", existing.data.updated_at).select("*").maybeSingle();
     if (changed.error || !changed.data) return json({ error: "Supportanfrage wurde zwischenzeitlich verändert" }, { status: 409 });
-    const messages = [];
-    if (publicResponse) messages.push({ ticket_id: id, tenant_id: existing.data.tenant_id, author_user_id: profile.userId, author_type: "support", author_name: profile.displayName, body: publicResponse, visible_to_customer: true });
-    if (internalNote) messages.push({ ticket_id: id, tenant_id: existing.data.tenant_id, author_user_id: profile.userId, author_type: "support", author_name: profile.displayName, body: internalNote, visible_to_customer: false });
-    if (messages.length) {
-      const inserted = await admin.from("support_ticket_messages").insert(messages);
-      if (inserted.error) return json({ error: "Supportfall wurde aktualisiert, die Nachricht aber nicht gespeichert" }, { status: 500 });
+    let publicMessageId: string | null = null;
+    if (publicResponse) {
+      const inserted = await admin.from("support_ticket_messages").insert({ ticket_id: id, tenant_id: existing.data.tenant_id, author_user_id: profile.userId, author_type: "support", author_name: profile.displayName, body: publicResponse, visible_to_customer: true }).select("id").single();
+      if (inserted.error) return json({ error: "Supportfall wurde aktualisiert, die Kundenantwort aber nicht gespeichert" }, { status: 500 });
+      publicMessageId = inserted.data.id;
+    }
+    if (internalNote) {
+      const inserted = await admin.from("support_ticket_messages").insert({ ticket_id: id, tenant_id: existing.data.tenant_id, author_user_id: profile.userId, author_type: "support", author_name: profile.displayName, body: internalNote, visible_to_customer: false });
+      if (inserted.error) return json({ error: "Supportfall wurde aktualisiert, die interne Notiz aber nicht gespeichert" }, { status: 500 });
+    }
+    if (publicMessageId && attachmentIds.length) {
+      const linked = await admin.from("support_ticket_attachments").update({ message_id: publicMessageId, updated_at: now }).in("id", attachmentIds).eq("ticket_id", id).eq("tenant_id", existing.data.tenant_id).eq("uploaded_by", profile.userId).eq("uploaded_by_type", "support").eq("upload_status", "ready").is("message_id", null);
+      if (linked.error) return json({ error: "Die Antwort wurde gespeichert, die Anhänge konnten aber noch nicht zugeordnet werden." }, { status: 409 });
     }
     await writeAudit(client, profile, "support_ticket_updated", "support_ticket", id, { status: existing.data.status, priority: existing.data.priority }, { status, priority, publicResponse: Boolean(publicResponse), internalNote: Boolean(internalNote) });
     const tenant = Array.isArray(existing.data.tenant) ? existing.data.tenant[0] : existing.data.tenant;
@@ -3063,5 +3291,6 @@ export async function GET(request: Request): Promise<Response> {
   if (search.get("public") === "quote") return getPublicQuote(request);
   if (search.get("portalDocument")) return handlePortalDocument(request);
   if (search.get("portalProjectFile")) return handlePortalProjectFile(request);
+  if (search.get("supportAttachment")) return handleSupportAttachment(request, cleanText(search.get("supportAttachment"), 80));
   return json({ error: "Nicht gefunden" }, { status: 404 });
 }

@@ -23,7 +23,7 @@ export async function GET(request: Request): Promise<Response> {
     const partnerNetworkPromise = loadPartnerNetwork(customerAdmin, tenantId);
     const displayHealthRefresh = await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
     if (displayHealthRefresh.error) console.warn("portal display health refresh:", displayHealthRefresh.error.message);
-    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers, campaignVersions, legalDocuments, legalAcceptances, dataRightsRequests, supportPolicies, supportTickets, supportMessages, supportFeedback] = await Promise.all([
+    const [sites, areas, displays, content, campaigns, targetContent, subscription, members, creatorEvents, aiBalance, displayDeliveryState, campaignPriorities, displayVersions, displayTests, displayAlerts, campaignTemplates, displayGroups, displayGroupMembers, campaignVersions, legalDocuments, legalAcceptances, dataRightsRequests, supportPolicies, supportTickets, supportMessages, supportFeedback, supportAttachments] = await Promise.all([
       client.from("tenant_sites").select("id,name,address,timezone,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_areas").select("id,site_id,parent_id,name,kind,active,created_at,updated_at").eq("tenant_id", tenantId).order("name"),
       client.from("tenant_displays").select("id,site_id,area_id,name,kind,status,orientation,resolution,screen_size_inches,panel_technology,use_category,last_seen_at,configuration_version,created_at,updated_at,site:tenant_sites(name),area:tenant_areas(id,name,kind,parent_id)").eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
@@ -50,6 +50,7 @@ export async function GET(request: Request): Promise<Response> {
       client.from("support_tickets").select("id,ticket_number,requested_by,affected_display_id,category,priority,status,title,description,package_code_snapshot,support_label_snapshot,coverage_snapshot,response_target_minutes,first_response_due_at,first_responded_at,resolved_at,closed_at,created_at,updated_at,ai_handling_status,ai_attempt_count,ai_confidence,ai_escalation_reason,ai_last_responded_at,ai_escalated_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(200),
       client.from("support_ticket_messages").select("id,ticket_id,author_type,author_name,body,created_at,generated_by_ai").eq("tenant_id", tenantId).eq("visible_to_customer", true).order("created_at").limit(2000),
       client.from("support_ai_feedback").select("id,message_id,rating,comment,created_at,updated_at").eq("tenant_id", tenantId).eq("submitted_by", profile.userId).limit(2000),
+      client.from("support_ticket_attachments").select("id,ticket_id,message_id,uploaded_by_type,file_name,mime_type,size_bytes,upload_status,ai_analysis_allowed,ready_at,created_at").eq("tenant_id", tenantId).eq("visible_to_customer", true).eq("upload_status", "ready").order("created_at").limit(2000),
     ]);
     const [customerQuotes, customerProjects, customerInvoices, responsibleProfiles] = await Promise.all([
       customerAdmin.from("quotes").select("id,quote_number,opportunity_id,status,currency,total,valid_until,items,terms,document_hash,accepted_by_name,accepted_at,created_at,updated_at,opportunity:opportunities(title)").eq("client_id", profile.clientId).in("status", ["sent", "viewed", "accepted", "declined", "expired"]).order("updated_at", { ascending: false }).limit(100),
@@ -102,6 +103,7 @@ export async function GET(request: Request): Promise<Response> {
     if (!notificationsAvailable) console.warn("portal notification read cursors are not migrated yet", notificationCursors.error?.message);
     const supportAvailable = !supportPolicies.error && !supportTickets.error && !supportMessages.error;
     const supportFeedbackAvailable = !supportFeedback.error;
+    const supportAttachmentsAvailable = !supportAttachments.error;
     if (!supportAvailable) console.warn("portal support SLA is not migrated yet", supportPolicies.error?.message || supportTickets.error?.message || supportMessages.error?.message);
     const customerRecordsError = [customerQuotes, customerProjects, customerInvoices, responsibleProfiles].find((result) => result.error)?.error;
     if (customerRecordsError) {
@@ -291,10 +293,12 @@ export async function GET(request: Request): Promise<Response> {
       support: {
         available: supportAvailable,
         feedbackAvailable: supportFeedbackAvailable,
+        attachmentsAvailable: supportAttachmentsAvailable,
         policy: supportAvailable ? (supportPolicies.data ?? []).find((entry: any) => entry.package_code === subscription.data?.package_code) ?? null : null,
         tickets: supportAvailable ? supportTickets.data ?? [] : [],
         messages: supportAvailable ? supportMessages.data ?? [] : [],
         feedback: supportFeedbackAvailable ? supportFeedback.data ?? [] : [],
+        attachments: supportAttachmentsAvailable ? supportAttachments.data ?? [] : [],
       },
       subscription: subscription.data ?? null,
       members: (members.data ?? []).filter((member) => member.active && member.access_status === "active" && member.verified_at),
@@ -348,13 +352,15 @@ export async function GET(request: Request): Promise<Response> {
     authAdmin.from("support_ai_knowledge").select("*").order("category").order("title"),
     authAdmin.from("support_ai_runs").select("*").order("created_at", { ascending: false }).limit(5000),
     authAdmin.from("support_ai_feedback").select("*").order("created_at", { ascending: false }).limit(5000),
+    authAdmin.from("support_ticket_attachments").select("*").eq("upload_status", "ready").order("created_at").limit(5000),
   ]) : null;
-  const [legalDocumentsAdmin, operationalIncidents, operationalDeliveries, recoveryDrills, fleetAlerts, mediaFailures, stripeFailures, supportPoliciesAdmin, supportTicketsAdmin, supportMessagesAdmin, supportKnowledgeAdmin, supportAiRunsAdmin, supportAiFeedbackAdmin] = operationalAdminData ?? [];
+  const [legalDocumentsAdmin, operationalIncidents, operationalDeliveries, recoveryDrills, fleetAlerts, mediaFailures, stripeFailures, supportPoliciesAdmin, supportTicketsAdmin, supportMessagesAdmin, supportKnowledgeAdmin, supportAiRunsAdmin, supportAiFeedbackAdmin, supportAttachmentsAdmin] = operationalAdminData ?? [];
   const legalManagementAvailable = Boolean(legalDocumentsAdmin && !legalDocumentsAdmin.error);
   const operationsAvailable = Boolean(operationalIncidents && operationalDeliveries && recoveryDrills && !operationalIncidents.error && !operationalDeliveries.error && !recoveryDrills.error);
   const supportAvailable = Boolean(supportPoliciesAdmin && supportTicketsAdmin && supportMessagesAdmin && !supportPoliciesAdmin.error && !supportTicketsAdmin.error && !supportMessagesAdmin.error);
   const supportKnowledgeAvailable = Boolean(supportKnowledgeAdmin && !supportKnowledgeAdmin.error);
   const supportControlCenterAvailable = Boolean(supportAiRunsAdmin && supportAiFeedbackAdmin && !supportAiRunsAdmin.error && !supportAiFeedbackAdmin.error);
+  const supportAttachmentsAvailable = Boolean(supportAttachmentsAdmin && !supportAttachmentsAdmin.error);
   const enrichedPortalMemberships = (portalMemberships.data ?? []).map((membership) => {
     const portalUser = usersById.get(membership.user_id);
     return { ...membership, email: portalUser?.email ?? null, email_confirmed_at: portalUser?.email_confirmed_at ?? null, last_sign_in_at: portalUser?.last_sign_in_at ?? null };
@@ -452,11 +458,13 @@ export async function GET(request: Request): Promise<Response> {
       available: supportAvailable,
       aiAvailable: supportKnowledgeAvailable,
       controlCenterAvailable: supportControlCenterAvailable,
+      attachmentsAvailable: supportAttachmentsAvailable,
       policies: supportAvailable ? supportPoliciesAdmin?.data ?? [] : [],
       tickets: supportAvailable ? supportTicketsAdmin?.data ?? [] : [],
       messages: supportAvailable ? supportMessagesAdmin?.data ?? [] : [],
       runs: supportControlCenterAvailable ? supportAiRunsAdmin?.data ?? [] : [],
       feedback: supportControlCenterAvailable ? supportAiFeedbackAdmin?.data ?? [] : [],
+      attachments: supportAttachmentsAvailable ? supportAttachmentsAdmin?.data ?? [] : [],
       knowledge: supportKnowledgeAvailable ? (supportKnowledgeAdmin?.data ?? []).map((entry: any) => ({
         ...entry,
         approved_by_name: entry.approved_by ? (profiles.data ?? []).find((candidate: any) => candidate.user_id === entry.approved_by)?.display_name ?? null : null,

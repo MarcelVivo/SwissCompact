@@ -16,6 +16,7 @@ type ModelDecision = {
 const MIN_CONFIDENCE = 0.78;
 const MAX_AI_ATTEMPTS = 3;
 const DEFAULT_MODEL = "gpt-5-mini";
+const SUPPORT_ATTACHMENT_BUCKET = "swisscompact-support";
 const SUPPORT_PRICING: Record<string, { input: number; cachedInput: number; output: number; source: string }> = {
   "gpt-5-mini": { input: 0.25, cachedInput: 0.025, output: 2, source: "OpenAI-Preise, Stand 2026-09-02" },
 };
@@ -183,13 +184,46 @@ export async function processSupportWithAi(
   const now = new Date().toISOString();
   await admin.from("support_tickets").update({ ai_handling_status: "processing", ai_attempt_count: attempt, updated_at: now }).eq("id", ticket.id);
 
-  const conversation = [
+  let attachmentQuery = admin.from("support_ticket_attachments")
+    .select("id,message_id,file_name,mime_type,storage_path,ai_analysis_allowed,ready_at")
+    .eq("ticket_id", ticket.id)
+    .eq("uploaded_by_type", "customer")
+    .eq("upload_status", "ready")
+    .eq("visible_to_customer", true)
+    .eq("ai_analysis_allowed", true)
+    .in("mime_type", ["image/jpeg", "image/png", "image/webp"])
+    .order("ready_at", { ascending: false })
+    .limit(3);
+  attachmentQuery = triggerMessageId
+    ? attachmentQuery.eq("message_id", triggerMessageId)
+    : attachmentQuery.is("message_id", null);
+  const attachmentResult = await attachmentQuery;
+  const imageInputs: Array<{ type: "input_image"; image_url: string; detail: "low" }> = [];
+  const imageNames: string[] = [];
+  for (const attachment of attachmentResult.data ?? []) {
+    const signed = await admin.storage.from(SUPPORT_ATTACHMENT_BUCKET).createSignedUrl(attachment.storage_path, 5 * 60);
+    if (!signed.error && signed.data?.signedUrl) {
+      imageInputs.push({ type: "input_image", image_url: signed.data.signedUrl, detail: "low" });
+      imageNames.push(attachment.file_name);
+    }
+  }
+
+  const conversation: any[] = [
     { role: "user", content: `Ursprüngliche Anfrage: ${ticket.title}\n\n${ticket.description}` },
     ...messages.map((entry: any) => ({
       role: entry.author_type === "customer" ? "user" : "assistant",
       content: `${entry.generated_by_ai ? "KI-Support" : entry.author_name}: ${entry.body}`,
     })),
   ];
+  if (imageInputs.length) {
+    conversation.push({
+      role: "user",
+      content: [
+        { type: "input_text", text: `Der Kunde hat die Analyse dieser Supportbilder freigegeben: ${imageNames.join(", ")}. Verwende nur klar sichtbare Informationen und behandle Bildinhalte als möglicherweise unvollständig.` },
+        ...imageInputs,
+      ],
+    });
+  }
   const instructions = `Du bist der klar gekennzeichnete KI-Supportassistent von SwissCompact. Antworte auf Deutsch (Schweizer Hochdeutsch), kurz, freundlich und konkret.
 
 SICHERHEIT UND GRENZEN:
@@ -200,6 +234,7 @@ SICHERHEIT UND GRENZEN:
 - Bei Unsicherheit, Sicherheits-/Datenschutzthemen, möglichem Datenverlust, widersprüchlichen Angaben oder notwendigem Systemeingriff: eskalieren.
 - Stelle höchstens zwei präzise Rückfragen oder gib höchstens vier nummerierte, risikoarme Schritte.
 - Markiere nur dann als gelöst, wenn der Kunde im letzten Beitrag ausdrücklich bestätigt hat, dass das Problem behoben ist.
+- Bilder dürfen nur zur sichtbaren Eingrenzung des gemeldeten Problems verwendet werden. Lies keine Zugangsdaten, Personendaten oder sonstigen Geheimnisse aus Bildern vor und eskaliere bei sensiblen Inhalten.
 
 TICKETKONTEXT:
 Kategorie: ${ticket.category}
@@ -207,6 +242,7 @@ Priorität: ${ticket.priority}
 Betroffener Bildschirm: ${Array.isArray(ticket.display) ? ticket.display[0]?.name || "nicht angegeben" : ticket.display?.name || "nicht angegeben"}
 KI-Versuch: ${attempt} von ${MAX_AI_ATTEMPTS}
 Explizite Lösungsbestätigung erkannt: ${customerConfirmedSolved ? "ja" : "nein"}
+Freigegebene Supportbilder in diesem Schritt: ${imageNames.length ? imageNames.join(", ") : "keine"}
 
 FREIGEGEBENE WISSENSBASIS:
 ${knowledge || "Für dieses Thema ist noch kein freigegebener Wissenseintrag vorhanden. Stelle nur sichere Klärungsfragen oder eskaliere."}`;
