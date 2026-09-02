@@ -72,7 +72,7 @@ export function CampaignVersionHistoryDialog({ campaign, history, canEdit, onRes
       <p className="campaign-version-intro">Jeder fertig gespeicherte Stand bleibt nachvollziehbar. Eine ältere Version wird immer zuerst als Entwurf wiederhergestellt.</p>
 
       {isRunning && <div className="campaign-version-warning"><strong>Diese Kampagne läuft gerade.</strong><span>Pausieren Sie sie zuerst unter „Prüfen & bearbeiten“. So wird keine laufende Anzeige unbemerkt verändert.</span></div>}
-      {!history.available && <div className="form-error">Der Versionsverlauf ist noch nicht eingerichtet. Führen Sie zuerst die Kampagnenversions-Migration aus.</div>}
+      {!history.available && <div className="form-error">Der Versionsverlauf ist momentan nicht verfügbar. Ihre aktuelle Kampagne bleibt davon unverändert.</div>}
 
       <div className="campaign-version-list">
         {versions.map((version, index) => {

@@ -51,6 +51,7 @@ const legalCss = read("src/portal/portal-legal.css");
 const dataRightsCss = read("src/portal/portal-data-rights.css");
 const supportCss = read("src/portal/portal-support.css");
 const notificationCss = read("src/portal/portal-notifications.css");
+const guidanceCss = read("src/portal/portal-guidance.css");
 const vercel = JSON.parse(read("vercel.json"));
 const vite = read("vite.config.ts");
 
@@ -112,6 +113,14 @@ const checks = {
   personalUnreadNavigation: ["notification_read_cursors", "mark_notification_section_read", "seed_notification_read_cursors", "enable row level security"].every((label) => notificationMigration.includes(label)) && records.includes('action === "mark_notification_section_read"') && ["notifications", "unreadBySection", "portalReadTimes", "notificationsOnly", "loadPortalNotificationSnapshot"].every((label) => overview.includes(label)) && ["notificationSections", "nav-unread-count", "ungelesen", "loadNotifications", "15_000", "openView", 'aria-live="polite"'].every((label) => portal.includes(label)) && ["project_messages", "project_deliverable_versions", "support_ticket_messages", "quotes", "projects", "invoices"].every((label) => portalNotifications.includes(label)) && notificationCss.includes(".nav-unread-count"),
   funnelStepHeaderLayout: campaignCss.includes(".funnel-current-step > span:first-child") && !campaignCss.includes(".funnel-current-step > span {"),
   editablePortalRecords: ["update_content", "update_display"].every((action) => records.includes(action) && portal.includes(action)) && ["ContentEditDialog", "DisplayEditDialog", "Änderungen live übernehmen", "(activate || isRunning)"].every((label) => portal.includes(label)) && !records.includes("müssen zuerst pausiert werden"),
+  frictionlessCustomerGuidance: ["setActiveId(ticketId)", "openTicketId", "scrollIntoView", "Produktion anfragen", "Auftragsakte öffnen", "Ersten Inhalt hochladen", "Ersten Bildschirm vorbereiten", "Supportcenter öffnen"].every((label) => portal.concat(supportCenter).includes(label))
+    && displayManagement.includes("displays.length === 0")
+    && displayManagement.includes("Alle Filter zurücksetzen")
+    && partnerView.includes("onOpenContent")
+    && partnerView.includes("Zu Medien &amp; Vorlagen")
+    && !portal.includes("location.reload()")
+    && ![portal, supportCenter, campaignTemplates, campaignVersionHistory, displayManagement, partnerView].some((source) => ["Supabase-Migration", "Datenbankmigration", "OpenAI-Verbindung", "Credit-System muss"].some((term) => source.includes(term)))
+    && guidanceCss.includes("portal-success"),
   visibleRecordLabels: ["record-kind", "record-title-line", "record-assignment", "campaign-identity"].every((label) => portal.includes(label) && campaignCss.concat(read("src/portal/portal-records.css")).includes(label)),
 };
 

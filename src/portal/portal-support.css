@@ -6,3 +6,4 @@
 .support-ai-state{display:grid;gap:4px;margin:14px 0;padding:14px 16px;background:#e8f2ff;color:#234d7c;border-radius:13px}
 .support-ai-state.escalated{background:#fff0d3;color:#765000}.support-ai-state.resolved{background:#def5e9;color:#08734b}.support-ai-state.disabled{background:#eceae6;color:#555}
 .support-ai-state small{opacity:.8}.support-conversation article.ai{border-color:#7ba7d7;box-shadow:inset 3px 0 #4c83bd}
+.support-unavailable p{max-width:620px;line-height:1.6;color:#6f6c68}.support-unavailable .primary{display:inline-flex;margin-top:10px;text-decoration:none}.support-empty .primary{justify-self:center;margin-top:10px}

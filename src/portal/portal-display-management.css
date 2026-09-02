@@ -249,6 +249,11 @@
   text-align: center;
 }
 
+.display-filter-empty .primary,
+.display-filter-empty .secondary {
+  margin-top: 10px;
+}
+
 .display-group-backdrop {
   z-index: 170;
 }

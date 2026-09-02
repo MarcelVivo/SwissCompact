@@ -1,0 +1,28 @@
+.portal > .global-message.portal-success {
+  color: #087844;
+  background: #e4f7ed;
+  border: 1px solid #a8ddbf;
+}
+
+.empty > button {
+  justify-self: center;
+  margin-top: 8px;
+}
+
+.settings-grid .support {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.partner-unavailable .primary {
+  display: inline-flex;
+  margin-top: 10px;
+  text-decoration: none;
+}
+
+.partner-empty:has(button) {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
