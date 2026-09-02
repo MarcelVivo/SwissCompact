@@ -5962,13 +5962,26 @@ button {
   position: relative;
   z-index: 30;
   display: grid;
-  grid-template-columns: 1fr 1.6fr 1fr auto;
+  grid-template-columns: auto minmax(180px, 1fr) auto auto auto;
   gap: 28px;
   align-items: center;
   padding: 38px 7vw;
   color: rgba(255, 255, 255, 0.62);
   background: #070708;
   font-size: 12px;
+}
+
+.site-footer__legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 16px;
+}
+
+.site-footer__legal a:hover,
+.site-footer__legal a:focus-visible {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .site-footer a {

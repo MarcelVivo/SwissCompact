@@ -752,7 +752,13 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     consentInput.required = true;
     consentLabel.append(consentInput);
     const consentText = document.createElement("span");
-    consentText.textContent = "Ich bin einverstanden, dass mein Konzept und meine Angaben zur Kontaktaufnahme an SwissCompact übermittelt werden.";
+    consentText.textContent = "Ich bin einverstanden, dass mein Konzept und meine Angaben zur Kontaktaufnahme an SwissCompact übermittelt werden. ";
+    const privacyLink = document.createElement("a");
+    privacyLink.href = "/legal.html#datenschutz";
+    privacyLink.target = "_blank";
+    privacyLink.rel = "noopener";
+    privacyLink.textContent = "Datenschutzerklärung öffnen";
+    consentText.append(privacyLink);
     consentLabel.append(consentText);
     form.append(consentLabel);
 

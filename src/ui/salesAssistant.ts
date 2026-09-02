@@ -423,8 +423,14 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     consentLabel.append(consentInput);
     const consentText = document.createElement("span");
     consentText.textContent = hasConversationContext
-      ? "Ich bin einverstanden, dass dieses Gespräch zur Kontaktaufnahme an SwissCompact übermittelt wird."
-      : "Ich bin einverstanden, dass meine Angaben zur Kontaktaufnahme an SwissCompact übermittelt werden.";
+      ? "Ich bin einverstanden, dass dieses Gespräch zur Kontaktaufnahme an SwissCompact übermittelt wird. "
+      : "Ich bin einverstanden, dass meine Angaben zur Kontaktaufnahme an SwissCompact übermittelt werden. ";
+    const privacyLink = document.createElement("a");
+    privacyLink.href = "/legal.html#datenschutz";
+    privacyLink.target = "_blank";
+    privacyLink.rel = "noopener";
+    privacyLink.textContent = "Datenschutzerklärung öffnen";
+    consentText.append(privacyLink);
     consentLabel.append(consentText);
     form.append(consentLabel);
 
