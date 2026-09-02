@@ -15,6 +15,7 @@ const supportSlaMigration = read("supabase/migrations/20260915_support_sla.sql")
 const notificationMigration = read("supabase/migrations/20260916_notification_read_cursors.sql");
 const supportAiMigration = read("supabase/migrations/20260917_support_ai.sql");
 const supportAi = read("api/_lib/support/ai.ts");
+const supportKnowledge = read("api/_lib/support/knowledge.ts");
 const notificationCss = read("src/dashboard/notification-badges.css");
 const legalAdministration = read("src/dashboard/LegalAdministration.tsx");
 const operationalReadiness = read("src/dashboard/OperationalReadiness.tsx");
@@ -56,6 +57,10 @@ assert.match(supportOperations, /Ticket endgültig schließen/);
 assert.match(supportOperations, /Ja, Ticket schließen/);
 assert.match(supportOperations, /Persönlich übernehmen/);
 assert.match(supportOperations, /KI erneut versuchen/);
+assert.match(supportOperations, /KI-Wissensbasis/);
+assert.match(supportOperations, /Neue Anleitung/);
+assert.match(supportOperations, /Geprüft und freigeben/);
+assert.match(supportOperations, /Freigabe wird zurückgezogen/);
 assert.match(supportAiMigration, /create table if not exists swisscompact\.support_ai_runs/);
 assert.match(supportAiMigration, /create table if not exists swisscompact\.support_ai_knowledge/);
 assert.match(supportAiMigration, /support_tickets_prepare_ai/);
@@ -64,6 +69,14 @@ assert.match(supportAi, /store: false/);
 assert.match(supportAi, /MIN_CONFIDENCE/);
 assert.match(records, /action === "set_support_ai_mode"/);
 assert.match(records, /processSupportWithAi/);
+for (const action of ["create_support_ai_knowledge", "update_support_ai_knowledge", "approve_support_ai_knowledge", "archive_support_ai_knowledge", "delete_support_ai_knowledge"]) {
+  assert.ok(supportKnowledge.includes(action), `KI-Wissensbasis-Aktion ${action} fehlt`);
+}
+assert.match(supportKnowledge, /Nur der Hauptadmin darf KI-Anleitungen freigeben/);
+assert.match(supportKnowledge, /approved_by: null/);
+assert.match(records, /handleSupportKnowledgeAction/);
+assert.match(overview, /supportKnowledgeAdmin/);
+assert.match(overview, /approved_by_name/);
 assert.match(records, /action === "update_support_ticket"/);
 assert.match(records, /action === "update_sla_policy"/);
 assert.match(overview, /supportTicketsAdmin/);

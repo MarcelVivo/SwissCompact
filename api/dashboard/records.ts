@@ -13,6 +13,7 @@ import { handleMuxWebhookPost } from "../_lib/portal/mux-webhook-handler.js";
 import { handlePartnerNetworkAction } from "../_lib/portal/partner-network.js";
 import { recordOperationalDelivery, reportOperationalIncident } from "../_lib/dashboard/operations.js";
 import { processSupportWithAi } from "../_lib/support/ai.js";
+import { handleSupportKnowledgeAction, isSupportKnowledgeAction } from "../_lib/support/knowledge.js";
 
 export const config = { runtime: "nodejs", maxDuration: 180 };
 
@@ -2084,6 +2085,8 @@ export async function POST(request: Request): Promise<Response> {
     await writeAudit(client, profile, "support_sla_policy_updated", "support_sla_policy", packageCode, previous.data, result.data);
     return json({ ok: true, record: result.data });
   }
+
+  if (isSupportKnowledgeAction(action)) return handleSupportKnowledgeAction(client, profile, body, action);
 
   if (action === "update_support_ticket") {
     if (!["owner_admin", "admin"].includes(profile.role)) return json({ error: "Nur Administratoren dürfen Supportfälle bearbeiten" }, { status: 403 });

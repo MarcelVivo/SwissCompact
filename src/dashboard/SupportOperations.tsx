@@ -1,10 +1,11 @@
 import { FormEvent, useMemo, useState } from "react";
 
-type SupportData = { available: boolean; policies: any[]; tickets: any[]; messages: any[] };
+type SupportData = { available: boolean; aiAvailable: boolean; policies: any[]; tickets: any[]; messages: any[]; knowledge: any[] };
 const priorityLabels: Record<string, string> = { low: "Tief", normal: "Normal", high: "Hoch", critical: "Kritisch" };
 const statusLabels: Record<string, string> = { new: "Neu", in_progress: "In Bearbeitung", waiting_customer: "Wartet auf Kunde", resolved: "Gelöst", closed: "Geschlossen", cancelled: "Abgebrochen" };
 const categoryLabels: Record<string, string> = { incident: "Störung", question: "Bedienungsfrage", billing: "Abo & Rechnung", training: "Schulung", feature: "Funktionswunsch", content: "Inhalte" };
 const aiLabels: Record<string, string> = { eligible: "KI bereit", processing: "KI prüft", waiting_customer: "KI wartet auf Kunde", escalated: "Admin erforderlich", resolved: "KI gelöst", disabled: "Persönlich übernommen" };
+const knowledgeCategoryLabels: Record<string, string> = { general: "Allgemein", incident: "Störungen", question: "Bedienung", training: "Schulung", content: "Inhalte & Kampagnen" };
 const dateTime = (value?: string | null) => value ? new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "–";
 const relationName = (value: any) => Array.isArray(value) ? value[0]?.name : value?.name;
 const targetHours = (minutes: number) => minutes % 540 === 0 ? `${minutes / 540} AT` : `${minutes / 60} h`;
@@ -25,11 +26,13 @@ function ticketSla(ticket: any) {
   return { breached, label: response ? breached ? "zu spät reagiert" : "Ziel eingehalten" : breached ? "überfällig" : `bis ${dateTime(ticket.first_response_due_at)}` };
 }
 
-export function SupportOperations({ data, profiles, securityAdmin, mutate }: { data: SupportData; profiles: any[]; securityAdmin: boolean; mutate: (payload: any) => Promise<any> }) {
+export function SupportOperations({ data, profiles, securityAdmin, canManage, mutate }: { data: SupportData; profiles: any[]; securityAdmin: boolean; canManage: boolean; mutate: (payload: any) => Promise<any> }) {
   const [filter, setFilter] = useState("open");
   const [active, setActive] = useState<any | null>(null);
   const [policy, setPolicy] = useState<any | null>(null);
   const [closeConfirmation, setCloseConfirmation] = useState(false);
+  const [knowledgeEditor, setKnowledgeEditor] = useState<any | null>(null);
+  const [knowledgeAction, setKnowledgeAction] = useState<{ entry: any; action: "approve" | "archive" | "delete" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const openTickets = data.tickets.filter((ticket) => !["resolved", "closed", "cancelled"].includes(ticket.status));
@@ -130,6 +133,49 @@ export function SupportOperations({ data, profiles, securityAdmin, mutate }: { d
     }
   }
 
+  function editKnowledge(entry?: any) {
+    setKnowledgeEditor(entry || { id: null, category: "general", title: "", content: "", source_reference: "" });
+    setError("");
+  }
+
+  async function saveKnowledge(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!knowledgeEditor) return;
+    const form = new FormData(event.currentTarget);
+    setBusy(true);
+    setError("");
+    try {
+      await mutate({
+        action: knowledgeEditor.id ? "update_support_ai_knowledge" : "create_support_ai_knowledge",
+        id: knowledgeEditor.id || undefined,
+        updatedAt: knowledgeEditor.updated_at || undefined,
+        category: form.get("category"),
+        title: form.get("title"),
+        content: form.get("content"),
+        sourceReference: form.get("sourceReference"),
+      });
+      setKnowledgeEditor(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Wissenseintrag konnte nicht gespeichert werden");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmKnowledgeAction() {
+    if (!knowledgeAction) return;
+    setBusy(true);
+    setError("");
+    try {
+      await mutate({ action: `${knowledgeAction.action}_support_ai_knowledge`, id: knowledgeAction.entry.id });
+      setKnowledgeAction(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Wissenseintrag konnte nicht aktualisiert werden");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!data.available) return <><header className="page-head"><div><p className="eyebrow">Kundenbetrieb</p><h1>Support</h1><p>Die Support-SLA-Migration muss noch ausgeführt werden.</p></div></header></>;
 
   const lifecycleOptions = active ? editableStatuses[active.status] || [active.status] : [];
@@ -148,6 +194,14 @@ export function SupportOperations({ data, profiles, securityAdmin, mutate }: { d
     <section className="panel support-policy-panel">
       <div className="panel-head"><div><h3>Supportmodelle</h3><p>Erstreaktionsziele je aktivem Abonnement. Eine Zielzeit ist keine garantierte Lösungszeit.</p></div></div>
       <div className="dashboard-policy-grid">{data.policies.map((entry) => <article key={entry.package_code}><span>{entry.package_code}</span><h4>{entry.support_label}</h4><p>{entry.coverage_description}</p><dl><div><dt>Kritisch</dt><dd>{targetHours(entry.critical_response_minutes)}</dd></div><div><dt>Hoch</dt><dd>{targetHours(entry.high_response_minutes)}</dd></div><div><dt>Normal</dt><dd>{targetHours(entry.normal_response_minutes)}</dd></div><div><dt>Tief</dt><dd>{targetHours(entry.low_response_minutes)}</dd></div></dl>{securityAdmin && <button type="button" className="secondary" onClick={() => { setPolicy(entry); setError(""); }}>Regel bearbeiten</button>}</article>)}</div>
+    </section>
+
+    <section className="panel support-knowledge-panel">
+      <div className="panel-head"><div><h3>KI-Wissensbasis</h3><p>Nur freigegebene Anleitungen werden für Kundenantworten verwendet. Jede Bearbeitung zieht die Freigabe automatisch zurück.</p></div>{canManage && <button type="button" className="primary" onClick={() => editKnowledge()}>Neue Anleitung</button>}</div>
+      {!data.aiAvailable ? <p className="support-queue-empty">Die Migration für den KI-Erstsupport muss noch ausgeführt werden.</p> : <>
+        <div className="support-knowledge-summary"><span><b>{data.knowledge.filter((entry) => entry.active).length}</b> freigegeben</span><span><b>{data.knowledge.filter((entry) => !entry.active && !entry.approved_at).length}</b> Entwürfe</span><span><b>{data.knowledge.filter((entry) => !entry.active && entry.approved_at).length}</b> archiviert</span></div>
+        <div className="support-knowledge-grid">{data.knowledge.map((entry) => { const state = entry.active ? "approved" : entry.approved_at ? "archived" : "draft"; return <article className={state} key={entry.id}><header><div><small>{knowledgeCategoryLabels[entry.category] || entry.category}</small><h4>{entry.title}</h4></div><span>{state === "approved" ? "Freigegeben" : state === "archived" ? "Archiviert" : "Entwurf"}</span></header><p>{entry.content}</p><footer><div><small>{entry.source_reference || "Interne Anleitung"}</small><small>{entry.active ? `Freigegeben ${dateTime(entry.approved_at)}${entry.approved_by_name ? ` · ${entry.approved_by_name}` : ""}` : `Geändert ${dateTime(entry.updated_at)}`}</small></div>{canManage && <div className="support-knowledge-actions"><button type="button" className="secondary" onClick={() => editKnowledge(entry)}>Bearbeiten</button>{entry.active && <button type="button" className="secondary" onClick={() => setKnowledgeAction({ entry, action: "archive" })}>Archivieren</button>}{!entry.active && securityAdmin && <button type="button" className="primary" onClick={() => setKnowledgeAction({ entry, action: "approve" })}>Freigeben</button>}{!entry.active && !entry.approved_at && securityAdmin && <button type="button" className="secondary danger" onClick={() => setKnowledgeAction({ entry, action: "delete" })}>Entwurf löschen</button>}</div>}</footer></article>; })}{!data.knowledge.length && <p className="support-queue-empty">Noch keine KI-Anleitungen vorhanden.</p>}</div>
+      </>}
     </section>
 
     <section className="panel support-queue">
@@ -188,6 +242,10 @@ export function SupportOperations({ data, profiles, securityAdmin, mutate }: { d
       {error && <p className="form-error">{error}</p>}
       <footer><button type="button" className="secondary" disabled={busy} onClick={() => setCloseConfirmation(false)}>Noch nicht schließen</button><button type="button" className="primary danger" disabled={busy} onClick={() => void changeLifecycleStatus("closed")}>{busy ? "Wird geschlossen …" : "Ja, Ticket schließen"}</button></footer>
     </section></div>}
+
+    {knowledgeEditor && <div className="dashboard-dialog-backdrop"><section className="dashboard-dialog support-knowledge-dialog" role="dialog" aria-modal="true" aria-labelledby="knowledge-dialog-title"><header><div><p className="eyebrow">KI-Wissensbasis</p><h2 id="knowledge-dialog-title">{knowledgeEditor.id ? "Anleitung bearbeiten" : "Neue Anleitung"}</h2></div><button type="button" className="icon-button" onClick={() => setKnowledgeEditor(null)} aria-label="Dialog schliessen">×</button></header><form onSubmit={saveKnowledge}><label>Kategorie<select name="category" defaultValue={knowledgeEditor.category}>{Object.entries(knowledgeCategoryLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Titel<input name="title" required minLength={3} maxLength={180} defaultValue={knowledgeEditor.title} placeholder="Eindeutige Bezeichnung der Anleitung"/></label><label>Freigegebene Quelle oder Referenz<input name="sourceReference" maxLength={500} defaultValue={knowledgeEditor.source_reference || ""} placeholder="z. B. Betriebsanleitung Version 2.1"/></label><label>Anleitung für den KI-Support<textarea name="content" required minLength={10} maxLength={12000} rows={12} defaultValue={knowledgeEditor.content} placeholder="Klare, überprüfbare Schritte sowie Grenzen und Eskalationskriterien"/></label>{knowledgeEditor.active && <p className="support-knowledge-warning"><strong>Freigabe wird zurückgezogen:</strong> Nach dem Speichern verwendet die KI diese Anleitung erst wieder, wenn der Hauptadmin die geänderte Fassung freigegeben hat.</p>}{error && <p className="form-error">{error}</p>}<footer><button type="button" className="secondary" disabled={busy} onClick={() => setKnowledgeEditor(null)}>Abbrechen</button><button className="primary" disabled={busy}>{busy ? "Wird gespeichert …" : "Als Entwurf speichern"}</button></footer></form></section></div>}
+
+    {knowledgeAction && <div className="dashboard-dialog-backdrop support-close-backdrop"><section className="dashboard-dialog support-knowledge-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="knowledge-action-title"><header><div><p className="eyebrow">KI-Wissensbasis</p><h2 id="knowledge-action-title">{knowledgeAction.action === "approve" ? "Anleitung für Kundenantworten freigeben?" : knowledgeAction.action === "archive" ? "Anleitung archivieren?" : "Entwurf endgültig löschen?"}</h2></div></header><p>{knowledgeAction.action === "approve" ? "Die KI darf den folgenden Text danach unmittelbar für neue Supportantworten verwenden. Prüfen Sie Inhalt, Sicherheitsgrenzen und Quelle vollständig." : knowledgeAction.action === "archive" ? "Die KI verwendet diese Anleitung ab sofort nicht mehr. Der Eintrag bleibt als Nachweis erhalten und kann später erneut freigegeben werden." : "Dieser ungeprüfte Entwurf wird dauerhaft entfernt. Bereits freigegebene Einträge können nicht gelöscht, sondern nur archiviert werden."}</p><div className="support-knowledge-confirm-title"><span>{knowledgeCategoryLabels[knowledgeAction.entry.category]}</span><b>{knowledgeAction.entry.title}</b></div>{error && <p className="form-error">{error}</p>}<footer><button type="button" className="secondary" disabled={busy} onClick={() => setKnowledgeAction(null)}>Abbrechen</button><button type="button" className={`primary ${knowledgeAction.action === "delete" ? "danger" : ""}`} disabled={busy} onClick={() => void confirmKnowledgeAction()}>{busy ? "Wird verarbeitet …" : knowledgeAction.action === "approve" ? "Geprüft und freigeben" : knowledgeAction.action === "archive" ? "Jetzt archivieren" : "Entwurf löschen"}</button></footer></section></div>}
 
     {policy && <div className="dashboard-dialog-backdrop"><section className="dashboard-dialog" role="dialog" aria-modal="true"><header><div><p className="eyebrow">Paket {policy.package_code}</p><h2>SLA-Regel bearbeiten</h2></div><button className="icon-button" onClick={() => setPolicy(null)}>×</button></header><form onSubmit={updatePolicy}><label>Bezeichnung<input name="supportLabel" defaultValue={policy.support_label} required/></label><label>Supportzeiten und Erklärung<textarea name="coverageDescription" defaultValue={policy.coverage_description} rows={3} required/></label><label>Kritische Abdeckung<select name="criticalCoverage" defaultValue={policy.critical_coverage}><option value="business_hours">Nur Supportzeiten</option><option value="24x7">Rund um die Uhr</option></select></label><div className="sla-target-grid"><label>Kritisch (Stunden)<input name="criticalHours" type="number" min="0.25" step="0.25" defaultValue={policy.critical_response_minutes / 60}/></label><label>Hoch (Stunden)<input name="highHours" type="number" min="0.25" step="0.25" defaultValue={policy.high_response_minutes / 60}/></label><label>Normal (Stunden)<input name="normalHours" type="number" min="0.25" step="0.25" defaultValue={policy.normal_response_minutes / 60}/></label><label>Tief (Stunden)<input name="lowHours" type="number" min="0.25" step="0.25" defaultValue={policy.low_response_minutes / 60}/></label></div><p className="sla-warning">Diese Änderungen gelten nur für neu erstellte Supportfälle. Bereits eröffnete Fälle behalten ihren vereinbarten Snapshot.</p>{error && <p className="form-error">{error}</p>}<footer><button type="button" className="secondary" onClick={() => setPolicy(null)}>Abbrechen</button><button className="primary" disabled={busy}>SLA-Regel speichern</button></footer></form></section></div>}
   </>;

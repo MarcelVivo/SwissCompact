@@ -330,12 +330,13 @@ export async function GET(request: Request): Promise<Response> {
     authAdmin.from("support_sla_policies").select("*").order("package_code"),
     authAdmin.from("support_tickets").select("*,tenant:tenants(name,client_id),display:tenant_displays(name)").order("created_at", { ascending: false }).limit(500),
     authAdmin.from("support_ticket_messages").select("*").order("created_at").limit(5000),
+    authAdmin.from("support_ai_knowledge").select("*").order("category").order("title"),
   ]) : null;
-  const [legalDocumentsAdmin, operationalIncidents, operationalDeliveries, recoveryDrills, fleetAlerts, mediaFailures, stripeFailures, supportPoliciesAdmin, supportTicketsAdmin, supportMessagesAdmin] = operationalAdminData ?? [];
+  const [legalDocumentsAdmin, operationalIncidents, operationalDeliveries, recoveryDrills, fleetAlerts, mediaFailures, stripeFailures, supportPoliciesAdmin, supportTicketsAdmin, supportMessagesAdmin, supportKnowledgeAdmin] = operationalAdminData ?? [];
   const legalManagementAvailable = Boolean(legalDocumentsAdmin && !legalDocumentsAdmin.error);
   const operationsAvailable = Boolean(operationalIncidents && operationalDeliveries && recoveryDrills && !operationalIncidents.error && !operationalDeliveries.error && !recoveryDrills.error);
   const supportAvailable = Boolean(supportPoliciesAdmin && supportTicketsAdmin && supportMessagesAdmin && !supportPoliciesAdmin.error && !supportTicketsAdmin.error && !supportMessagesAdmin.error);
-  const supportAiAvailable = (supportTicketsAdmin?.data ?? []).some((ticket: any) => Object.prototype.hasOwnProperty.call(ticket, "ai_handling_status"));
+  const supportKnowledgeAvailable = Boolean(supportKnowledgeAdmin && !supportKnowledgeAdmin.error);
   const enrichedPortalMemberships = (portalMemberships.data ?? []).map((membership) => {
     const portalUser = usersById.get(membership.user_id);
     return { ...membership, email: portalUser?.email ?? null, email_confirmed_at: portalUser?.email_confirmed_at ?? null, last_sign_in_at: portalUser?.last_sign_in_at ?? null };
@@ -389,7 +390,7 @@ export async function GET(request: Request): Promise<Response> {
         pipeline: (opportunities.data ?? []).filter((entry: any) => entry.stage === "request" && unreadAfter("pipeline", entry.created_at)).length,
         projects: (projectMessages.data ?? []).filter((entry: any) => entry.author_type === "customer" && unreadAfter("projects", entry.created_at)).length,
         production: (contentRequests.data ?? []).filter((entry: any) => unreadAfter("production", entry.created_at)).length,
-        support: supportAiAvailable
+        support: supportKnowledgeAvailable
           ? (supportTicketsAdmin?.data ?? []).filter((entry: any) => entry.ai_handling_status === "escalated" && unreadAfter("support", entry.ai_escalated_at)).length
           : (supportMessagesAdmin?.data ?? []).filter((entry: any) => entry.author_type === "customer" && unreadAfter("support", entry.created_at)).length,
         systems: [
@@ -425,9 +426,14 @@ export async function GET(request: Request): Promise<Response> {
     },
     support: {
       available: supportAvailable,
+      aiAvailable: supportKnowledgeAvailable,
       policies: supportAvailable ? supportPoliciesAdmin?.data ?? [] : [],
       tickets: supportAvailable ? supportTicketsAdmin?.data ?? [] : [],
       messages: supportAvailable ? supportMessagesAdmin?.data ?? [] : [],
+      knowledge: supportKnowledgeAvailable ? (supportKnowledgeAdmin?.data ?? []).map((entry: any) => ({
+        ...entry,
+        approved_by_name: entry.approved_by ? (profiles.data ?? []).find((candidate: any) => candidate.user_id === entry.approved_by)?.display_name ?? null : null,
+      })) : [],
     },
     projectCollaboration: {
       available: collaborationAvailable,
