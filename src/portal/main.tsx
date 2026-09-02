@@ -701,7 +701,7 @@ function Portal() {
       const dataRights = overview.dataRights || {} as DataRightsData;
       overview.dataRights = { available: dataRights.available === true, requests: Array.isArray(dataRights.requests) ? dataRights.requests : [] };
       const support = overview.support || {} as SupportData;
-      overview.support = { available: support.available === true, policy: support.policy || null, tickets: Array.isArray(support.tickets) ? support.tickets : [], messages: Array.isArray(support.messages) ? support.messages : [] };
+      overview.support = { available: support.available === true, feedbackAvailable: support.feedbackAvailable === true, policy: support.policy || null, tickets: Array.isArray(support.tickets) ? support.tickets : [], messages: Array.isArray(support.messages) ? support.messages : [], feedback: Array.isArray(support.feedback) ? support.feedback : [] };
       const notifications = overview.notifications || {} as PortalData["notifications"];
       overview.notifications = { available: notifications.available === true, unreadBySection: notifications.unreadBySection && typeof notifications.unreadBySection === "object" ? notifications.unreadBySection : {} };
       setData(overview); setSession("ready");
@@ -904,6 +904,10 @@ function Portal() {
     await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "add_support_message", ticketId, message }) });
     await load(false);
   }
+  async function submitSupportFeedback(messageId: string, rating: "helpful" | "not_helpful"): Promise<void> {
+    await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "submit_support_ai_feedback", messageId, rating }) });
+    await load(false);
+  }
   async function setContentStatus(id: string, status: "approved" | "draft") {
     try {
       await api("/api/dashboard/records?audience=portal", { method: "POST", body: JSON.stringify({ action: "update_content_status", id, status }) });
@@ -1035,7 +1039,7 @@ function Portal() {
         onUseContent={(contentId) => { setCampaignPreset({ contentId }); setCampaignInitialStep(1); setCreatingCampaign(true); }}
         onOpenContent={() => openView("content")}
       />}
-      {view === "support" && <SupportCenter data={data.support} displays={data.displays} openTicketId={supportFocusId} onTicketOpened={() => setSupportFocusId(null)} onCreate={createSupportTicket} onMessage={addSupportMessage}/>}
+      {view === "support" && <SupportCenter data={data.support} displays={data.displays} openTicketId={supportFocusId} onTicketOpened={() => setSupportFocusId(null)} onCreate={createSupportTicket} onMessage={addSupportMessage} onFeedback={submitSupportFeedback}/>}
       {view === "settings" && <section className="view"><div className="section-title"><div><h2>Konto & Service</h2><p>Ihr Portalzugang, Sicherheit, das aktive SwissCompact-Paket, Datenschutz und verbindliche Dokumente.</p></div></div><div className="settings-grid"><PortalSecurityCard/><article className="card plan"><span>Aktives Paket</span><h3>{data.subscription?.package_code || "Noch nicht zugewiesen"}</h3><Status value={data.subscription?.status || "paused"}/><p>Software, Portal, Wartung, Fehlerbehebung und kleinere Anpassungen – zentral betreut durch SwissCompact.</p>{data.subscription?.minimum_ends_on && <small>Mindestlaufzeit bis {new Date(data.subscription.minimum_ends_on).toLocaleDateString("de-CH")}</small>}</article><article className="card"><span>Portalzugänge</span><h3>{data.members.length} Benutzer</h3>{data.members.map((member) => <div className="row" key={member.id}><strong>{member.display_name || "Portalbenutzer"}</strong><span>{labels[member.role] || member.role}</span></div>)}</article><DataRightsSettingsCard data={data.dataRights} role={data.profile.role} userId={data.profile.userId} onCreate={createDataRightsRequest} onDownload={openDataExport} onCancel={cancelDataRightsRequest}/><LegalSettingsCard data={data.legalCompliance}/><article className="card support"><span>SwissCompact Support</span><h3>Wir sind für Sie da.</h3><p>Erstellen Sie Ihre Anfrage direkt im Supportcenter. Dort sehen Sie Antworten und den aktuellen Bearbeitungsstand ohne Umweg.</p><button type="button" className="primary compact" onClick={() => openView("support")}>Supportcenter öffnen</button><a href="mailto:kontakt@swisscompact.com">Alternativ per E-Mail</a></article></div></section>}
       {view === "records" && <CustomerRecordsView data={data} onRefresh={async () => { await load(false); }} onRequestProduction={() => setServiceRequestDialog(true)}/>}
     </main>

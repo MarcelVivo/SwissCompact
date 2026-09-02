@@ -15,6 +15,10 @@ type ModelDecision = {
 
 const MIN_CONFIDENCE = 0.78;
 const MAX_AI_ATTEMPTS = 3;
+const DEFAULT_MODEL = "gpt-5-mini";
+const SUPPORT_PRICING: Record<string, { input: number; cachedInput: number; output: number; source: string }> = {
+  "gpt-5-mini": { input: 0.25, cachedInput: 0.025, output: 2, source: "OpenAI-Preise, Stand 2026-09-02" },
+};
 const HUMAN_REQUEST = /\b(mensch|mitarbeiter|mitarbeiterin|admin|persönlich|person|telefon|anrufen|rückruf|support[ -]?team)\b/i;
 const SOLVED_CONFIRMATION = /\b(funktioniert wieder|hat geklappt|problem (ist )?gelöst|ist behoben|alles (wieder )?gut|läuft wieder)\b/i;
 const NEGATIVE_CONFIRMATION = /\b(nicht|kein|leider|immer noch|weiterhin)\b.{0,35}\b(funktioniert|geklappt|gelöst|behoben|gut|läuft)\b/i;
@@ -47,6 +51,27 @@ function parseDecision(value: unknown): ModelDecision | null {
     message: boundedText(record.message, 8000),
     escalation_reason: boundedText(record.escalation_reason, 1000),
     resolution_confirmed: record.resolution_confirmed === true,
+  };
+}
+
+function usageAndCost(payload: any, model: string) {
+  const usage = payload?.usage && typeof payload.usage === "object" ? payload.usage : {};
+  const inputTokens = Math.max(0, Number(usage.input_tokens) || 0);
+  const cachedInputTokens = Math.min(inputTokens, Math.max(0, Number(usage.input_tokens_details?.cached_tokens) || 0));
+  const outputTokens = Math.max(0, Number(usage.output_tokens) || 0);
+  const totalTokens = Math.max(0, Number(usage.total_tokens) || inputTokens + outputTokens);
+  const pricing = SUPPORT_PRICING[model] || (model.startsWith("gpt-5-mini-") ? SUPPORT_PRICING["gpt-5-mini"] : undefined);
+  const estimatedCostUsd = pricing
+    ? ((inputTokens - cachedInputTokens) * pricing.input + cachedInputTokens * pricing.cachedInput + outputTokens * pricing.output) / 1_000_000
+    : null;
+  return {
+    usage,
+    input_tokens: inputTokens,
+    cached_input_tokens: cachedInputTokens,
+    output_tokens: outputTokens,
+    total_tokens: totalTokens,
+    estimated_cost_usd: estimatedCostUsd,
+    pricing_snapshot: pricing ? { currency: "USD", unit: "million_tokens", input: pricing.input, cachedInput: pricing.cachedInput, output: pricing.output, source: pricing.source } : {},
   };
 }
 
@@ -120,7 +145,7 @@ export async function processSupportWithAi(
     trigger_key: triggerKey,
     trigger_message_id: triggerMessageId,
     status: "processing",
-    model: process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_ASSISTANT_MODEL || "gpt-5.6-terra",
+    model: process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_ASSISTANT_MODEL || DEFAULT_MODEL,
     prompt_context: { category: ticket.category, priority: ticket.priority, attempt: Number(ticket.ai_attempt_count || 0) + 1 },
   }).select("id").maybeSingle();
   if (runCreated.error) {
@@ -153,7 +178,7 @@ export async function processSupportWithAi(
     .limit(20);
   const knowledge = (knowledgeResult.data ?? []).map((entry: any) => `## ${entry.title}\n${entry.content}`).join("\n\n");
   const customerConfirmedSolved = SOLVED_CONFIRMATION.test(latestCustomerMessage) && !NEGATIVE_CONFIRMATION.test(latestCustomerMessage);
-  const model = process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_ASSISTANT_MODEL || "gpt-5.6-terra";
+  const model = process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_ASSISTANT_MODEL || DEFAULT_MODEL;
   const attempt = Number(ticket.ai_attempt_count || 0) + 1;
   const now = new Date().toISOString();
   await admin.from("support_tickets").update({ ai_handling_status: "processing", ai_attempt_count: attempt, updated_at: now }).eq("id", ticket.id);
@@ -231,12 +256,16 @@ ${knowledge || "Für dieses Thema ist noch kein freigegebener Wissenseintrag vor
   }
 
   const payload = await response.json().catch(() => null) as any;
+  const runUsage = usageAndCost(payload, model);
   let parsed: ModelDecision | null = null;
   try { parsed = parseDecision(JSON.parse(outputText(payload))); } catch { parsed = null; }
-  if (!parsed) return escalate(admin, ticket, runId, "Die KI-Antwort konnte nicht sicher ausgewertet werden.", "failed", "Ungültige strukturierte Antwort");
+  if (!parsed) {
+    await admin.from("support_ai_runs").update({ openai_response_id: payload?.id || null, ...runUsage, usage_metadata: runUsage.usage }).eq("id", runId);
+    return escalate(admin, ticket, runId, "Die KI-Antwort konnte nicht sicher ausgewertet werden.", "failed", "Ungültige strukturierte Antwort");
+  }
   if (parsed.decision === "escalate" || parsed.confidence < MIN_CONFIDENCE || !parsed.message) {
     const reason = parsed.escalation_reason || (parsed.confidence < MIN_CONFIDENCE ? "Die Antwortsicherheit des KI-Erstsupports ist zu niedrig." : "Der KI-Erstsupport benötigt persönliche Unterstützung.");
-    await admin.from("support_ai_runs").update({ confidence: parsed.confidence, openai_response_id: payload?.id || null }).eq("id", runId);
+    await admin.from("support_ai_runs").update({ confidence: parsed.confidence, openai_response_id: payload?.id || null, ...runUsage, usage_metadata: runUsage.usage }).eq("id", runId);
     return escalate(admin, ticket, runId, reason);
   }
 
@@ -271,7 +300,13 @@ ${knowledge || "Für dieses Thema ist noch kein freigegebener Wissenseintrag vor
     decision: resolved ? "resolve" : "reply",
     confidence: parsed.confidence,
     openai_response_id: payload?.id || null,
-    usage_metadata: payload?.usage || {},
+    usage_metadata: runUsage.usage,
+    input_tokens: runUsage.input_tokens,
+    cached_input_tokens: runUsage.cached_input_tokens,
+    output_tokens: runUsage.output_tokens,
+    total_tokens: runUsage.total_tokens,
+    estimated_cost_usd: runUsage.estimated_cost_usd,
+    pricing_snapshot: runUsage.pricing_snapshot,
     completed_at: completedAt,
   }).eq("id", runId);
   await audit(admin, ticket, resolved ? "support_ai_resolved" : "support_ai_responded", { runId, confidence: parsed.confidence, attempt });

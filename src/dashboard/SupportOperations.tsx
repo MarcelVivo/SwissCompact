@@ -1,6 +1,6 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type SupportData = { available: boolean; aiAvailable: boolean; policies: any[]; tickets: any[]; messages: any[]; knowledge: any[] };
+type SupportData = { available: boolean; aiAvailable: boolean; controlCenterAvailable: boolean; policies: any[]; tickets: any[]; messages: any[]; knowledge: any[]; runs: any[]; feedback: any[] };
 const priorityLabels: Record<string, string> = { low: "Tief", normal: "Normal", high: "Hoch", critical: "Kritisch" };
 const statusLabels: Record<string, string> = { new: "Neu", in_progress: "In Bearbeitung", waiting_customer: "Wartet auf Kunde", resolved: "Gelöst", closed: "Geschlossen", cancelled: "Abgebrochen" };
 const categoryLabels: Record<string, string> = { incident: "Störung", question: "Bedienungsfrage", billing: "Abo & Rechnung", training: "Schulung", feature: "Funktionswunsch", content: "Inhalte" };
@@ -9,6 +9,9 @@ const knowledgeCategoryLabels: Record<string, string> = { general: "Allgemein", 
 const dateTime = (value?: string | null) => value ? new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "–";
 const relationName = (value: any) => Array.isArray(value) ? value[0]?.name : value?.name;
 const targetHours = (minutes: number) => minutes % 540 === 0 ? `${minutes / 540} AT` : `${minutes / 60} h`;
+const countLabel = (value: number) => new Intl.NumberFormat("de-CH").format(value);
+const percentLabel = (value: number, total: number) => total ? `${Math.round(value / total * 100)} %` : "–";
+const usdLabel = (value: number) => new Intl.NumberFormat("de-CH", { style: "currency", currency: "USD", minimumFractionDigits: value < 0.01 ? 4 : 2, maximumFractionDigits: 4 }).format(value);
 
 const editableStatuses: Record<string, string[]> = {
   new: ["new", "in_progress", "waiting_customer", "cancelled"],
@@ -26,7 +29,7 @@ function ticketSla(ticket: any) {
   return { breached, label: response ? breached ? "zu spät reagiert" : "Ziel eingehalten" : breached ? "überfällig" : `bis ${dateTime(ticket.first_response_due_at)}` };
 }
 
-export function SupportOperations({ data, profiles, securityAdmin, canManage, mutate }: { data: SupportData; profiles: any[]; securityAdmin: boolean; canManage: boolean; mutate: (payload: any) => Promise<any> }) {
+export function SupportOperations({ data, profiles, securityAdmin, canManage, focusTicketId, onTicketOpened, mutate }: { data: SupportData; profiles: any[]; securityAdmin: boolean; canManage: boolean; focusTicketId?: string | null; onTicketOpened?: () => void; mutate: (payload: any) => Promise<any> }) {
   const [filter, setFilter] = useState("open");
   const [active, setActive] = useState<any | null>(null);
   const [policy, setPolicy] = useState<any | null>(null);
@@ -38,6 +41,23 @@ export function SupportOperations({ data, profiles, securityAdmin, canManage, mu
   const openTickets = data.tickets.filter((ticket) => !["resolved", "closed", "cancelled"].includes(ticket.status));
   const visible = useMemo(() => data.tickets.filter((ticket) => filter === "all" || filter === "open" && !["resolved", "closed", "cancelled"].includes(ticket.status) || ticket.status === filter), [data.tickets, filter]);
   const breached = openTickets.filter((ticket) => ticketSla(ticket).breached && !ticket.first_responded_at);
+  const finishedRuns = data.runs.filter((run) => ["responded", "resolved", "escalated", "failed"].includes(run.status));
+  const successfulRuns = finishedRuns.filter((run) => ["responded", "resolved"].includes(run.status));
+  const escalatedRuns = finishedRuns.filter((run) => run.status === "escalated");
+  const failedRuns = data.runs.filter((run) => run.status === "failed");
+  const interventionTickets = openTickets.filter((ticket) => ticket.ai_handling_status === "escalated");
+  const totalTokens = data.runs.reduce((sum, run) => sum + Number(run.total_tokens || 0), 0);
+  const totalCost = data.runs.reduce((sum, run) => sum + Number(run.estimated_cost_usd || 0), 0);
+  const helpfulFeedback = data.feedback.filter((entry) => entry.rating === "helpful");
+  const negativeFeedback = data.feedback.filter((entry) => entry.rating === "not_helpful");
+
+  useEffect(() => {
+    if (!focusTicketId) return;
+    const ticket = data.tickets.find((entry) => entry.id === focusTicketId);
+    if (!ticket) return;
+    openTicket(ticket);
+    onTicketOpened?.();
+  }, [data.tickets, focusTicketId, onTicketOpened]);
 
   function openTicket(ticket: any) {
     setActive(ticket);
@@ -189,6 +209,27 @@ export function SupportOperations({ data, profiles, securityAdmin, canManage, mu
       <article><span>Kritisch</span><strong>{openTickets.filter((ticket) => ticket.priority === "critical").length}</strong><small>sofort prüfen</small></article>
       <article><span>Wartet auf Kunde</span><strong>{openTickets.filter((ticket) => ticket.status === "waiting_customer").length}</strong><small>Antwort ausstehend</small></article>
       <article className={openTickets.some((ticket) => ticket.ai_handling_status === "escalated") ? "danger" : ""}><span>KI eskaliert</span><strong>{openTickets.filter((ticket) => ticket.ai_handling_status === "escalated").length}</strong><small>persönliche Bearbeitung nötig</small></article>
+    </section>
+
+    <section className="panel support-ai-control-center">
+      <div className="panel-head"><div><h3>KI-Support-Kontrollzentrum</h3><p>Arbeitsvorrat, Qualität und geschätzte API-Kosten an einem Ort.</p></div></div>
+      {!data.controlCenterAvailable ? <p className="support-queue-empty">Führen Sie zuerst die Migration 20260918_support_ai_control_center.sql aus.</p> : <>
+        <div className="support-ai-metrics">
+          <article><span>Offene Tickets</span><strong>{openTickets.length}</strong><small>noch nicht abgeschlossen</small></article>
+          <article className={interventionTickets.length ? "danger" : ""}><span>Admin erforderlich</span><strong>{interventionTickets.length}</strong><small>aktuell eskaliert</small></article>
+          <article className={failedRuns.length ? "danger" : ""}><span>KI-Fehler</span><strong>{failedRuns.length}</strong><small>technisch fehlgeschlagen</small></article>
+          <article><span>Tokenverbrauch</span><strong>{countLabel(totalTokens)}</strong><small>alle erfassten Läufe</small></article>
+          <article><span>Kosten geschätzt</span><strong>{usdLabel(totalCost)}</strong><small>mit Preis-Snapshot</small></article>
+          <article><span>Erfolgsquote</span><strong>{percentLabel(successfulRuns.length, finishedRuns.length)}</strong><small>Antwort oder Lösung</small></article>
+          <article><span>Eskalationsquote</span><strong>{percentLabel(escalatedRuns.length, finishedRuns.length)}</strong><small>fachlich übergeben</small></article>
+          <article><span>Kundenfeedback</span><strong>{helpfulFeedback.length} / {negativeFeedback.length}</strong><small>hilfreich / nicht hilfreich</small></article>
+        </div>
+        <div className="support-ai-action-grid">
+          <section><header><div><h4>Jetzt persönlich eingreifen</h4><p>Aktuell eskalierte und noch offene Tickets.</p></div><b>{interventionTickets.length}</b></header><div>{interventionTickets.slice(0, 8).map((ticket) => <button type="button" key={ticket.id} onClick={() => openTicket(ticket)}><span><strong>{ticket.ticket_number} · {ticket.title}</strong><small>{relationName(ticket.tenant) || "Kundenportal"} · {ticket.ai_escalation_reason || "Persönliche Bearbeitung erforderlich"}</small></span><i>Öffnen →</i></button>)}{!interventionTickets.length && <p className="support-ai-empty">Keine eskalierten Tickets. Der KI-Erstsupport arbeitet innerhalb seiner Grenzen.</p>}</div></section>
+          <section><header><div><h4>Fehlgeschlagene KI-Läufe</h4><p>Technische Fehler mit direktem Zugang zum Ticket.</p></div><b>{failedRuns.length}</b></header><div>{failedRuns.slice(0, 8).map((run) => { const ticket = data.tickets.find((entry) => entry.id === run.ticket_id); return <button type="button" key={run.id} disabled={!ticket} onClick={() => ticket && openTicket(ticket)}><span><strong>{ticket ? `${ticket.ticket_number} · ${ticket.title}` : "Gelöschtes Ticket"}</strong><small>{run.model || "Unbekanntes Modell"} · {run.error_message || run.escalation_reason || "Technischer Fehler"} · {dateTime(run.created_at)}</small></span><i>{ticket ? "Öffnen →" : "–"}</i></button>; })}{!failedRuns.length && <p className="support-ai-empty">Keine fehlgeschlagenen KI-Läufe.</p>}</div></section>
+        </div>
+        {negativeFeedback.length > 0 && <div className="support-ai-negative-feedback"><header><h4>Nicht hilfreiche Antworten prüfen</h4><span>{negativeFeedback.length}</span></header>{negativeFeedback.slice(0, 8).map((feedback) => { const message = data.messages.find((entry) => entry.id === feedback.message_id); const ticket = data.tickets.find((entry) => entry.id === message?.ticket_id); return <button type="button" key={feedback.id} disabled={!ticket} onClick={() => ticket && openTicket(ticket)}><span><b>{ticket?.ticket_number || "Ticket nicht verfügbar"}</b><small>{feedback.comment || "Der Kunde hat diese KI-Antwort als nicht hilfreich bewertet."}</small></span><i>{ticket ? "Antwort ansehen →" : "–"}</i></button>; })}</div>}
+      </>}
     </section>
 
     <section className="panel support-policy-panel">

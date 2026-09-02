@@ -760,6 +760,20 @@ async function handlePortalRecords(request: Request): Promise<Response> {
     return json({ ok: true, messageId: added.data });
   }
 
+  if (action === "submit_support_ai_feedback") {
+    const messageId = cleanText(body.messageId, 80);
+    const rating = cleanText(body.rating, 30);
+    const comment = cleanText(body.comment, 2000) || null;
+    if (!messageId || !["helpful", "not_helpful"].includes(rating)) return json({ error: "Ungültige Bewertung" }, { status: 400 });
+    const saved = await client.rpc("submit_support_ai_feedback", {
+      target_message: messageId,
+      target_rating: rating,
+      target_comment: comment,
+    });
+    if (saved.error || !saved.data) return json({ error: saved.error?.message || "Bewertung konnte nicht gespeichert werden" }, { status: 400 });
+    return json({ ok: true, feedbackId: saved.data });
+  }
+
   if (profile.role === "viewer") return json({ error: "Nur Lesezugriff" }, { status: 403 });
 
   if (action.includes("partner")) {
