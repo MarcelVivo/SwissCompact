@@ -88,6 +88,7 @@ type CustomerRecords = { quotes: CustomerQuote[]; projects: CustomerProject[]; i
 type ProjectCollaboration = { available: boolean; briefings: Record<string, any>[]; messages: Record<string, any>[]; deliverables: Record<string, any>[]; versions: Record<string, any>[]; reviews: Record<string, any>[]; revisions: Record<string, any>[] };
 type DisplaySafety = { versions: Array<{ id: string; display_id: string; version: number; source: string; campaign_id?: string | null; state: string; previous_version?: number | null; created_at: string }>; tests: Array<{ id: string; display_id: string; campaign_id: string; configuration_version: number; previous_version?: number | null; status: string; expires_at: string; created_at: string }>; alerts: Array<{ id: string; display_id: string; kind: string; severity: string; status: string; message: string; last_seen_at: string }> };
 type PortalData = { profile: PortalProfile; sites: Site[]; areas: Area[]; displays: Display[]; content: Content[]; archivedContent: Content[]; serviceRequests: Content[]; customerRecords: CustomerRecords; projectCollaboration: ProjectCollaboration; partnerNetwork: PartnerNetworkData; campaignTemplates: CampaignTemplatesData; campaignVersions: CampaignVersionsData; displayGroups: DisplayGroupsData; displaySafety: DisplaySafety; legalCompliance: LegalComplianceData; dataRights: DataRightsData; support: SupportData; notifications: { available: boolean; unreadBySection: Record<string, number> }; campaigns: Campaign[]; subscription: Subscription; members: Member[]; aiCredits: AiCredits; mediaPipeline?: { muxVideoEnabled: boolean; maxVideoBytes: number }; generatedAt?: string };
+type PortalNotificationData = Pick<PortalData, "notifications" | "generatedAt">;
 type View = "overview" | "status" | "records" | "content" | "archive" | "campaigns" | "displays" | "partners" | "support" | "settings";
 const notificationSections: View[] = ["status", "records", "partners", "support", "settings"];
 const unreadCountLabel = (count: number) => count > 99 ? "99+" : String(Math.max(0, count)).padStart(2, "0");
@@ -704,6 +705,19 @@ function Portal() {
       return null;
     }
   }, []);
+  const loadNotifications = useCallback(async () => {
+    try {
+      const snapshot = await api<PortalNotificationData>("/api/dashboard/overview?audience=portal&notificationsOnly=1");
+      if (!snapshot.notifications?.available) return;
+      setData((current) => current ? {
+        ...current,
+        notifications: snapshot.notifications,
+        generatedAt: snapshot.generatedAt || current.generatedAt,
+      } : current);
+    } catch {
+      // Die vollständige Portalaktualisierung bleibt der zuverlässige Fallback.
+    }
+  }, []);
   useEffect(() => {
     const hasProcessingVideo = data?.content.some((item) => item.content_type === "video" && item.payload?.processingState && !["ready", "error"].includes(item.payload.processingState));
     if (session !== "ready" || !hasProcessingVideo) return;
@@ -717,6 +731,18 @@ function Portal() {
     window.addEventListener("focus", refreshVisiblePortal);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", refreshVisiblePortal); };
   }, [load, session]);
+  useEffect(() => {
+    if (session !== "ready") return;
+    const refreshNotifications = () => {
+      if (document.visibilityState === "visible") void loadNotifications();
+    };
+    const timer = window.setInterval(refreshNotifications, 15_000);
+    document.addEventListener("visibilitychange", refreshNotifications);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshNotifications);
+    };
+  }, [loadNotifications, session]);
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -921,7 +947,7 @@ function Portal() {
   }
   return <div className="portal" style={{ "--accent": data.profile.branding?.accent || "#d90d32" } as React.CSSProperties}>
     <aside><a className="wordmark" href="/">Swiss<span>Compact</span></a><div className="tenant"><span>Arbeitsbereich</span><strong>{data.profile.tenantName}</strong></div>
-      <nav>{nav.map(([id,label]) => { const unread = notificationCount(id); return <button key={id} className={`${view === id ? "active" : ""} ${primaryMobileViews.includes(id) ? "" : "nav-secondary"}`.trim()} onClick={() => setView(id)}><Icon name={id}/><span>{label}</span>{unread > 0 && <b className="nav-unread-count" aria-label={`${unread} ungelesen`}>({unreadCountLabel(unread)})</b>}</button>; })}<button type="button" className={`nav-more ${secondaryNav.some(([id]) => id === view) ? "active" : ""}`.trim()} onClick={() => setMobileMore(true)}><Icon name="more"/><span>Mehr</span>{secondaryUnread > 0 && <b className="nav-unread-count" aria-label={`${secondaryUnread} ungelesen`}>({unreadCountLabel(secondaryUnread)})</b>}</button></nav>
+      <nav aria-live="polite">{nav.map(([id,label]) => { const unread = notificationCount(id); return <button key={id} className={`${view === id ? "active" : ""} ${primaryMobileViews.includes(id) ? "" : "nav-secondary"}`.trim()} onClick={() => setView(id)}><Icon name={id}/><span>{label}</span>{unread > 0 && <b className="nav-unread-count" aria-label={`${unread} ungelesen`}>({unreadCountLabel(unread)})</b>}</button>; })}<button type="button" className={`nav-more ${secondaryNav.some(([id]) => id === view) ? "active" : ""}`.trim()} onClick={() => setMobileMore(true)}><Icon name="more"/><span>Mehr</span>{secondaryUnread > 0 && <b className="nav-unread-count" aria-label={`${secondaryUnread} ungelesen`}>({unreadCountLabel(secondaryUnread)})</b>}</button></nav>
       <button className="logout" onClick={() => void logout()}><Icon name="logout"/>Abmelden</button>
       {mobileMore && <div className="dialog-backdrop mobile-more-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMobileMore(false)}><section className="dialog mobile-more-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-more-title"><button className="dialog-close" onClick={() => setMobileMore(false)} aria-label="Schließen">×</button><div className="eyebrow">Mehr</div><h2 id="mobile-more-title">Navigation</h2><p>Weitere Bereiche Ihres Kundenportals.</p><div className="mobile-more-nav">{secondaryNav.map(([id,label]) => { const unread = notificationCount(id); return <button key={id} className={view === id ? "active" : ""} onClick={() => { setView(id); setMobileMore(false); }}><Icon name={id}/><span className="mobile-more-copy"><strong>{label}</strong><small>{secondaryDescriptions[id]}</small></span>{unread > 0 ? <b className="nav-unread-count" aria-label={`${unread} ungelesen`}>({unreadCountLabel(unread)})</b> : <i>›</i>}</button>; })}</div><button type="button" className="mobile-more-logout" onClick={() => { setMobileMore(false); void logout(); }}><Icon name="logout"/>Abmelden</button></section></div>}
       {iosInstallHint && <div className="dialog-backdrop mobile-more-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setIosInstallHint(false)}><section className="dialog ios-install-dialog" role="dialog" aria-modal="true"><button className="dialog-close" onClick={() => setIosInstallHint(false)} aria-label="Schließen">×</button><div className="eyebrow">App installieren</div><h2>Zum Home-Bildschirm hinzufügen</h2><ol><li><Icon name="ios-share"/>Tippen Sie unten in Safari auf <b>Teilen</b>.</li><li><Icon name="plus"/>Wählen Sie <b>„Zum Home-Bildschirm“</b>.</li></ol></section></div>}

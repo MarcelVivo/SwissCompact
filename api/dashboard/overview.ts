@@ -3,6 +3,7 @@ import { json } from "../_lib/assistant/security.js";
 import { publicAiConfiguration } from "../_lib/portal/ai-config.js";
 import { muxSignedPlaybackUrl, muxVideoEnabled } from "../_lib/portal/mux-video.js";
 import { loadPartnerNetwork } from "../_lib/portal/partner-network.js";
+import { loadPortalNotificationSnapshot } from "../_lib/portal/notifications.js";
 
 export const config = { runtime: "nodejs", maxDuration: 15 };
 
@@ -15,6 +16,10 @@ export async function GET(request: Request): Promise<Response> {
     const tenantId = profile.tenantId;
     const customerAdmin = dashboardSupabase();
     if (!customerAdmin) return json({ error: "Kundenvorgänge sind noch nicht konfiguriert" }, { status: 503 });
+    if (new URL(request.url).searchParams.get("notificationsOnly") === "1") {
+      const notifications = await loadPortalNotificationSnapshot(client, customerAdmin, profile);
+      return json({ notifications, generatedAt: snapshotAt });
+    }
     const partnerNetworkPromise = loadPartnerNetwork(customerAdmin, tenantId);
     const displayHealthRefresh = await client.rpc("refresh_display_delivery_health", { target_tenant: tenantId });
     if (displayHealthRefresh.error) console.warn("portal display health refresh:", displayHealthRefresh.error.message);
@@ -265,7 +270,13 @@ export async function GET(request: Request): Promise<Response> {
         available: notificationsAvailable,
         unreadBySection: notificationsAvailable ? {
           status: (displayAlerts.data ?? []).filter((entry: any) => entry.status !== "resolved" && unreadAfter("status", entry.last_seen_at)).length,
-          records: (projectMessages.data ?? []).filter((entry: any) => entry.author_type !== "customer" && unreadAfter("records", entry.created_at)).length,
+          records: [
+            ...(projectMessages.data ?? []).filter((entry: any) => entry.author_type !== "customer").map((entry: any) => entry.created_at),
+            ...(projectVersions.data ?? []).filter((entry: any) => entry.submitted_by_type === "swisscompact").map((entry: any) => entry.created_at),
+            ...(customerQuotes.data ?? []).map((entry: any) => entry.updated_at),
+            ...(customerProjects.data ?? []).map((entry: any) => entry.updated_at),
+            ...(customerInvoices.data ?? []).map((entry: any) => entry.updated_at),
+          ].filter((timestamp) => unreadAfter("records", timestamp)).length,
           partners: [
             ...(partnerNetwork.partnerships ?? []).filter((entry: any) => entry.direction === "incoming" && entry.status === "pending" && unreadAfter("partners", entry.created_at)),
             ...(partnerNetwork.offers ?? []).filter((entry: any) => entry.direction === "incoming" && entry.status === "pending" && unreadAfter("partners", entry.created_at)),
