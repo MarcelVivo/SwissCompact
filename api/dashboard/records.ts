@@ -2199,6 +2199,25 @@ export async function POST(request: Request): Promise<Response> {
     return json({ ok: true, record: result.data });
   }
 
+  if (action === "test_operational_alert") {
+    if (!profile.securityAdmin) return json({ error: "Nur der Hauptadmin darf den externen Alarmkanal testen" }, { status: 403 });
+    const admin = dashboardSupabase();
+    if (!admin) return json({ error: "Betriebsmonitoring ist nicht konfiguriert" }, { status: 503 });
+    const testKey = `manual:critical-alert-test:${Date.now()}`;
+    const incidentId = await reportOperationalIncident(admin, {
+      key: testKey,
+      source: "application",
+      kind: "alert_delivery_test",
+      severity: "critical",
+      title: "Test der kritischen Alarmweiterleitung",
+      message: "Dies ist ein bewusst ausgelöster Test. Es liegt keine Produktionsstörung vor.",
+      metadata: { test: true, requestedBy: profile.userId },
+    });
+    if (!incidentId) return json({ error: "Testalarm konnte nicht erfasst werden. Migration 20260921 prüfen." }, { status: 503 });
+    await writeAudit(client, profile, "operational_alert_tested", "operational_incident", incidentId);
+    return json({ ok: true, incidentId });
+  }
+
   if (["create_recovery_drill", "update_recovery_drill"].includes(action)) {
     if (!profile.securityAdmin) return json({ error: "Nur der Hauptadmin darf Wiederherstellungstests dokumentieren" }, { status: 403 });
     const admin = dashboardSupabase();

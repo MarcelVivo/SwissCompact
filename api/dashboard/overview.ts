@@ -4,6 +4,7 @@ import { publicAiConfiguration } from "../_lib/portal/ai-config.js";
 import { muxSignedPlaybackUrl, muxVideoEnabled } from "../_lib/portal/mux-video.js";
 import { loadPartnerNetwork } from "../_lib/portal/partner-network.js";
 import { loadPortalNotificationSnapshot } from "../_lib/portal/notifications.js";
+import { operationalAlertConfiguration } from "../_lib/dashboard/operations.js";
 
 export const config = { runtime: "nodejs", maxDuration: 15 };
 
@@ -446,6 +447,7 @@ export async function GET(request: Request): Promise<Response> {
     },
     operations: {
       available: operationsAvailable,
+      alerting: operationalAlertConfiguration(),
       incidents: operationsAvailable ? operationalIncidents?.data ?? [] : [],
       deliveries: operationsAvailable ? operationalDeliveries?.data ?? [] : [],
       recoveryDrills: operationsAvailable ? recoveryDrills?.data ?? [] : [],

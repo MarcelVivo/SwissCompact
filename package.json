@@ -74,7 +74,8 @@
     "test:einsatzbereiche": "node scripts/einsatzbereiche-smoke.mjs",
     "test:plattform-pages": "node scripts/plattform-smoke.mjs",
     "legal:generate": "node scripts/generate-legal-publication.mjs",
-    "test:legal": "node scripts/legal-publication-smoke.mjs"
+    "test:legal": "node scripts/legal-publication-smoke.mjs",
+    "test:operations": "node scripts/operational-readiness-smoke.mjs"
   },
   "dependencies": {
     "@mux/upchunk": "^3.5.0",
