@@ -77,6 +77,31 @@ try {
       assert.ok(state.stationLinks.every((link) => link.height >= 44), `${viewport.name}: Einsatzbereich-Link ist als Touchziel zu klein`);
     }
 
+    for (const platformDetail of ["website", "dashboard", "portal", "hardware"]) {
+      const trigger = page.locator(`[data-platform-detail="${platformDetail}"]`);
+      await trigger.scrollIntoViewIfNeeded();
+      const bounds = await trigger.boundingBox();
+      assert.ok(bounds, `${viewport.name}: Plattformkarte ${platformDetail} ist nicht sichtbar`);
+      const point = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+      const receivesPointer = await trigger.evaluate((element, { x, y }) => (
+        document.elementFromPoint(x, y)?.closest("a") === element
+      ), point);
+      assert.ok(receivesPointer, `${viewport.name}: Plattformkarte ${platformDetail} hat keine passende Klickfläche`);
+
+      await page.mouse.click(point.x, point.y);
+      await page.waitForFunction((detail) => {
+        const dialog = document.querySelector("[data-platform-detail-dialog]");
+        return dialog instanceof HTMLDialogElement
+          && dialog.open
+          && dialog.dataset.platformDetailActive === detail;
+      }, platformDetail);
+      await page.locator("[data-platform-detail-close]").click();
+      await page.waitForFunction(() => {
+        const dialog = document.querySelector("[data-platform-detail-dialog]");
+        return dialog instanceof HTMLDialogElement && !dialog.open;
+      });
+    }
+
     for (const projectStep of ["strategy", "media", "system", "operations"]) {
       await page.evaluate((step) => {
         document.querySelector(`[data-project-step="${step}"]`)

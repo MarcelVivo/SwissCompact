@@ -566,7 +566,7 @@
             <h3>Website &amp; Marke</h3>
             <p>Strategie, UX, Design, Entwicklung, Inhalte, Bilder und Texte – SEO- und GEO-optimiert.</p>
             <ul><li>Komplette Website-Erstellung</li><li>Marketing &amp; Content</li><li>Laufende Optimierung</li></ul>
-            <a class="business-platform__card-link" href="/plattform/website-marke/">Mehr erfahren <span aria-hidden="true">↗</span></a>
+            <a class="business-platform__card-link" href="/plattform/website-marke/" data-platform-detail="website" aria-haspopup="dialog">Mehr erfahren <span aria-hidden="true">↗</span></a>
           </article>
 
           <article class="business-platform__card">
@@ -578,7 +578,7 @@
             <h3>Business Dashboard</h3>
             <p>Ein auf das Unternehmen zugeschnittenes System für CRM, ERP, Projekte, Marketing und Automatisierung.</p>
             <ul><li>Eigene Domain, eigene Prozesse</li><li>Rollen &amp; Kundenverwaltung</li><li>KI-Bots für Administration</li></ul>
-            <a class="business-platform__card-link" href="/plattform/business-dashboard/">Mehr erfahren <span aria-hidden="true">↗</span></a>
+            <a class="business-platform__card-link" href="/plattform/business-dashboard/" data-platform-detail="dashboard" aria-haspopup="dialog">Mehr erfahren <span aria-hidden="true">↗</span></a>
           </article>
 
           <article class="business-platform__card business-platform__card--accent">
@@ -590,7 +590,7 @@
             <h3>Display Portal</h3>
             <p>Die SwissCompact Software für Inhalte, Kampagnen, Displays und LED-Netzwerke – einfach und zentral bedienbar.</p>
             <ul><li>swisscompact.com/portal</li><li>White-Label auf eigener Domain</li><li>Content-Erstellung mit KI</li></ul>
-            <a class="business-platform__card-link" href="/plattform/display-portal/">Mehr erfahren <span aria-hidden="true">↗</span></a>
+            <a class="business-platform__card-link" href="/plattform/display-portal/" data-platform-detail="portal" aria-haspopup="dialog">Mehr erfahren <span aria-hidden="true">↗</span></a>
           </article>
 
           <article class="business-platform__card">
@@ -602,9 +602,40 @@
             <h3>Hardware &amp; Betrieb</h3>
             <p>Displays und LED-Systeme inklusive Planung, Montage, Einrichtung, Monitoring, Wartung und Support.</p>
             <ul><li>Hardware-Konzeption</li><li>Installation vor Ort</li><li>Laufende Betreuung</li></ul>
-            <a class="business-platform__card-link" href="/plattform/hardware-betrieb/">Mehr erfahren <span aria-hidden="true">↗</span></a>
+            <a class="business-platform__card-link" href="/plattform/hardware-betrieb/" data-platform-detail="hardware" aria-haspopup="dialog">Mehr erfahren <span aria-hidden="true">↗</span></a>
           </article>
         </div>
+
+        <dialog class="project-detail platform-detail" data-platform-detail-dialog aria-labelledby="platform-detail-title" aria-describedby="platform-detail-intro">
+          <div class="project-detail__surface">
+            <button class="project-detail__close" type="button" data-platform-detail-close aria-label="Detailansicht schliessen">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <header class="project-detail__header">
+              <span data-platform-detail-number>01</span>
+              <p data-platform-detail-category>Digitale Präsenz &amp; Marke</p>
+              <h3 id="platform-detail-title" data-platform-detail-title>Website &amp; Marke</h3>
+              <strong data-platform-detail-headline>Eine Website, die die richtigen Menschen erreicht und ins Gespräch bringt.</strong>
+              <p id="platform-detail-intro" data-platform-detail-intro></p>
+              <img class="project-detail__image platform-detail__image" src="/images/platform/website-marke.webp" width="1086" height="1448" decoding="async" alt="Designer arbeitet an einer digitalen Markenwelt in einem dunklen Studio" data-platform-detail-image>
+            </header>
+            <div class="project-detail__body">
+              <section>
+                <span>Was in diesem Baustein steckt</span>
+                <ul data-platform-detail-services></ul>
+              </section>
+              <aside>
+                <span>Der Mehrwert</span>
+                <p data-platform-detail-result></p>
+                <small data-platform-detail-output></small>
+              </aside>
+            </div>
+            <footer>
+              <span data-platform-detail-index>Baustein 01 von 04</span>
+              <button type="button" data-platform-detail-cta>Baustein besprechen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+            </footer>
+          </div>
+        </dialog>
 
         <div class="business-platform__service">
           <div>

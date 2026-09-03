@@ -5490,6 +5490,107 @@ button {
   overflow: hidden;
 }
 
+.platform-detail {
+  width: min(1120px, calc(100vw - 40px));
+}
+
+.platform-detail .project-detail__surface {
+  padding: clamp(24px, 3vw, 36px);
+}
+
+.platform-detail .project-detail__header {
+  display: grid;
+  max-width: none;
+  grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.92fr);
+  grid-template-rows: auto auto auto auto;
+  column-gap: clamp(28px, 4vw, 52px);
+  align-items: start;
+}
+
+.platform-detail .project-detail__header > span,
+.platform-detail .project-detail__header > p:first-of-type {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.platform-detail .project-detail__header h3 {
+  grid-column: 1;
+  grid-row: 2;
+  margin-top: 18px;
+  font-size: clamp(40px, 4.8vw, 58px);
+}
+
+.platform-detail .project-detail__header > strong {
+  grid-column: 1;
+  grid-row: 3;
+  margin-top: 10px;
+  font-size: clamp(18px, 1.8vw, 23px);
+}
+
+.platform-detail .project-detail__header > p:last-of-type {
+  grid-column: 1;
+  grid-row: 4;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.platform-detail__image {
+  min-height: 280px;
+  max-height: 340px;
+  grid-column: 2;
+  grid-row: 1 / 5;
+  object-position: center;
+}
+
+.platform-detail .project-detail__body {
+  gap: clamp(26px, 4vw, 48px);
+  margin-top: 20px;
+  padding-top: 18px;
+}
+
+.platform-detail .project-detail__body ul {
+  margin-top: 10px;
+}
+
+.platform-detail .project-detail__body li {
+  padding: 8px 0 8px 22px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.platform-detail .project-detail__body li::before {
+  top: 13px;
+}
+
+.platform-detail .project-detail__body aside {
+  padding: 18px;
+}
+
+.platform-detail .project-detail__body aside p {
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.36;
+}
+
+.platform-detail .project-detail__body aside small {
+  margin-top: 14px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.platform-detail footer {
+  margin-top: 18px;
+}
+
+.platform-detail footer button {
+  min-height: 46px;
+}
+
+.is-platform-detail-open {
+  overflow: hidden;
+}
+
 @media (max-width: 640px) {
   .project-detail {
     width: 100vw;
@@ -5562,6 +5663,41 @@ button {
     height: 180px;
     min-height: 0;
     margin-top: 22px;
+  }
+
+  .platform-detail,
+  .platform-detail .project-detail__surface {
+    max-height: 100dvh;
+  }
+
+  .platform-detail .project-detail__surface {
+    padding: 64px 20px calc(22px + env(safe-area-inset-bottom));
+  }
+
+  .platform-detail .project-detail__header {
+    display: block;
+  }
+
+  .platform-detail .project-detail__header > p:first-of-type {
+    margin-right: 58px;
+  }
+
+  .platform-detail .project-detail__header h3 {
+    margin-top: 18px;
+    font-size: clamp(38px, 12vw, 52px);
+  }
+
+  .platform-detail__image {
+    height: 220px;
+    min-height: 220px;
+    margin-top: 20px;
+  }
+
+  .platform-detail .project-detail__body {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    margin-top: 26px;
+    padding-top: 20px;
   }
 
   .impact-detail,
