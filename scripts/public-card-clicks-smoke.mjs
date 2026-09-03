@@ -153,9 +153,48 @@ try {
       });
     }
 
+    const consultationCta = page.locator("[data-sales-assistant-open]").last();
+    await consultationCta.scrollIntoViewIfNeeded();
+    await consultationCta.click();
+    await page.waitForFunction(() => document.body.classList.contains("is-sales-assistant-open"));
+    await page.locator("[data-sales-assistant-close]").click();
+    await page.waitForFunction(() => !document.body.classList.contains("is-sales-assistant-open"));
+
+    await page.locator("[data-sales-assistant-trigger]").click();
+    await page.waitForFunction(() => document.body.classList.contains("is-sales-assistant-open"));
+    await page.locator("[data-sales-assistant-close]").click();
+
+    await page.locator("[data-showroom-funnel-trigger]").click();
+    await page.waitForFunction(() => document.body.classList.contains("is-showroom-funnel-open"));
+    await page.locator("[data-showroom-funnel-close]").click();
+    await page.waitForFunction(() => !document.body.classList.contains("is-showroom-funnel-open"));
+
+    const restart = page.locator('[data-experience-start="0.08"]');
+    await restart.scrollIntoViewIfNeeded();
+    await restart.click();
+    await page.waitForFunction(() => window.scrollY < 10);
+
     assert.deepEqual(errors, [], `${viewport.name}: JavaScript-Fehler: ${errors.join(" | ")}`);
     await context.close();
   }
+
+  const fallbackContext = await browser.newContext({ javaScriptEnabled: false });
+  const fallbackPage = await fallbackContext.newPage();
+  await fallbackPage.goto(baseURL, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  const fallbackHrefs = await fallbackPage.locator(
+    "[data-sales-assistant-open], [data-sales-assistant-trigger], [data-showroom-funnel-trigger]",
+  ).evaluateAll((elements) => elements.map((element) => element.getAttribute("href")));
+  assert.ok(
+    fallbackHrefs.length >= 6
+      && fallbackHrefs.every((href) => href?.startsWith("mailto:kontakt@swisscompact.com")),
+    "CTAs bieten ohne JavaScript keinen verlässlichen Kontaktweg",
+  );
+  assert.equal(
+    await fallbackPage.locator('[data-experience-start="0.08"]').getAttribute("href"),
+    "/#top",
+    "Erlebnis-Neustart bietet ohne JavaScript keine Startseiten-Navigation",
+  );
+  await fallbackContext.close();
 } finally {
   await browser.close();
 }

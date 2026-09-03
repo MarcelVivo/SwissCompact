@@ -1559,7 +1559,7 @@ button {
   text-transform: uppercase;
 }
 
-.solution-result > button {
+.solution-result > :is(a, button) {
   position: relative;
   display: inline-flex;
   width: fit-content;
@@ -1577,8 +1577,8 @@ button {
   font-weight: 800;
 }
 
-.solution-result > button:hover,
-.solution-result > button:focus-visible {
+.solution-result > :is(a, button):hover,
+.solution-result > :is(a, button):focus-visible {
   outline: 2px solid #fff;
   outline-offset: 3px;
   background: #ff1747;
@@ -5577,7 +5577,7 @@ button {
   color: rgba(255, 255, 255, 0.72);
 }
 
-.media-studio__copy > button {
+.media-studio__copy > :is(a, button) {
   display: inline-flex;
   min-height: 52px;
   align-items: center;
@@ -5597,8 +5597,8 @@ button {
     box-shadow 180ms ease;
 }
 
-.media-studio__copy > button:hover,
-.media-studio__copy > button:focus-visible {
+.media-studio__copy > :is(a, button):hover,
+.media-studio__copy > :is(a, button):focus-visible {
   border-color: rgba(255, 255, 255, 0.5);
   background: #111114;
   box-shadow: 0 22px 52px rgba(28, 0, 6, 0.42);
@@ -5606,7 +5606,7 @@ button {
   outline: none;
 }
 
-.media-studio__copy > button:focus-visible {
+.media-studio__copy > :is(a, button):focus-visible {
   box-shadow:
     0 22px 52px rgba(28, 0, 6, 0.42),
     0 0 0 3px rgba(255, 255, 255, 0.82);
@@ -5925,7 +5925,7 @@ button {
   outline-offset: 3px;
 }
 
-.project-cta__actions > button {
+.project-cta__actions > :is(a, button) {
   display: inline-flex;
   width: fit-content;
   min-height: 44px;
@@ -5948,14 +5948,14 @@ button {
   background: #08080a;
 }
 
-.project-cta__actions > button:not(.button):hover,
-.project-cta__actions > button:not(.button):focus-visible {
+.project-cta__actions > :is(a, button):not(.button):hover,
+.project-cta__actions > :is(a, button):not(.button):focus-visible {
   color: #fff;
   transform: translateX(3px);
   outline: none;
 }
 
-.project-cta__actions > button:not(.button):focus-visible {
+.project-cta__actions > :is(a, button):not(.button):focus-visible {
   border-radius: 3px;
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.78);
 }
@@ -16731,6 +16731,7 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   color: var(--white);
   font-weight: 700;
   font-size: 14px;
+  text-decoration: none;
   cursor: pointer;
   transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
@@ -17198,6 +17199,7 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
   color: var(--white);
   font-weight: 700;
   font-size: 15px;
+  text-decoration: none;
   cursor: pointer;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
   transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s;
@@ -17938,7 +17940,7 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     width: 100%;
   }
 
-  .media-studio__copy > button {
+  .media-studio__copy > :is(a, button) {
     width: 100%;
     min-height: 50px;
   }

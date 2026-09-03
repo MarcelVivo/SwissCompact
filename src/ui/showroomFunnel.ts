@@ -59,7 +59,7 @@ function uid() {
 }
 
 export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunnel {
-  const triggerCheck = document.querySelector<HTMLButtonElement>("[data-showroom-funnel-trigger]");
+  const triggerCheck = document.querySelector<HTMLElement>("[data-showroom-funnel-trigger]");
   const panelCheck = document.querySelector<HTMLElement>("[data-showroom-funnel-panel]");
   const bodyCheck = document.querySelector<HTMLElement>("[data-showroom-funnel-body]");
   const closeCheck = document.querySelector<HTMLButtonElement>("[data-showroom-funnel-close]");
@@ -880,7 +880,10 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     body.scrollTop = 0;
   }
 
-  const handleTriggerClick = () => setOpen(!open);
+  const handleTriggerClick = (event: Event) => {
+    event.preventDefault();
+    setOpen(!open);
+  };
   const handleCloseClick = () => setOpen(false);
   const handleKeydown = (event: KeyboardEvent) => {
     if (event.key === "Escape" && open) setOpen(false);
