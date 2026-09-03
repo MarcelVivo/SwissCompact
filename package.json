@@ -73,6 +73,8 @@
     "test:player": "node scripts/display-player-smoke.mjs",
     "test:einsatzbereiche": "node scripts/einsatzbereiche-smoke.mjs",
     "test:plattform-pages": "node scripts/plattform-smoke.mjs",
+    "test:public-links": "node scripts/public-links-smoke.mjs",
+    "test:public-card-clicks": "node scripts/public-card-clicks-smoke.mjs",
     "legal:generate": "node scripts/generate-legal-publication.mjs",
     "test:legal": "node scripts/legal-publication-smoke.mjs",
     "test:operations": "node scripts/operational-readiness-smoke.mjs"

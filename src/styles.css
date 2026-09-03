@@ -1740,16 +1740,18 @@ button {
   content: "";
 }
 
-/* The whole card is already clickable (mountCardLinks in cardLinks.ts),
-   so the "Mehr erfahren" text is redundant visual clutter — kept in the
-   DOM only as the card's sole focusable/accessible element. Collapsed to
-   a zero-size box in normal flow (not absolutely positioned) so it can't
-   end up overlapping other content in the card after a layout recalc. */
+/* A native link covers the full card. Navigation therefore keeps working
+   with touch, keyboard and even when the website JavaScript is delayed or
+   unavailable. The descriptive link text remains available to assistive
+   technology without adding visual clutter to the card. */
 .business-platform__card-link {
   display: block;
-  width: 0;
-  height: 0;
+  position: absolute;
+  z-index: 4;
+  inset: 0;
   overflow: hidden;
+  color: transparent;
+  font-size: 0;
   white-space: nowrap;
 }
 
@@ -18329,14 +18331,12 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
 }
 
 /*
- * On the shortest phones, stations 2-11's "Details entdecken" link and
- * benefit line can still reach far enough down to sit under the floating
- * chat/showroom buttons — drop them there, same reasoning as the hero's
- * secondary link above.
+ * On the shortest phones the secondary benefit line can reach the floating
+ * chat/showroom controls. Hide only that optional line; the route to the
+ * detail page must remain visible and tappable on every supported viewport.
  */
 @media (max-width: 640px) and (orientation: portrait) and (max-height: 600px) {
-  .station:not(.station--hero) .station__benefit,
-  .station__details {
+  .station:not(.station--hero) .station__benefit {
     display: none;
   }
 
