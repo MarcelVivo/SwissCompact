@@ -44,11 +44,6 @@ export function mountOverlays(stations: StationDefinition[]): OverlayUI {
           <button class="button button--red" type="button" data-start-experience>
             Erlebnis starten <span aria-hidden="true">↓</span>
           </button>
-          <a
-            class="button button--glass"
-            href="#wirkung"
-            data-marketing-target="#wirkung"
-          >Lösungen entdecken <span aria-hidden="true">→</span></a>
         </div>` : ""}
     `;
     overlayRoot.append(section);

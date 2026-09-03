@@ -645,8 +645,8 @@ button {
 
 .station--hero {
   z-index: 15;
-  bottom: 9vh;
-  max-width: min(680px, 58vw);
+  bottom: 11vh;
+  max-width: min(650px, 52vw);
 }
 
 .station--hero.is-active {
@@ -654,34 +654,26 @@ button {
 }
 
 .station--hero h1 {
-  font-size: clamp(44px, 5.9vw, 82px);
+  font-size: clamp(46px, 5.7vw, 80px);
 }
 
 .station--hero p {
-  max-width: 560px;
-  color: rgba(255, 255, 255, 0.75);
+  max-width: 34ch;
+  color: rgba(255, 255, 255, 0.78);
   font-size: clamp(16px, 1.2vw, 19px);
 }
 
 .hero-actions {
-  display: grid;
-  width: min(100%, 470px);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  width: auto;
   align-items: center;
-  gap: 8px;
-  margin-top: 28px;
-  padding: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  background: rgba(5, 5, 7, 0.42);
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(18px) saturate(1.1);
+  margin-top: 24px;
 }
 
 .hero-actions .button {
-  width: 100%;
+  width: auto;
   min-height: 50px;
-  padding: 13px 18px;
+  padding: 13px 24px;
   font-size: 14px;
   white-space: nowrap;
 }
@@ -739,10 +731,7 @@ button {
    land on the exact same line, so the hero's own eyebrow gets a small
    solid backdrop instead, independent of viewport size. */
 .station--hero .station__kicker {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(6, 6, 7, 0.94);
+  display: none;
 }
 
 .station h1,
@@ -18605,5 +18594,118 @@ body:has(.showroom-section.is-display-preview-open) .site-header {
     height: 180px;
     min-height: 180px;
     margin-top: 20px;
+  }
+}
+
+/*
+ * Hero focus: the opening frame is intentionally quiet. Navigation remains
+ * available behind one compact menu control, while the sales widgets and
+ * journey controls return as soon as the visitor starts exploring.
+ */
+body.is-hero-focus .site-header,
+body.is-hero-focus .site-header.is-condensed {
+  padding-top: 18px;
+  padding-bottom: 18px;
+  border-bottom-color: transparent;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+body.is-hero-focus .logo {
+  font-size: 18px;
+  opacity: 0.9;
+}
+
+body.is-hero-focus .contact {
+  display: none;
+}
+
+body.is-hero-focus .menu-toggle {
+  display: block;
+  background: rgba(6, 6, 7, 0.38);
+  backdrop-filter: blur(12px);
+}
+
+body.is-hero-focus .primary-nav {
+  position: fixed;
+  top: 76px;
+  right: 7vw;
+  left: 7vw;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0;
+  padding: 8px;
+  border-color: rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(8, 8, 10, 0.82);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.34);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-10px) scale(0.985);
+  transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
+}
+
+body.is-hero-focus .primary-nav a {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+}
+
+body.is-hero-focus.is-menu-open .primary-nav {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+body.is-hero-focus .journey-brand--intro,
+body.is-hero-focus #dots,
+body.is-hero-focus #hint,
+body.is-hero-focus .sales-assistant__trigger,
+body.is-hero-focus .showroom-funnel__trigger {
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.is-hero-focus .sales-assistant__trigger,
+body.is-hero-focus .showroom-funnel__trigger {
+  transform: translateY(12px);
+}
+
+@media (max-width: 640px) {
+  body.is-hero-focus .site-header,
+  body.is-hero-focus .site-header.is-condensed {
+    padding-top: calc(12px + env(safe-area-inset-top));
+    padding-bottom: 12px;
+  }
+
+  body.is-hero-focus .primary-nav {
+    top: calc(70px + env(safe-area-inset-top));
+    right: var(--mobile-gutter);
+    left: var(--mobile-gutter);
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 12px 18px;
+  }
+
+  body.is-hero-focus .primary-nav a {
+    justify-content: flex-start;
+    min-height: 48px;
+    padding: 8px 0;
+    font-size: 16px;
+  }
+
+  body.is-hero-focus .station--hero .hero-actions {
+    display: flex;
+    margin-top: 16px;
+  }
+
+  body.is-hero-focus .station--hero .hero-actions .button {
+    width: auto;
   }
 }
