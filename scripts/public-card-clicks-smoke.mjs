@@ -60,11 +60,6 @@ try {
           "[data-impact-detail-dialog]",
           "[data-impact-detail-close]",
         ),
-        mediaDialog: openAndClose(
-          '[data-media-studio-detail="motion"]',
-          "[data-media-detail-dialog]",
-          "[data-media-detail-close]",
-        ),
         stationLinks: [...document.querySelectorAll(".station__details")].map((link) => ({
           href: link.getAttribute("href"),
           display: getComputedStyle(link).display,
@@ -76,7 +71,6 @@ try {
     assert.equal(state.platformLinks.length, 4, `${viewport.name}: Plattformkarten fehlen`);
     assert.ok(state.platformLinks.every((link) => link.href && link.coversCard), `${viewport.name}: Plattformkarte ist nicht vollständig verlinkt`);
     assert.ok(state.impactDialog, `${viewport.name}: Wirkungsdetail öffnet oder schliesst nicht`);
-    assert.ok(state.mediaDialog, `${viewport.name}: Media-Detail öffnet oder schliesst nicht`);
     assert.equal(state.stationLinks.length, 10, `${viewport.name}: Einsatzbereich-Links fehlen`);
     assert.ok(state.stationLinks.every((link) => link.href && link.display !== "none"), `${viewport.name}: Einsatzbereich-Link ist ausgeblendet`);
     if (viewport.name.includes("mobile")) {
@@ -116,6 +110,45 @@ try {
       });
       await page.waitForFunction(() => {
         const dialog = document.querySelector("[data-project-detail-dialog]");
+        return dialog instanceof HTMLDialogElement && !dialog.open;
+      });
+    }
+
+    for (const mediaDetail of ["motion", "film", "three-d", "campaigns", "templates"]) {
+      await page.evaluate((detail) => {
+        document.querySelector(`[data-media-studio-detail="${detail}"]`)
+          ?.scrollIntoView({ block: "center", behavior: "instant" });
+      }, mediaDetail);
+      await page.waitForTimeout(100);
+
+      const action = page.locator(
+        `[data-media-studio-detail="${mediaDetail}"] .media-tile__action`,
+      );
+      const bounds = await action.boundingBox();
+      assert.ok(bounds, `${viewport.name}: Media-Karte ${mediaDetail} ist nicht sichtbar`);
+      const point = {
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+      };
+      const receivesPointer = await page.evaluate(({ x, y, detail }) => (
+        document.elementFromPoint(x, y)
+          ?.closest(`[data-media-studio-detail="${detail}"]`)
+          ?.getAttribute("data-media-studio-detail") === detail
+      ), { ...point, detail: mediaDetail });
+      assert.ok(receivesPointer, `${viewport.name}: Media-Karte ${mediaDetail} wird von einem anderen Element überlagert`);
+
+      await page.mouse.click(point.x, point.y);
+      await page.waitForFunction((detail) => {
+        const dialog = document.querySelector("[data-media-detail-dialog]");
+        return dialog instanceof HTMLDialogElement
+          && dialog.open
+          && dialog.dataset.mediaDetailActive === detail;
+      }, mediaDetail);
+      await page.locator("[data-media-detail-close]").evaluate((button) => {
+        if (button instanceof HTMLElement) button.click();
+      });
+      await page.waitForFunction(() => {
+        const dialog = document.querySelector("[data-media-detail-dialog]");
         return dialog instanceof HTMLDialogElement && !dialog.open;
       });
     }
