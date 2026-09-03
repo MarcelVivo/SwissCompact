@@ -153,25 +153,35 @@ try {
       });
     }
 
+    const clickAtCenter = async (locator, name) => {
+      await locator.scrollIntoViewIfNeeded();
+      const bounds = await locator.boundingBox();
+      assert.ok(bounds, `${viewport.name}: ${name} ist nicht sichtbar`);
+      const point = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+      const receivesPointer = await locator.evaluate((element, { x, y }) => (
+        document.elementFromPoint(x, y)?.closest("a, button") === element
+      ), point);
+      assert.ok(receivesPointer, `${viewport.name}: ${name} hat keine passende Klickfläche`);
+      await page.mouse.click(point.x, point.y);
+    };
+
     const consultationCta = page.locator("[data-sales-assistant-open]").last();
-    await consultationCta.scrollIntoViewIfNeeded();
-    await consultationCta.click();
+    await clickAtCenter(consultationCta, "Projekt-CTA");
     await page.waitForFunction(() => document.body.classList.contains("is-sales-assistant-open"));
     await page.locator("[data-sales-assistant-close]").click();
     await page.waitForFunction(() => !document.body.classList.contains("is-sales-assistant-open"));
 
-    await page.locator("[data-sales-assistant-trigger]").click();
+    await clickAtCenter(page.locator("[data-sales-assistant-trigger]"), "Beratung-CTA");
     await page.waitForFunction(() => document.body.classList.contains("is-sales-assistant-open"));
     await page.locator("[data-sales-assistant-close]").click();
 
-    await page.locator("[data-showroom-funnel-trigger]").click();
+    await clickAtCenter(page.locator("[data-showroom-funnel-trigger]"), "Raumgestaltungs-CTA");
     await page.waitForFunction(() => document.body.classList.contains("is-showroom-funnel-open"));
     await page.locator("[data-showroom-funnel-close]").click();
     await page.waitForFunction(() => !document.body.classList.contains("is-showroom-funnel-open"));
 
     const restart = page.locator('[data-experience-start="0.08"]');
-    await restart.scrollIntoViewIfNeeded();
-    await restart.click();
+    await clickAtCenter(restart, "Erlebnis-Neustart");
     await page.waitForFunction(() => window.scrollY < 10);
 
     assert.deepEqual(errors, [], `${viewport.name}: JavaScript-Fehler: ${errors.join(" | ")}`);
@@ -182,12 +192,12 @@ try {
   const fallbackPage = await fallbackContext.newPage();
   await fallbackPage.goto(baseURL, { waitUntil: "domcontentloaded", timeout: 30_000 });
   const fallbackHrefs = await fallbackPage.locator(
-    "[data-sales-assistant-open], [data-sales-assistant-trigger], [data-showroom-funnel-trigger]",
+    "[data-sales-assistant-open], [data-sales-assistant-trigger], [data-showroom-funnel-trigger], [data-project-step], [data-media-studio-detail]",
   ).evaluateAll((elements) => elements.map((element) => element.getAttribute("href")));
   assert.ok(
-    fallbackHrefs.length >= 6
+    fallbackHrefs.length >= 15
       && fallbackHrefs.every((href) => href?.startsWith("mailto:kontakt@swisscompact.com")),
-    "CTAs bieten ohne JavaScript keinen verlässlichen Kontaktweg",
+    "CTAs und Detailkarten bieten ohne JavaScript keinen verlässlichen Kontaktweg",
   );
   assert.equal(
     await fallbackPage.locator('[data-experience-start="0.08"]').getAttribute("href"),

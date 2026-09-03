@@ -107,9 +107,7 @@ export function mountProjectSteps(): ProjectSteps {
   const dialog = document.querySelector<HTMLDialogElement>(
     "[data-project-detail-dialog]",
   );
-  const triggers = Array.from(
-    document.querySelectorAll<HTMLButtonElement>("[data-project-step]"),
-  );
+  const triggers = Array.from(document.querySelectorAll<HTMLElement>("[data-project-step]"));
   if (!dialog || triggers.length === 0) return { destroy: () => {} };
 
   const closeButton = dialog.querySelector<HTMLButtonElement>(
@@ -139,14 +137,14 @@ export function mountProjectSteps(): ProjectSteps {
     output: dialog.querySelector<HTMLElement>("[data-project-detail-output]"),
     index: dialog.querySelector<HTMLElement>("[data-project-detail-index]"),
   };
-  let activeTrigger: HTMLButtonElement | null = null;
+  let activeTrigger: HTMLElement | null = null;
 
   const close = (restoreFocus = true): void => {
     if (dialog.open) dialog.close();
     document.body.classList.remove("is-project-detail-open");
     if (restoreFocus) activeTrigger?.focus();
   };
-  const open = (trigger: HTMLButtonElement): void => {
+  const open = (trigger: HTMLElement): void => {
     const key = trigger.dataset.projectStep;
     if (!isProjectStepKey(key)) return;
     const detail = PROJECT_STEP_DETAILS[key];
@@ -174,7 +172,10 @@ export function mountProjectSteps(): ProjectSteps {
   };
 
   const triggerHandlers = triggers.map((trigger) => {
-    const handler = (): void => open(trigger);
+    const handler = (event: Event): void => {
+      event.preventDefault();
+      open(trigger);
+    };
     trigger.addEventListener("click", handler);
     return { trigger, handler };
   });
