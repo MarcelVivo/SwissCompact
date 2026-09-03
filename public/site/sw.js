@@ -2,7 +2,7 @@
 // ("/" for the public site, "/dashboard" for the internal dashboard).
 // Scope: cache the app shell only. Large scroll-journey videos and all API
 // calls are explicitly excluded — see BYPASS_PREFIXES below.
-const CACHE_VERSION = "swisscompact-shell-v1";
+const CACHE_VERSION = "swisscompact-shell-v2";
 
 const BYPASS_PREFIXES = ["/media/", "/api/", "/offerte/"];
 
@@ -67,6 +67,16 @@ self.addEventListener("fetch", (event) => {
   if (shouldBypass(url)) return;
 
   if (request.mode === "navigate") {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  // Interaktionscode und Styles müssen bei einer neuen Veröffentlichung
+  // sofort vom Netz kommen. Ein veraltetes Bundle kann sonst sichtbare
+  // Karten ausliefern, deren Klick-Handler noch dem vorherigen Stand
+  // entsprechen. Bei einem Netzausfall greift networkFirst weiterhin auf
+  // die zuletzt erfolgreich gespeicherte Fassung zurück.
+  if (request.destination === "script" || request.destination === "style") {
     event.respondWith(networkFirst(request));
     return;
   }
