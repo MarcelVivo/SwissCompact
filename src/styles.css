@@ -18676,12 +18676,6 @@ body.is-hero-focus .showroom-funnel__trigger {
   transform: translateY(12px);
 }
 
-/* Keep the dimensional wordmark as a quiet object inside the display — the
- * headline stays outside it and the secondary slogan remains absent. */
-body.is-hero-focus .journey-brand--intro .journey-brand__slogan {
-  display: none;
-}
-
 @media (min-width: 641px) {
   body.is-hero-focus .journey-brand--intro {
     top: 43.5%;
