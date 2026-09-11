@@ -6130,7 +6130,7 @@ button {
 
 .site-footer {
   position: relative;
-  z-index: 30;
+  z-index: 200;
   display: grid;
   grid-template-columns: auto minmax(180px, 1fr) auto auto auto;
   gap: 28px;

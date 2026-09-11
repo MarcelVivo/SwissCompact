@@ -18,7 +18,6 @@ const revealSelectors = [
   "#marketing-content .company-copy",
   "#marketing-content .project-cta > div",
   "#marketing-content .project-cta__actions",
-  ".site-footer > *",
 ].join(",");
 
 const staggerGroups = [
@@ -27,7 +26,6 @@ const staggerGroups = [
   ".industry-row",
   ".project-steps",
   ".media-wall",
-  ".site-footer",
 ];
 
 function markFragments(element: HTMLElement): void {
