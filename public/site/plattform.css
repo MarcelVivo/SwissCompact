@@ -322,6 +322,12 @@ a {
   color: #fff;
 }
 
+.pf-footer__legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
 @media (max-width: 900px) {
   .pf-features,
   .pf-steps {

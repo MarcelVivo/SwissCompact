@@ -1,90 +1,67 @@
-# Rechtsdokumente und Zustimmungen – sichere Inbetriebnahme
+# Rechtsdokumente Version 1.0 – Veröffentlichung
 
-Die technische Verwaltung ersetzt keine rechtliche Prüfung. Solange nur die mitgelieferten Entwürfe vorhanden sind, erscheint im Kundenportal keine Zustimmung und kein Benutzer wird blockiert.
+Die Rechtsdokumente haben eine gemeinsame, versionierte Quelle unter `docs/legal/`. Die öffentliche Website rendert diese Texte unter `/legal.html`; die Migration übernimmt exakt denselben Inhalt in die unveränderbare Portalhistorie.
 
-## 1. Migration ausführen
+## Veröffentlichte Fassung
 
-Den vollständigen Inhalt von `supabase/migrations/20260911_legal_compliance.sql` im Supabase SQL Editor ausführen.
+- `docs/legal/terms-v1.0.md`: Nutzungsbedingungen, persönliche Zustimmung jedes Portalbenutzers
+- `docs/legal/privacy-v1.0.md`: Datenschutzerklärung, reine Information ohne fingierte Einwilligung
+- `docs/legal/data-processing-v1.0.md`: Vereinbarung zur Auftragsbearbeitung, einmalige Bestätigung durch Inhaber oder Administrator des Kundenbetriebs
+
+Anbieter der aktuellen Vorgründungsphase ist Marcel Spahr, handelnd unter SwissCompact, Schwarzenburgstrasse 65, 3008 Bern. Die Texte nennen keine noch nicht gegründete Gesellschaft und keine nicht vorhandene MWST-Nummer.
+
+## 1. Technische Prüfung
+
+```bash
+npm run legal:generate
+npm run test:legal
+npm run build
+```
+
+`legal:generate` erzeugt `supabase/migrations/20260920_legal_documents_v1.sql` aus den drei Markdown-Dateien. Der Smoke-Test stellt sicher, dass kein Entwurfsmarker enthalten ist, die Migration die Texte unverändert enthält und die öffentliche Website Anbieter- und Datenschutzlinks zeigt.
+
+## 2. Datenbank veröffentlichen
+
+Den vollständigen Inhalt von `supabase/migrations/20260920_legal_documents_v1.sql` im Supabase SQL Editor ausführen. Die Migration ist wiederholbar:
+
+- eine identische bereits veröffentlichte Version bleibt unverändert;
+- eine abweichende bereits veröffentlichte Version führt zu einem Fehler statt zu einer stillen Änderung;
+- eine ältere veröffentlichte Fassung wird als `superseded` erhalten;
+- Version 1.0 wird mit fester Wirksamkeit ab 2. September 2026 veröffentlicht.
 
 Danach kontrollieren:
 
 ```sql
-select
-  to_regclass('swisscompact.legal_documents') is not null as rechtsdokumente,
-  to_regclass('swisscompact.legal_acceptances') is not null as zustimmungen,
-  exists (
-    select 1 from pg_policies
-    where schemaname = 'swisscompact'
-      and tablename = 'legal_acceptances'
-      and policyname = 'legal_acceptances_read'
-  ) as zustimmungen_rls,
-  exists (
-    select 1 from pg_proc
-    where proname = 'accept_legal_documents'
-      and pronamespace = 'swisscompact'::regnamespace
-  ) as sichere_zustimmungsfunktion;
-```
-
-Alle vier Werte müssen `true` sein.
-
-## 2. Geprüfte Texte einsetzen
-
-Die Migration erzeugt drei ausdrücklich nicht veröffentlichbare Arbeitsentwürfe. Nach der rechtlichen Prüfung werden Titel, Version, Zusammenfassung und vollständiger Inhalt ersetzt. Beispiel für die Nutzungsbedingungen:
-
-```sql
-update swisscompact.legal_documents
-set version = '1.0',
-    title = 'Nutzungsbedingungen Kundenportal',
-    summary = 'Regelt die Nutzung des SwissCompact-Kundenportals.',
-    content_markdown = $text$
-HIER DEN VOLLSTÄNDIGEN GEPRÜFTEN TEXT EINFÜGEN
-$text$,
-    effective_at = now()
-where document_type = 'terms'
-  and status = 'draft';
-```
-
-Dasselbe kontrolliert für `privacy` und `data_processing` durchführen. Entwürfe dürfen beliebig bearbeitet werden; veröffentlichte Versionen sind technisch unveränderbar.
-
-Im normalen Betrieb erfolgt dies ohne direkte SQL-Änderung im internen Dashboard unter **Sicherheit & Protokoll → Rechtsdokumente**. Nur der Hauptadmin kann dort Entwürfe anlegen oder bearbeiten.
-
-## 3. Bewusst veröffentlichen
-
-Die ID jedes geprüften Entwurfs kontrollieren:
-
-```sql
-select id, document_type, version, title, status, content_hash
+select document_type, acceptance_scope, version, title,
+       requires_acceptance, status, effective_at, published_at, content_hash
 from swisscompact.legal_documents
-order by document_type, created_at desc;
+where version = '1.0'
+order by document_type;
 ```
 
-Anschliessend jedes Dokument einzeln veröffentlichen. Bevorzugt wird im Dashboard die Aktion **Geprüfte Fassung veröffentlichen** verwendet. Sie verlangt:
+Erwartet werden drei Zeilen mit Status `published`. Nur Datenschutz hat `requires_acceptance = false`; die Auftragsbearbeitung hat `acceptance_scope = 'tenant'`.
 
-1. die Bestätigung, dass exakt diese Fassung fachlich beziehungsweise rechtlich freigegeben wurde;
-2. die ausdrückliche Eingabe `VERÖFFENTLICHEN`;
-3. eine Hauptadmin-Sitzung mit starker Anmeldung.
+## 3. Website veröffentlichen
 
-Alternativ kann die Funktion im SQL Editor einzeln aufgerufen werden:
+Die Codeänderungen committen und nach `main` pushen. Nach dem Vercel-Deployment folgende Adressen prüfen:
 
-```sql
-select swisscompact.publish_legal_document('DOKUMENT-ID-HIER'::uuid);
-```
+- `https://swisscompact.com/legal.html#anbieter`
+- `https://swisscompact.com/legal.html#datenschutz`
+- `https://swisscompact.com/legal.html#nutzungsbedingungen`
+- `https://swisscompact.com/legal.html#auftragsbearbeitung`
 
-Eine bereits aktuelle Fassung desselben Dokumenttyps wird dabei als `superseded` aufbewahrt. Sie bleibt mitsamt früheren Zustimmungen einsehbar.
+Die Datenschutzerklärung ist zusätzlich direkt in den Einwilligungsformularen des Verkaufsassistenten und des Showroom-Konfigurators verlinkt.
 
-## 4. Portalablauf prüfen
+## 4. Portalprüfung
 
-1. Als Inhaber im Kundenportal anmelden.
-2. Alle veröffentlichten Texte vollständig öffnen und bestätigen.
+1. Als Inhaber anmelden: Nutzungsbedingungen und AVV müssen offen sein; Datenschutz erscheint als Information.
+2. Beide zustimmungspflichtigen Dokumente vollständig öffnen und bestätigen.
 3. Unter **Einstellungen → Dokumente und Zustimmungen** Version, Zeitpunkt und Prüfsumme kontrollieren.
-4. Als weiterer Benutzer anmelden. Persönliche Dokumente müssen durch diesen Benutzer erneut bestätigt werden.
-5. Die Auftragsverarbeitung darf nur ein Inhaber oder Administrator für den Betrieb bestätigen.
-6. Eine neue Entwurfsversion anlegen und veröffentlichen. Nur die neue aktuelle Version muss erneut bestätigt werden.
+4. Als weiterer Benutzer anmelden: Nur die persönlichen Nutzungsbedingungen müssen noch bestätigt werden.
+5. Frühere Fassungen und Nachweise dürfen nicht bearbeitet oder gelöscht werden.
 
-## 5. Sicherheitsverhalten
+## Pflege
 
-- Platzhalter und mit `ENTWURF` gekennzeichnete Inhalte können nicht veröffentlicht werden.
-- Veröffentlichte Texte und Zustimmungsnachweise können nicht bearbeitet oder gelöscht werden.
-- Jede Zustimmung enthält Portal, Benutzer beziehungsweise Mitgliedschaft, Version, Dokumenttyp, Zeitpunkt und kryptografische Prüfsumme.
-- Das Portal bleibt vor der Migration und vor Veröffentlichung der finalen Texte funktionsfähig.
-- Es werden keine IP-Adressen oder unnötigen Geräteinformationen im Zustimmungsnachweis gespeichert.
+Rechtliche oder tatsächliche Änderungen werden niemals in Version 1.0 überschrieben. Stattdessen neue Markdown-Dateien und eine neue Versionsmigration anlegen. Besonders bei Gesellschaftsgründung, MWST-Registrierung, neuen Datenstandorten, Unterauftragnehmern, Tracking-Technologien oder wesentlich geänderten Leistungen müssen Anbieterangaben und Datenschutzerklärung aktualisiert werden.
+
+Die inhaltliche Prüfung stützt sich auf die öffentlich zugänglichen Vorgaben von EDÖB und SECO sowie die aktuellen Auftragsbearbeitungsbedingungen der eingesetzten Hauptanbieter. Sie ersetzt keine individuelle Rechtsberatung durch eine in der Schweiz zugelassene Fachperson.

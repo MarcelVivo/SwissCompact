@@ -116,12 +116,14 @@ export function PartnerNetworkView({
   role,
   onChanged,
   onUseContent,
+  onOpenContent,
 }: {
   network: PartnerNetworkData;
   content: ShareableContent[];
   role: "owner" | "admin" | "editor" | "viewer";
   onChanged: () => Promise<void>;
   onUseContent: (contentId: string) => void;
+  onOpenContent: () => void;
 }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -204,7 +206,7 @@ export function PartnerNetworkView({
     }
   }
 
-  if (!network.available) return <section className="view partner-view"><div className="section-title"><div><span className="partner-optional">Optionale Zusatzfunktion</span><h2>Partnernetzwerk</h2><p>Lokale Werbung fair tauschen oder bezahlt vereinbaren.</p></div></div><div className="partner-unavailable"><strong>Das Partnernetzwerk wird gerade eingerichtet.</strong><p>Nach der Datenbank-Aktivierung können Partnerbetriebe kontrolliert Werbung austauschen.</p></div></section>;
+  if (!network.available) return <section className="view partner-view"><div className="section-title"><div><span className="partner-optional">Optionale Zusatzfunktion</span><h2>Partnernetzwerk</h2><p>Lokale Werbung fair tauschen oder bezahlt vereinbaren.</p></div></div><div className="partner-unavailable"><strong>Das Partnernetzwerk ist momentan nicht verfügbar.</strong><p>Ihre bestehenden Inhalte und Kampagnen bleiben davon unberührt. Bei Interesse unterstützt Sie SwissCompact persönlich.</p><a className="primary" href="mailto:kontakt@swisscompact.com?subject=Partnernetzwerk%20SwissCompact">Interesse melden</a></div></section>;
 
   return <section className="view partner-view">
     <div className="section-title"><div><span className="partner-optional">Optionale Zusatzfunktion</span><h2>Partnernetzwerk</h2><p>Lokale Reichweite fair tauschen, bezahlt vereinbaren oder bewusst kostenlos unterstützen.</p></div></div>
@@ -238,7 +240,7 @@ export function PartnerNetworkView({
           <label>Hinweis (optional)<textarea name="message" rows={3} placeholder="Zum Beispiel: Bitte während der Mittagszeit anzeigen."/></label>
           <small>CHF-Beträge werden nur dokumentiert. Rechnung und Zahlung erfolgen direkt zwischen den Betrieben.</small>
           <button className="partner-confirm" disabled={Boolean(busy)}>{busy === "offer" ? "Wird angeboten …" : "Vereinbarung zur Prüfung senden"}</button>
-        </form> : <div className="partner-empty">{!active.length ? "Verbinden Sie zuerst einen Partnerbetrieb." : !shareable.length ? "Geben Sie zuerst ein fertig aufbereitetes Bild oder Video frei." : "Nur mit Bearbeitungsrecht verfügbar."}</div>}
+        </form> : <div className="partner-empty">{!active.length ? "Verbinden Sie zuerst links einen Partnerbetrieb." : !shareable.length ? <><span>Für eine Vereinbarung benötigen Sie ein freigegebenes Bild oder Video.</span>{canOffer && <button type="button" className="secondary" onClick={onOpenContent}>Zu Medien &amp; Vorlagen</button>}</> : "Nur mit Bearbeitungsrecht verfügbar."}</div>}
       </section>
     </div>
 

@@ -59,7 +59,7 @@ function uid() {
 }
 
 export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunnel {
-  const triggerCheck = document.querySelector<HTMLButtonElement>("[data-showroom-funnel-trigger]");
+  const triggerCheck = document.querySelector<HTMLElement>("[data-showroom-funnel-trigger]");
   const panelCheck = document.querySelector<HTMLElement>("[data-showroom-funnel-panel]");
   const bodyCheck = document.querySelector<HTMLElement>("[data-showroom-funnel-body]");
   const closeCheck = document.querySelector<HTMLButtonElement>("[data-showroom-funnel-close]");
@@ -752,7 +752,13 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     consentInput.required = true;
     consentLabel.append(consentInput);
     const consentText = document.createElement("span");
-    consentText.textContent = "Ich bin einverstanden, dass mein Konzept und meine Angaben zur Kontaktaufnahme an SwissCompact übermittelt werden.";
+    consentText.textContent = "Ich bin einverstanden, dass mein Konzept und meine Angaben zur Kontaktaufnahme an SwissCompact übermittelt werden. ";
+    const privacyLink = document.createElement("a");
+    privacyLink.href = "/legal.html#datenschutz";
+    privacyLink.target = "_blank";
+    privacyLink.rel = "noopener";
+    privacyLink.textContent = "Datenschutzerklärung öffnen";
+    consentText.append(privacyLink);
     consentLabel.append(consentText);
     form.append(consentLabel);
 
@@ -874,7 +880,10 @@ export function mountShowroomFunnel(showroom: GastronomyShowroom): ShowroomFunne
     body.scrollTop = 0;
   }
 
-  const handleTriggerClick = () => setOpen(!open);
+  const handleTriggerClick = (event: Event) => {
+    event.preventDefault();
+    setOpen(!open);
+  };
   const handleCloseClick = () => setOpen(false);
   const handleKeydown = (event: KeyboardEvent) => {
     if (event.key === "Escape" && open) setOpen(false);

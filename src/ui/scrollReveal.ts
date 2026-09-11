@@ -35,7 +35,7 @@ function markFragments(element: HTMLElement): void {
     (child): child is HTMLElement =>
       child instanceof HTMLElement
       && !child.matches(
-        ".industry-card__screen, .industry-card__media, .impact-card__photo, .impact-card__scene",
+        "a, button, .industry-card__screen, .industry-card__media, .impact-card__photo, .impact-card__scene",
       ),
   );
 
@@ -56,6 +56,11 @@ export function mountScrollReveal(): ScrollReveal {
 
   root.classList.add("has-scroll-reveal");
   elements.forEach((element) => {
+    // Native controls must never be left in an intermediate reveal state.
+    // On some browser/compositor combinations that makes their painted
+    // position differ from their pointer hit area, so a visible CTA or card
+    // looks clickable but does not receive the click.
+    if (element.matches("a, button")) return;
     element.dataset.reveal = "";
     markFragments(element);
   });

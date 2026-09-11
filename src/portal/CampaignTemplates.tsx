@@ -85,7 +85,7 @@ export function CampaignQuickStartDialog({ templates, onChoose, onClose, onChang
       </section>
       <section className="campaign-template-section">
         <header><div><span>Zeit sparen</span><h3>Meine Vorlagen</h3></div><small>{templates.items.length} gespeichert</small></header>
-        {!templates.available && <div className="campaign-template-unavailable"><strong>Eigene Vorlagen werden noch aktiviert.</strong><span>Die Standardvorlagen können Sie bereits verwenden. Für persönliche Vorlagen folgt einmalig die Supabase-Migration.</span></div>}
+        {!templates.available && <div className="campaign-template-unavailable"><strong>Eigene Vorlagen sind momentan nicht verfügbar.</strong><span>Wählen Sie oben eine Standardvorlage; das Portal führt Sie damit vollständig durch die Kampagnenerstellung.</span></div>}
         {templates.available && templates.items.length > 0 && <div className="campaign-template-grid own">{templates.items.map((template) => {
           const configuration = template.configuration || {};
           const displays = Array.isArray(configuration.displayIds) ? configuration.displayIds : [];

@@ -7,7 +7,7 @@ Der KI-Erstsupport beantwortet authentifizierte Supportanfragen im Kundenportal,
 1. Migration `supabase/migrations/20260917_support_ai.sql` ausführen.
 2. `OPENAI_API_KEY` in der Serverumgebung setzen. Der Schlüssel darf nie als Vite-Variable oder im Browser hinterlegt werden.
 3. Optional `OPENAI_SUPPORT_MODEL` setzen. Ohne Wert wird `OPENAI_ASSISTANT_MODEL` und danach der serverseitige Standard verwendet.
-4. Freigegebene Wissenseinträge in `swisscompact.support_ai_knowledge` anlegen. Ein Eintrag wird nur verwendet, wenn `active = true` und `approved_at` gesetzt ist.
+4. Im Dashboard unter `Support & SLA` die KI-Wissensbasis prüfen und weitere Anleitungen als Entwurf erfassen. Ein Eintrag wird nur verwendet, wenn er durch den Hauptadmin freigegeben wurde.
 
 Die Responses API wird mit `store: false`, einem strikten JSON-Schema, niedrigem Reasoning-Aufwand und einem serverseitigen Timeout aufgerufen.
 
@@ -45,6 +45,19 @@ Im Supportdialog stehen für offene Fälle zwei Aktionen bereit:
 - `KI erneut versuchen` setzt eine bewusste neue Runde mit zurückgesetztem Versuchszähler frei.
 
 Jeder KI-Lauf wird in `support_ai_runs` protokolliert. Entscheidungen und Eskalationen werden zusätzlich im Tenant-Auditlog erfasst. Prompts enthalten keine E-Mail-Adresse und keine Zugangsdaten.
+
+## Wissensbasis verwalten
+
+Die Verwaltung befindet sich im Dashboard im Register `Support` unter `KI-Wissensbasis`.
+
+- Admins können neue Anleitungen als Entwurf erstellen und vorhandene Einträge bearbeiten.
+- Jede Bearbeitung zieht eine bestehende Freigabe sofort zurück.
+- Nur der Hauptadmin kann einen geprüften Entwurf für Kundenantworten freigeben.
+- Freigegebene Anleitungen werden archiviert statt gelöscht und bleiben dadurch nachvollziehbar.
+- Nur ein noch nie freigegebener Entwurf kann durch den Hauptadmin endgültig gelöscht werden.
+- Kategorie, Quelle, Freigabezeitpunkt und freigebende Person werden im Dashboard angezeigt.
+
+Alle Aktionen werden zusätzlich im Dashboard-Auditlog gespeichert.
 
 ## Abschluss
 

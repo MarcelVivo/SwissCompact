@@ -18,6 +18,7 @@ export default defineConfig({
         portal: fileURLToPath(new URL("portal.html", import.meta.url)),
         player: fileURLToPath(new URL("player.html", import.meta.url)),
         quote: fileURLToPath(new URL("quote.html", import.meta.url)),
+        legal: fileURLToPath(new URL("legal.html", import.meta.url)),
       },
     },
   },

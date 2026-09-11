@@ -1,8 +1,32 @@
+# Dependencies
 node_modules/
+node_modules.nosync/
+
+# Build
 dist/
+dist-ssr/
+*.local
+
+# Env / Secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+
+# Vercel / Supabase
+.vercel/
+supabase/.temp/
+
+# Local media source & exports (large binaries, not part of the deployed site)
 media-source/
 exports/
-.DS_Store
-*.log
-.env*
-!.env.example

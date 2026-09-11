@@ -15,6 +15,11 @@ type ModelDecision = {
 
 const MIN_CONFIDENCE = 0.78;
 const MAX_AI_ATTEMPTS = 3;
+const DEFAULT_MODEL = "gpt-5-mini";
+const SUPPORT_ATTACHMENT_BUCKET = "swisscompact-support";
+const SUPPORT_PRICING: Record<string, { input: number; cachedInput: number; output: number; source: string }> = {
+  "gpt-5-mini": { input: 0.25, cachedInput: 0.025, output: 2, source: "OpenAI-Preise, Stand 2026-09-02" },
+};
 const HUMAN_REQUEST = /\b(mensch|mitarbeiter|mitarbeiterin|admin|persönlich|person|telefon|anrufen|rückruf|support[ -]?team)\b/i;
 const SOLVED_CONFIRMATION = /\b(funktioniert wieder|hat geklappt|problem (ist )?gelöst|ist behoben|alles (wieder )?gut|läuft wieder)\b/i;
 const NEGATIVE_CONFIRMATION = /\b(nicht|kein|leider|immer noch|weiterhin)\b.{0,35}\b(funktioniert|geklappt|gelöst|behoben|gut|läuft)\b/i;
@@ -47,6 +52,27 @@ function parseDecision(value: unknown): ModelDecision | null {
     message: boundedText(record.message, 8000),
     escalation_reason: boundedText(record.escalation_reason, 1000),
     resolution_confirmed: record.resolution_confirmed === true,
+  };
+}
+
+function usageAndCost(payload: any, model: string) {
+  const usage = payload?.usage && typeof payload.usage === "object" ? payload.usage : {};
+  const inputTokens = Math.max(0, Number(usage.input_tokens) || 0);
+  const cachedInputTokens = Math.min(inputTokens, Math.max(0, Number(usage.input_tokens_details?.cached_tokens) || 0));
+  const outputTokens = Math.max(0, Number(usage.output_tokens) || 0);
+  const totalTokens = Math.max(0, Number(usage.total_tokens) || inputTokens + outputTokens);
+  const pricing = SUPPORT_PRICING[model] || (model.startsWith("gpt-5-mini-") ? SUPPORT_PRICING["gpt-5-mini"] : undefined);
+  const estimatedCostUsd = pricing
+    ? ((inputTokens - cachedInputTokens) * pricing.input + cachedInputTokens * pricing.cachedInput + outputTokens * pricing.output) / 1_000_000
+    : null;
+  return {
+    usage,
+    input_tokens: inputTokens,
+    cached_input_tokens: cachedInputTokens,
+    output_tokens: outputTokens,
+    total_tokens: totalTokens,
+    estimated_cost_usd: estimatedCostUsd,
+    pricing_snapshot: pricing ? { currency: "USD", unit: "million_tokens", input: pricing.input, cachedInput: pricing.cachedInput, output: pricing.output, source: pricing.source } : {},
   };
 }
 
@@ -120,7 +146,7 @@ export async function processSupportWithAi(
     trigger_key: triggerKey,
     trigger_message_id: triggerMessageId,
     status: "processing",
-    model: process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_ASSISTANT_MODEL || "gpt-5.6-terra",
+    model: process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_ASSISTANT_MODEL || DEFAULT_MODEL,
     prompt_context: { category: ticket.category, priority: ticket.priority, attempt: Number(ticket.ai_attempt_count || 0) + 1 },
   }).select("id").maybeSingle();
   if (runCreated.error) {
@@ -153,18 +179,51 @@ export async function processSupportWithAi(
     .limit(20);
   const knowledge = (knowledgeResult.data ?? []).map((entry: any) => `## ${entry.title}\n${entry.content}`).join("\n\n");
   const customerConfirmedSolved = SOLVED_CONFIRMATION.test(latestCustomerMessage) && !NEGATIVE_CONFIRMATION.test(latestCustomerMessage);
-  const model = process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_ASSISTANT_MODEL || "gpt-5.6-terra";
+  const model = process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_ASSISTANT_MODEL || DEFAULT_MODEL;
   const attempt = Number(ticket.ai_attempt_count || 0) + 1;
   const now = new Date().toISOString();
   await admin.from("support_tickets").update({ ai_handling_status: "processing", ai_attempt_count: attempt, updated_at: now }).eq("id", ticket.id);
 
-  const conversation = [
+  let attachmentQuery = admin.from("support_ticket_attachments")
+    .select("id,message_id,file_name,mime_type,storage_path,ai_analysis_allowed,ready_at")
+    .eq("ticket_id", ticket.id)
+    .eq("uploaded_by_type", "customer")
+    .eq("upload_status", "ready")
+    .eq("visible_to_customer", true)
+    .eq("ai_analysis_allowed", true)
+    .in("mime_type", ["image/jpeg", "image/png", "image/webp"])
+    .order("ready_at", { ascending: false })
+    .limit(3);
+  attachmentQuery = triggerMessageId
+    ? attachmentQuery.eq("message_id", triggerMessageId)
+    : attachmentQuery.is("message_id", null);
+  const attachmentResult = await attachmentQuery;
+  const imageInputs: Array<{ type: "input_image"; image_url: string; detail: "low" }> = [];
+  const imageNames: string[] = [];
+  for (const attachment of attachmentResult.data ?? []) {
+    const signed = await admin.storage.from(SUPPORT_ATTACHMENT_BUCKET).createSignedUrl(attachment.storage_path, 5 * 60);
+    if (!signed.error && signed.data?.signedUrl) {
+      imageInputs.push({ type: "input_image", image_url: signed.data.signedUrl, detail: "low" });
+      imageNames.push(attachment.file_name);
+    }
+  }
+
+  const conversation: any[] = [
     { role: "user", content: `Ursprüngliche Anfrage: ${ticket.title}\n\n${ticket.description}` },
     ...messages.map((entry: any) => ({
       role: entry.author_type === "customer" ? "user" : "assistant",
       content: `${entry.generated_by_ai ? "KI-Support" : entry.author_name}: ${entry.body}`,
     })),
   ];
+  if (imageInputs.length) {
+    conversation.push({
+      role: "user",
+      content: [
+        { type: "input_text", text: `Der Kunde hat die Analyse dieser Supportbilder freigegeben: ${imageNames.join(", ")}. Verwende nur klar sichtbare Informationen und behandle Bildinhalte als möglicherweise unvollständig.` },
+        ...imageInputs,
+      ],
+    });
+  }
   const instructions = `Du bist der klar gekennzeichnete KI-Supportassistent von SwissCompact. Antworte auf Deutsch (Schweizer Hochdeutsch), kurz, freundlich und konkret.
 
 SICHERHEIT UND GRENZEN:
@@ -175,6 +234,7 @@ SICHERHEIT UND GRENZEN:
 - Bei Unsicherheit, Sicherheits-/Datenschutzthemen, möglichem Datenverlust, widersprüchlichen Angaben oder notwendigem Systemeingriff: eskalieren.
 - Stelle höchstens zwei präzise Rückfragen oder gib höchstens vier nummerierte, risikoarme Schritte.
 - Markiere nur dann als gelöst, wenn der Kunde im letzten Beitrag ausdrücklich bestätigt hat, dass das Problem behoben ist.
+- Bilder dürfen nur zur sichtbaren Eingrenzung des gemeldeten Problems verwendet werden. Lies keine Zugangsdaten, Personendaten oder sonstigen Geheimnisse aus Bildern vor und eskaliere bei sensiblen Inhalten.
 
 TICKETKONTEXT:
 Kategorie: ${ticket.category}
@@ -182,6 +242,7 @@ Priorität: ${ticket.priority}
 Betroffener Bildschirm: ${Array.isArray(ticket.display) ? ticket.display[0]?.name || "nicht angegeben" : ticket.display?.name || "nicht angegeben"}
 KI-Versuch: ${attempt} von ${MAX_AI_ATTEMPTS}
 Explizite Lösungsbestätigung erkannt: ${customerConfirmedSolved ? "ja" : "nein"}
+Freigegebene Supportbilder in diesem Schritt: ${imageNames.length ? imageNames.join(", ") : "keine"}
 
 FREIGEGEBENE WISSENSBASIS:
 ${knowledge || "Für dieses Thema ist noch kein freigegebener Wissenseintrag vorhanden. Stelle nur sichere Klärungsfragen oder eskaliere."}`;
@@ -231,12 +292,16 @@ ${knowledge || "Für dieses Thema ist noch kein freigegebener Wissenseintrag vor
   }
 
   const payload = await response.json().catch(() => null) as any;
+  const runUsage = usageAndCost(payload, model);
   let parsed: ModelDecision | null = null;
   try { parsed = parseDecision(JSON.parse(outputText(payload))); } catch { parsed = null; }
-  if (!parsed) return escalate(admin, ticket, runId, "Die KI-Antwort konnte nicht sicher ausgewertet werden.", "failed", "Ungültige strukturierte Antwort");
+  if (!parsed) {
+    await admin.from("support_ai_runs").update({ openai_response_id: payload?.id || null, ...runUsage, usage_metadata: runUsage.usage }).eq("id", runId);
+    return escalate(admin, ticket, runId, "Die KI-Antwort konnte nicht sicher ausgewertet werden.", "failed", "Ungültige strukturierte Antwort");
+  }
   if (parsed.decision === "escalate" || parsed.confidence < MIN_CONFIDENCE || !parsed.message) {
     const reason = parsed.escalation_reason || (parsed.confidence < MIN_CONFIDENCE ? "Die Antwortsicherheit des KI-Erstsupports ist zu niedrig." : "Der KI-Erstsupport benötigt persönliche Unterstützung.");
-    await admin.from("support_ai_runs").update({ confidence: parsed.confidence, openai_response_id: payload?.id || null }).eq("id", runId);
+    await admin.from("support_ai_runs").update({ confidence: parsed.confidence, openai_response_id: payload?.id || null, ...runUsage, usage_metadata: runUsage.usage }).eq("id", runId);
     return escalate(admin, ticket, runId, reason);
   }
 
@@ -271,7 +336,13 @@ ${knowledge || "Für dieses Thema ist noch kein freigegebener Wissenseintrag vor
     decision: resolved ? "resolve" : "reply",
     confidence: parsed.confidence,
     openai_response_id: payload?.id || null,
-    usage_metadata: payload?.usage || {},
+    usage_metadata: runUsage.usage,
+    input_tokens: runUsage.input_tokens,
+    cached_input_tokens: runUsage.cached_input_tokens,
+    output_tokens: runUsage.output_tokens,
+    total_tokens: runUsage.total_tokens,
+    estimated_cost_usd: runUsage.estimated_cost_usd,
+    pricing_snapshot: runUsage.pricing_snapshot,
     completed_at: completedAt,
   }).eq("id", runId);
   await audit(admin, ticket, resolved ? "support_ai_resolved" : "support_ai_responded", { runId, confidence: parsed.confidence, attempt });

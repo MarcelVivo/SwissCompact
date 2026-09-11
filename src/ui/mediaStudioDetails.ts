@@ -127,9 +127,7 @@ export function mountMediaStudioDetails(): MediaStudioDetails {
   const dialog = document.querySelector<HTMLDialogElement>(
     "[data-media-detail-dialog]",
   );
-  const triggers = Array.from(
-    document.querySelectorAll<HTMLButtonElement>("[data-media-studio-detail]"),
-  );
+  const triggers = Array.from(document.querySelectorAll<HTMLElement>("[data-media-studio-detail]"));
   if (!dialog || triggers.length === 0) return { destroy: () => {} };
 
   const closeButton = dialog.querySelector<HTMLButtonElement>(
@@ -157,14 +155,14 @@ export function mountMediaStudioDetails(): MediaStudioDetails {
     output: dialog.querySelector<HTMLElement>("[data-media-detail-output]"),
     index: dialog.querySelector<HTMLElement>("[data-media-detail-index]"),
   };
-  let activeTrigger: HTMLButtonElement | null = null;
+  let activeTrigger: HTMLElement | null = null;
 
   const close = (restoreFocus = true): void => {
     if (dialog.open) dialog.close();
     document.body.classList.remove("is-media-detail-open");
     if (restoreFocus) activeTrigger?.focus();
   };
-  const open = (trigger: HTMLButtonElement): void => {
+  const open = (trigger: HTMLElement): void => {
     const key = trigger.dataset.mediaStudioDetail;
     if (!isMediaDetailKey(key)) return;
     const detail = MEDIA_DETAILS[key];
@@ -192,7 +190,10 @@ export function mountMediaStudioDetails(): MediaStudioDetails {
   };
 
   const triggerHandlers = triggers.map((trigger) => {
-    const handler = (): void => open(trigger);
+    const handler = (event: Event): void => {
+      event.preventDefault();
+      open(trigger);
+    };
     trigger.addEventListener("click", handler);
     return { trigger, handler };
   });

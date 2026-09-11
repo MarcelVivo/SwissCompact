@@ -1,0 +1,18 @@
+.alerting-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  padding: 13px 16px;
+  border-radius: 12px;
+  background: #edf9f3;
+  color: #08764d;
+}
+
+.alerting-status span { font-size: 12px; }
+.alerting-status.missing { background: #fff2d7; color: #765000; }
+
+@media (max-width: 700px) {
+  .alerting-status { align-items: flex-start; flex-direction: column; }
+}

@@ -91,7 +91,9 @@ export function mountSiteNavigation(): SiteNavigation {
   const mobileMenu = window.matchMedia("(max-width: 1100px)");
 
   const syncMenuAccessibility = () => {
-    const hidden = mobileMenu.matches && !menuOpen;
+    const compactNavigation = mobileMenu.matches
+      || document.body.classList.contains("is-hero-focus");
+    const hidden = compactNavigation && !menuOpen;
     primaryNav?.toggleAttribute("inert", hidden);
     if (hidden) primaryNav?.setAttribute("aria-hidden", "true");
     else primaryNav?.removeAttribute("aria-hidden");
@@ -113,11 +115,17 @@ export function mountSiteNavigation(): SiteNavigation {
   const updatePageState = () => {
     if (destroyed) return;
     const marketingVisible = window.scrollY >= journeyMaximum() - 2;
+    const stationCount = Math.max(1, document.querySelectorAll(".station").length);
+    const heroFocusLimit = journeyMaximum() / stationCount * 0.38;
+    const heroFocused = !marketingVisible && window.scrollY < heroFocusLimit;
     document.body.classList.toggle("is-marketing-view", marketingVisible);
+    document.body.classList.toggle("is-hero-focus", heroFocused);
     header?.classList.toggle(
       "is-condensed",
       window.scrollY > 48 || marketingVisible,
     );
+    syncMenuAccessibility();
+    if (!heroFocused && !mobileMenu.matches && menuOpen) setMenuOpen(false);
   };
 
   const schedule = (callback: () => void, delay: number) => {

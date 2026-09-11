@@ -41,7 +41,7 @@ function uid() {
 
 export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistant {
   const rootCheck = document.querySelector<HTMLElement>("[data-sales-assistant]");
-  const triggerCheck = document.querySelector<HTMLButtonElement>("[data-sales-assistant-trigger]");
+  const triggerCheck = document.querySelector<HTMLElement>("[data-sales-assistant-trigger]");
   const panelCheck = document.querySelector<HTMLElement>("[data-sales-assistant-panel]");
   const bodyCheck = document.querySelector<HTMLElement>("[data-sales-assistant-body]");
   const composerCheck = document.querySelector<HTMLFormElement>("[data-sales-assistant-composer]");
@@ -423,8 +423,14 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     consentLabel.append(consentInput);
     const consentText = document.createElement("span");
     consentText.textContent = hasConversationContext
-      ? "Ich bin einverstanden, dass dieses Gespräch zur Kontaktaufnahme an SwissCompact übermittelt wird."
-      : "Ich bin einverstanden, dass meine Angaben zur Kontaktaufnahme an SwissCompact übermittelt werden.";
+      ? "Ich bin einverstanden, dass dieses Gespräch zur Kontaktaufnahme an SwissCompact übermittelt wird. "
+      : "Ich bin einverstanden, dass meine Angaben zur Kontaktaufnahme an SwissCompact übermittelt werden. ";
+    const privacyLink = document.createElement("a");
+    privacyLink.href = "/legal.html#datenschutz";
+    privacyLink.target = "_blank";
+    privacyLink.rel = "noopener";
+    privacyLink.textContent = "Datenschutzerklärung öffnen";
+    consentText.append(privacyLink);
     consentLabel.append(consentText);
     form.append(consentLabel);
 
@@ -838,7 +844,10 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
     }
   }
 
-  const handleTriggerClick = () => setOpen(!open);
+  const handleTriggerClick = (event: Event) => {
+    event.preventDefault();
+    setOpen(!open);
+  };
   const handleCloseClick = () => setOpen(false);
   const handleKeydown = (event: KeyboardEvent) => {
     if (event.key === "Escape" && open) setOpen(false);
@@ -880,7 +889,10 @@ export function mountSalesAssistant(showroom: GastronomyShowroom): SalesAssistan
   // duplicating it or falling
   // back to a mailto link — they always open, never toggle closed.
   const openTriggers = [...document.querySelectorAll<HTMLElement>("[data-sales-assistant-open]")];
-  const handleOpenTriggerClick = () => setOpen(true);
+  const handleOpenTriggerClick = (event: Event) => {
+    event.preventDefault();
+    setOpen(true);
+  };
   openTriggers.forEach((element) => element.addEventListener("click", handleOpenTriggerClick));
   cleanupListeners.push(() => {
     openTriggers.forEach((element) => element.removeEventListener("click", handleOpenTriggerClick));

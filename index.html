@@ -540,9 +540,9 @@
               <span>Digital Signage</span><span>Interactive</span><span>Retail Media</span>
             </div>
           </div>
-          <button type="button" data-sales-assistant-open>
+          <a href="mailto:kontakt@swisscompact.com?subject=Projektanfrage%20SwissCompact" data-sales-assistant-open>
             Lösung besprechen <span aria-hidden="true">↗</span>
-          </button>
+          </a>
         </article>
       </section>
 
@@ -558,6 +558,7 @@
 
         <div class="business-platform__grid" aria-label="Bausteine der SwissCompact Gesamtlösung">
           <article class="business-platform__card">
+            <img class="business-platform__card-image" src="/images/platform/website-marke.webp" width="1086" height="1448" loading="lazy" decoding="async" alt="" aria-hidden="true">
             <div class="business-platform__card-head">
               <span>01</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01M7 13h5M7 16h10"/></svg>
@@ -565,10 +566,11 @@
             <h3>Website &amp; Marke</h3>
             <p>Strategie, UX, Design, Entwicklung, Inhalte, Bilder und Texte – SEO- und GEO-optimiert.</p>
             <ul><li>Komplette Website-Erstellung</li><li>Marketing &amp; Content</li><li>Laufende Optimierung</li></ul>
-            <a class="business-platform__card-link" href="/plattform/website-marke/">Mehr erfahren <span aria-hidden="true">↗</span></a>
+            <a class="business-platform__card-link" href="/plattform/website-marke/" data-platform-detail="website" aria-haspopup="dialog">Mehr erfahren <span aria-hidden="true">↗</span></a>
           </article>
 
           <article class="business-platform__card">
+            <img class="business-platform__card-image" src="/images/platform/business-dashboard.webp" width="1086" height="1448" loading="lazy" decoding="async" alt="" aria-hidden="true">
             <div class="business-platform__card-head">
               <span>02</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 3v18M8 9h13M12 13h5M12 17h3"/></svg>
@@ -576,10 +578,11 @@
             <h3>Business Dashboard</h3>
             <p>Ein auf das Unternehmen zugeschnittenes System für CRM, ERP, Projekte, Marketing und Automatisierung.</p>
             <ul><li>Eigene Domain, eigene Prozesse</li><li>Rollen &amp; Kundenverwaltung</li><li>KI-Bots für Administration</li></ul>
-            <a class="business-platform__card-link" href="/plattform/business-dashboard/">Mehr erfahren <span aria-hidden="true">↗</span></a>
+            <a class="business-platform__card-link" href="/plattform/business-dashboard/" data-platform-detail="dashboard" aria-haspopup="dialog">Mehr erfahren <span aria-hidden="true">↗</span></a>
           </article>
 
           <article class="business-platform__card business-platform__card--accent">
+            <img class="business-platform__card-image" src="/images/platform/display-portal.webp" width="1086" height="1448" loading="lazy" decoding="async" alt="" aria-hidden="true">
             <div class="business-platform__card-head">
               <span>03</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 8h10M7 11h6"/></svg>
@@ -587,10 +590,11 @@
             <h3>Display Portal</h3>
             <p>Die SwissCompact Software für Inhalte, Kampagnen, Displays und LED-Netzwerke – einfach und zentral bedienbar.</p>
             <ul><li>swisscompact.com/portal</li><li>White-Label auf eigener Domain</li><li>Content-Erstellung mit KI</li></ul>
-            <a class="business-platform__card-link" href="/plattform/display-portal/">Mehr erfahren <span aria-hidden="true">↗</span></a>
+            <a class="business-platform__card-link" href="/plattform/display-portal/" data-platform-detail="portal" aria-haspopup="dialog">Mehr erfahren <span aria-hidden="true">↗</span></a>
           </article>
 
           <article class="business-platform__card">
+            <img class="business-platform__card-image" src="/images/platform/hardware-betrieb.webp" width="1086" height="1448" loading="lazy" decoding="async" alt="" aria-hidden="true">
             <div class="business-platform__card-head">
               <span>04</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H4zM8 20h8M12 16v4M7 9h10M9 12h6"/><path d="M20 7h2v7h-2"/></svg>
@@ -598,9 +602,40 @@
             <h3>Hardware &amp; Betrieb</h3>
             <p>Displays und LED-Systeme inklusive Planung, Montage, Einrichtung, Monitoring, Wartung und Support.</p>
             <ul><li>Hardware-Konzeption</li><li>Installation vor Ort</li><li>Laufende Betreuung</li></ul>
-            <a class="business-platform__card-link" href="/plattform/hardware-betrieb/">Mehr erfahren <span aria-hidden="true">↗</span></a>
+            <a class="business-platform__card-link" href="/plattform/hardware-betrieb/" data-platform-detail="hardware" aria-haspopup="dialog">Mehr erfahren <span aria-hidden="true">↗</span></a>
           </article>
         </div>
+
+        <dialog class="project-detail platform-detail" data-platform-detail-dialog aria-labelledby="platform-detail-title" aria-describedby="platform-detail-intro">
+          <div class="project-detail__surface">
+            <button class="project-detail__close" type="button" data-platform-detail-close aria-label="Detailansicht schliessen">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+            <header class="project-detail__header">
+              <span data-platform-detail-number>01</span>
+              <p data-platform-detail-category>Digitale Präsenz &amp; Marke</p>
+              <h3 id="platform-detail-title" data-platform-detail-title>Website &amp; Marke</h3>
+              <strong data-platform-detail-headline>Eine Website, die die richtigen Menschen erreicht und ins Gespräch bringt.</strong>
+              <p id="platform-detail-intro" data-platform-detail-intro></p>
+              <img class="project-detail__image platform-detail__image" src="/images/platform/website-marke.webp" width="1086" height="1448" decoding="async" alt="Designer arbeitet an einer digitalen Markenwelt in einem dunklen Studio" data-platform-detail-image>
+            </header>
+            <div class="project-detail__body">
+              <section>
+                <span>Was in diesem Baustein steckt</span>
+                <ul data-platform-detail-services></ul>
+              </section>
+              <aside>
+                <span>Der Mehrwert</span>
+                <p data-platform-detail-result></p>
+                <small data-platform-detail-output></small>
+              </aside>
+            </div>
+            <footer>
+              <span data-platform-detail-index>Baustein 01 von 04</span>
+              <button type="button" data-platform-detail-cta>Baustein besprechen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+            </footer>
+          </div>
+        </dialog>
 
         <div class="business-platform__service">
           <div>
@@ -608,9 +643,9 @@
             <strong>Essential · Business · Enterprise</strong>
           </div>
           <p>Passend zu Funktionsumfang, Standorten und Display-Netzwerk. Mit Wartung, Updates und persönlichem Support.</p>
-          <button class="button business-platform__cta" type="button" data-sales-assistant-open>
+          <a class="button business-platform__cta" href="mailto:kontakt@swisscompact.com?subject=Gesamtloesung%20SwissCompact" data-sales-assistant-open>
             Gesamtlösung besprechen <span aria-hidden="true">→</span>
-          </button>
+          </a>
         </div>
       </section>
 
@@ -1465,40 +1500,40 @@
         </div>
         <div class="project-steps">
           <article>
-            <button class="project-step__trigger" type="button" data-project-step="strategy" aria-haspopup="dialog">
+            <a class="project-step__trigger" href="mailto:kontakt@swisscompact.com?subject=Interesse%20Strategie%20SwissCompact" data-project-step="strategy" aria-haspopup="dialog">
               <img class="project-step__photo" src="/images/project/card-strategy.webp" alt="" width="900" height="1125" loading="lazy" decoding="async" aria-hidden="true">
               <span class="project-step__number">01</span>
               <strong>Strategie</strong>
               <p>Ziele, Räume und Customer Journey verstehen.</p>
               <span class="project-step__action">Details ansehen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-            </button>
+            </a>
           </article>
           <article>
-            <button class="project-step__trigger" type="button" data-project-step="media" aria-haspopup="dialog">
+            <a class="project-step__trigger" href="mailto:kontakt@swisscompact.com?subject=Interesse%20Media%20SwissCompact" data-project-step="media" aria-haspopup="dialog">
               <img class="project-step__photo" src="/images/project/card-media.webp" alt="" width="900" height="1125" loading="lazy" decoding="async" aria-hidden="true">
               <span class="project-step__number">02</span>
               <strong>Media</strong>
               <p>Content entwickeln, der für den Ort geschaffen ist.</p>
               <span class="project-step__action">Details ansehen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-            </button>
+            </a>
           </article>
           <article>
-            <button class="project-step__trigger" type="button" data-project-step="system" aria-haspopup="dialog">
+            <a class="project-step__trigger" href="mailto:kontakt@swisscompact.com?subject=Interesse%20System%20SwissCompact" data-project-step="system" aria-haspopup="dialog">
               <img class="project-step__photo" src="/images/project/card-system.webp" alt="" width="900" height="1125" loading="lazy" decoding="async" aria-hidden="true">
               <span class="project-step__number">03</span>
               <strong>System</strong>
               <p>Displays, Software und Integrationen präzise verbinden.</p>
               <span class="project-step__action">Details ansehen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-            </button>
+            </a>
           </article>
           <article>
-            <button class="project-step__trigger" type="button" data-project-step="operations" aria-haspopup="dialog">
+            <a class="project-step__trigger" href="mailto:kontakt@swisscompact.com?subject=Interesse%20Betrieb%20SwissCompact" data-project-step="operations" aria-haspopup="dialog">
               <img class="project-step__photo" src="/images/project/card-operations.webp" alt="" width="900" height="1407" loading="lazy" decoding="async" aria-hidden="true">
               <span class="project-step__number">04</span>
               <strong>Betrieb</strong>
               <p>Rollout, Monitoring und Support langfristig sichern.</p>
               <span class="project-step__action">Details ansehen <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-            </button>
+            </a>
           </article>
         </div>
         <dialog class="project-detail" data-project-detail-dialog aria-labelledby="project-detail-title" aria-describedby="project-detail-intro">
@@ -1541,16 +1576,16 @@
             Wir entwickeln Medien, die für Bewegung, Distanz und Raum gedacht
             sind – nicht einfach für einen kleineren Bildschirm vergrössert.
           </p>
-          <button type="button" data-sales-assistant-open>
+          <a href="mailto:kontakt@swisscompact.com?subject=Media-Projekt%20SwissCompact" data-sales-assistant-open>
             Media-Projekt starten <span aria-hidden="true">↗</span>
-          </button>
+          </a>
         </div>
         <div class="media-wall" aria-label="Leistungen des Media Studios">
-          <button class="media-tile media-tile--hero" type="button" data-media-studio-detail="motion" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-motion.webp" width="1200" height="800" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">Motion<br>Design</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
-          <button class="media-tile" type="button" data-media-studio-detail="film" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-film.webp" width="1200" height="800" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">Film</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
-          <button class="media-tile" type="button" data-media-studio-detail="three-d" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-three-d.webp" width="1200" height="800" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">3D</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
-          <button class="media-tile" type="button" data-media-studio-detail="campaigns" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-campaigns.webp" width="1200" height="641" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">Campaign Systems</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
-          <button class="media-tile" type="button" data-media-studio-detail="templates" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-templates.webp" width="1200" height="800" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">Templates</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>
+          <a class="media-tile media-tile--hero" href="mailto:kontakt@swisscompact.com?subject=Interesse%20Motion%20Design%20SwissCompact" data-media-studio-detail="motion" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-motion.webp" width="1200" height="800" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">Motion<br>Design</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+          <a class="media-tile" href="mailto:kontakt@swisscompact.com?subject=Interesse%20Film%20SwissCompact" data-media-studio-detail="film" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-film.webp" width="1200" height="800" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">Film</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+          <a class="media-tile" href="mailto:kontakt@swisscompact.com?subject=Interesse%203D%20SwissCompact" data-media-studio-detail="three-d" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-three-d.webp" width="1200" height="800" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">3D</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+          <a class="media-tile" href="mailto:kontakt@swisscompact.com?subject=Interesse%20Campaign%20Systems%20SwissCompact" data-media-studio-detail="campaigns" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-campaigns.webp" width="1200" height="641" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">Campaign Systems</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+          <a class="media-tile" href="mailto:kontakt@swisscompact.com?subject=Interesse%20Templates%20SwissCompact" data-media-studio-detail="templates" aria-haspopup="dialog"><img class="media-tile__photo" src="/images/media-studio/card-templates.webp" width="1200" height="800" loading="lazy" decoding="async" alt="" aria-hidden="true"><span class="media-tile__title">Templates</span><span class="media-tile__action">Details <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
         </div>
         <dialog class="project-detail media-detail" data-media-detail-dialog aria-labelledby="media-detail-title" aria-describedby="media-detail-intro">
           <div class="project-detail__surface">
@@ -1613,14 +1648,14 @@
             Erzählen Sie uns kurz von Ihrem Vorhaben. Wir melden uns mit einer
             ersten Einschätzung und den sinnvollsten nächsten Schritten.
           </p>
-          <button
-            type="button"
+          <a
             class="button button--light"
+            href="mailto:kontakt@swisscompact.com?subject=Projektanfrage%20SwissCompact"
             data-sales-assistant-open
-          >Projekt besprechen <span aria-hidden="true">↗</span></button>
-          <button type="button" data-experience-start="0.08">
+          >Projekt besprechen <span aria-hidden="true">↗</span></a>
+          <a href="/#top" data-experience-start="0.08">
             Erlebnis nochmals starten <span aria-hidden="true">↑</span>
-          </button>
+          </a>
         </div>
       </section>
     </main>
@@ -1629,6 +1664,11 @@
       <a class="logo" href="#top" data-experience-start="0">Swiss<span>Compact</span></a>
       <p>Digitale Räume. Vernetzte Inhalte. Messbare Wirkung.</p>
       <a href="mailto:kontakt@swisscompact.com">kontakt@swisscompact.com</a>
+      <nav class="site-footer__legal" aria-label="Rechtliches">
+        <a href="/legal.html#anbieter">Impressum</a>
+        <a href="/legal.html#datenschutz">Datenschutz</a>
+        <a href="/legal.html#nutzungsbedingungen">AGB</a>
+      </nav>
       <span>© 2026 SwissCompact</span>
     </footer>
 
@@ -1641,9 +1681,9 @@
     </noscript>
 
     <div class="sales-assistant" data-sales-assistant>
-      <button
-        type="button"
+      <a
         class="sales-assistant__trigger"
+        href="mailto:kontakt@swisscompact.com?subject=Beratungsanfrage%20SwissCompact"
         data-sales-assistant-trigger
         aria-haspopup="dialog"
         aria-expanded="false"
@@ -1651,7 +1691,7 @@
       >
         <span class="sales-assistant__state-dot" data-sales-assistant-state="idle" aria-hidden="true"></span>
         <span>Beratung starten</span>
-      </button>
+      </a>
       <section
         id="sales-assistant-panel"
         class="sales-assistant__panel"
@@ -1688,9 +1728,9 @@
       </section>
     </div>
 
-    <button
-      type="button"
+    <a
       class="showroom-funnel__trigger"
+      href="mailto:kontakt@swisscompact.com?subject=Raumkonzept%20SwissCompact"
       data-showroom-funnel-trigger
       aria-haspopup="dialog"
       aria-expanded="false"
@@ -1698,7 +1738,7 @@
     >
       <span class="showroom-funnel__trigger-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 8h10M7 11h6"/></svg></span>
       <span>Meinen Raum gestalten</span>
-    </button>
+    </a>
     <section
       id="showroom-funnel-panel"
       class="showroom-funnel__panel"
