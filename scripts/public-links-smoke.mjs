@@ -13,6 +13,7 @@ const htmlFiles = [
     "business-dashboard",
     "display-portal",
     "hardware-betrieb",
+    "individuelle-entwicklung",
   ].map((slug) => `dist/plattform/${slug}/index.html`),
   ...[
     "retail-interaktive-beratung",
