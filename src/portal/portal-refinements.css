@@ -1,0 +1,114 @@
+/*
+ * Sammelkorrekturen aus dem UI-Review (September 2026).
+ * Überschreibt gezielt Regeln aus den minifizierten Stylesheets, damit
+ * die Grundlagen dort unverändert bleiben.
+ */
+
+/* 1. Der Menüpunkt "Mehr" gehört ausschliesslich in die mobile Tab-Leiste.
+ *    Die Grundregel ".portal>aside>nav button" gewinnt sonst gegen ".nav-more". */
+.portal > aside > nav .nav-more {
+  display: none;
+}
+
+/* 2. Bildschirmvorschau: "Sicher veröffentlichen" oben rechts, damit die
+ *    Statuszeile unten nicht mehr überdeckt wird. */
+.display-safety-overlay {
+  top: .6rem;
+  right: .6rem;
+  bottom: auto;
+}
+
+/* 3. "Player öffnen" ist eine Nebenaktion – nicht gleichwertig zu "Inhalt zuweisen". */
+.player-open-action {
+  border: 1px solid #d5d2cc;
+  background: #fff;
+  color: #27272a;
+}
+
+.player-open-action:hover,
+.player-open-action:focus-visible {
+  border-color: var(--accent);
+  background: #faf9f7;
+  filter: none;
+  transform: none;
+}
+
+/* 4. Fehlermeldungen zu Medien müssen vollständig lesbar bleiben. */
+.content-card p.media-processing-error {
+  overflow: visible;
+  white-space: normal;
+  line-height: 1.45;
+}
+
+/* 5. Content-Produktion ist ein Zusatzangebot und folgt der Mediathek. */
+.workspace > .view > .service-request-entry {
+  margin: 28px 0 0;
+}
+
+/* 6. Partnerkarte: "Verbindung beenden" darf nicht aus der Karte laufen. */
+.partner-connection {
+  flex-wrap: wrap;
+}
+
+.partner-connection > div:first-child {
+  flex: 1 1 160px;
+}
+
+.partner-connection .partner-balance {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.partner-connection > button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* 7. Sicherheitscenter: Kopfzeile mit Knopf darf umbrechen. */
+.portal-security-sections > section > header {
+  flex-wrap: wrap;
+}
+
+.portal-security-sections > section > header > button {
+  flex: 0 0 auto;
+}
+
+/* 8. Eigene Vorlagen im Schnellstart: Titel, Beschreibung und Umfang untereinander. */
+.campaign-template-card.own > button:first-child > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+/* 9. Veröffentlichen ohne Inhalt: klarer Hinweis mit direktem Absprung. */
+.editor-notice-blocking {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #ead9a8;
+}
+
+.editor-notice-blocking > span {
+  line-height: 1.45;
+}
+
+.editor-notice-blocking > button {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+@media (max-width: 680px) {
+  .portal > aside > nav .nav-more {
+    display: grid;
+  }
+
+  /* Kompakte Primäraktionen behalten auf Mobilgeräten ihre Beschriftung. */
+  .section-title .primary.compact {
+    border-radius: 999px;
+    padding: 11px 15px;
+    font-size: 12px;
+  }
+
+  .section-title .primary.compact svg {
+    width: 16px;
+  }
+}

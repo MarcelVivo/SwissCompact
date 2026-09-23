@@ -244,12 +244,36 @@
   outline: none;
 }
 
+/* Feste Breiten für Status und Aktionen, damit Kopfzeile und Zeilen exakt fluchten. */
 .campaign-table {
-  grid-template-columns: minmax(150px, 1.1fr) minmax(150px, .85fr) minmax(115px, .65fr) .45fr minmax(170px, .75fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(120px, .7fr) minmax(90px, .5fr) 96px minmax(300px, auto);
+  column-gap: 14px;
+}
+
+.campaign-table > :last-child {
+  justify-self: end;
 }
 
 .campaign-table > .creator-meta {
   margin-top: 0;
+}
+
+.campaign-identity > small.campaign-incomplete {
+  color: #8b5c06;
+  font-weight: 750;
+}
+
+/* Die Kampagnenliste darf das Aktionsmenü nicht abschneiden. */
+.table-card {
+  overflow: visible;
+}
+
+.table-head {
+  border-radius: 17px 17px 0 0;
+}
+
+.table-row:last-child {
+  border-radius: 0 0 17px 17px;
 }
 
 .campaign-identity {
@@ -274,15 +298,83 @@
 
 .campaign-row-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 6px;
 }
 
-.campaign-row-actions .row-action,
-.campaign-row-actions .assign-record-action,
-.campaign-row-actions .delete-record-action {
-  padding: 8px 11px;
+.campaign-row-actions .row-action {
+  padding: 8px 12px;
+  font-size: 12px;
   white-space: nowrap;
+}
+
+.row-action.is-primary {
+  border-color: var(--state-current);
+  background: var(--state-current);
+  color: #fff;
+}
+
+.row-action.is-primary:hover,
+.row-action.is-primary:focus-visible {
+  border-color: var(--state-current);
+  filter: brightness(1.15);
+}
+
+/* Weitere Aktionen: ein kompaktes Menü statt fünf Knöpfe pro Zeile. */
+.row-menu {
+  position: relative;
+}
+
+.row-menu-trigger {
+  width: 38px;
+  padding-inline: 0 !important;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.row-menu.open .row-menu-trigger {
+  border-color: #9d9b97;
+  background: #f4f2ee;
+}
+
+.row-menu-list {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid #d5d2cc;
+  border-radius: 14px;
+  padding: 6px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgb(20 18 16 / 14%);
+}
+
+.row-menu-list button {
+  border: 0;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: transparent;
+  color: #1c1c1e;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-menu-list button:hover,
+.row-menu-list button:focus-visible {
+  background: #f2f0ec;
+  outline: none;
+}
+
+.row-menu-list button.danger {
+  color: #b20b2a;
 }
 
 .media-missing-notice {
@@ -422,13 +514,46 @@
   }
 }
 
-@media (max-width: 900px) {
-  .campaign-table {
-    grid-template-columns: minmax(130px, 1fr) minmax(130px, .8fr) minmax(105px, .65fr) .45fr minmax(92px, .55fr);
+/* Unter 1200 px wird jede Kampagne zu einer Karte mit untereinander liegenden Angaben. */
+@media (max-width: 1200px) {
+  .table-head.campaign-table {
+    display: none;
   }
 
+  .campaign-table {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+    padding-block: 14px;
+  }
+
+  .campaign-table > span:nth-child(2) {
+    grid-row: auto;
+    grid-column: 1;
+    font-size: 13px;
+    color: #4a4844;
+  }
+
+  .campaign-table > .creator-meta {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .campaign-table > .status {
+    display: inline-flex;
+    justify-self: start;
+  }
+
+  .campaign-table > :last-child,
   .campaign-row-actions {
-    display: grid;
+    justify-self: start;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .campaign-table .row-action {
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 
@@ -438,38 +563,14 @@
     gap: 7px;
   }
 
-  .campaign-table {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .campaign-table > .creator-meta {
-    grid-column: 1;
-    grid-row: auto;
-  }
-
-  .campaign-row-actions {
-    display: flex;
-    grid-column: 1;
-    grid-row: auto;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    margin-top: 10px;
-  }
-
-  .campaign-row-actions .row-action,
-  .campaign-row-actions .assign-record-action,
-  .campaign-row-actions .delete-record-action {
-    flex: 1 1 auto;
+  .campaign-row-actions .row-action.is-primary {
+    flex: 1 1 100%;
     text-align: center;
   }
 
-  .campaign-table .row-action {
-    grid-column: auto;
-    grid-row: auto;
-  }
-
-  .campaign-table .status {
-    display: none;
+  .campaign-row-actions .row-action:not(.is-primary, .row-menu-trigger) {
+    flex: 1 1 auto;
+    text-align: center;
   }
 
   .delete-dialog-actions {
