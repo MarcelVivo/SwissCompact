@@ -96,6 +96,26 @@
   margin-top: 4px;
 }
 
+/* 9b. Geführte Einrichtung: ein angefangener Entwurf lässt sich direkt verwerfen. */
+.portal-onboarding > footer > .portal-onboarding-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.portal-onboarding > footer > .portal-onboarding-actions > button {
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .portal-onboarding > footer > .portal-onboarding-actions {
+    width: 100%;
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+}
+
 /* 10. Dialog-Grundregel ".dialog input{width:100%}" streckte Checkboxen und Radios zu Balken. */
 .dialog input[type="checkbox"],
 .dialog input[type="radio"] {
